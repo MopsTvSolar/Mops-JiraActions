@@ -15,9 +15,9 @@ import os
 import re
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-import pandas as pd
 import requests
 from dotenv import load_dotenv
 from reportlab.lib import colors
@@ -44,6 +44,11 @@ log = logging.getLogger("jira_extractor")
 # onde o app foi iniciado (ex.: atalho na área de trabalho).
 APP_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 os.chdir(APP_DIR)
+
+# Carregado aqui (nível de módulo) para que constantes fixas lidas do .env
+# logo abaixo (ex.: PROJETO_INC) já peguem o valor certo mesmo quando este
+# módulo é importado antes de qualquer build_config()/load_fixed_config().
+load_dotenv()
 
 
 class JiraExtractorError(Exception):
@@ -84,20 +89,33 @@ SLA_WINDOW_END = (23, 59, 59)
 SLA_RESOLUTION_FIELDS = ["customfield_10419", "customfield_10629"]
 
 # Apenas chamados nestes status entram no cálculo de "chamados a violar no dia".
-VIOLAR_STATUSES = ["Aguardando Suporte", "Encaminhado", "Em atendimento"]
+VIOLAR_STATUSES = ["Aguardando Suporte", "Encaminhado", "Em atendimento", "Reaberto"]
 
 # Campo "Fornecedor Responsável": customfield_31880 é o usado no projeto "Central
 # de Incidentes"; customfield_16762 fica como alternativa para outros esquemas.
 FORNECEDOR_RESPONSAVEL_FIELDS = ["customfield_31880", "customfield_16762"]
 
-# Projetos fixos considerados no report diário (independente dos checkboxes da GUI).
-PROJETO_INC = "Central de Incidentes"
+# Projeto principal, configurável via .env (JIRA_PROJETO) — usado tanto na JQL
+# geral de "A violar"/"Violados"/Extração completa quanto no report diário.
+PROJETO_INC = os.getenv("JIRA_PROJETO", "Central de Incidentes")
+# Segundo projeto considerado apenas no report diário (independente dos checkboxes da GUI).
 PROJETO_PDST = "Abertura de Chamados"
 
 # Grupos fixos considerados no Relatório Consolidado.
 GRUPO_N1 = "CLBR-TI-OPS-OGS SOLAR SALESFORCE"
 GRUPO_N2 = "CLBR-TI-OPS-OGS-SOLAR-SALESFORCE-N2"
 GRUPO_PROD = "CLBR-TI-OPS-PROD SOLAR SALESFORCE"
+
+# Grupos padrão (caixa Solar) do Relatório Consolidado: cada um tem um
+# "label" curto usado nas linhas do report e indica se entra no ranking
+# "Top Analistas" (Prod nunca entrou nesse ranking). Outras "caixas
+# solucionadoras" (ex.: Mops Tv do Futuro, na versão web) passam sua
+# própria lista para build_consolidated_report(..., grupos=...).
+CONSOLIDADO_GRUPOS_PADRAO = [
+    {"label": "N1", "nome": GRUPO_N1, "top_analistas": True},
+    {"label": "N2", "nome": GRUPO_N2, "top_analistas": True},
+    {"label": "Prod", "nome": GRUPO_PROD, "top_analistas": False},
+]
 
 
 def load_config():
@@ -123,6 +141,30 @@ def load_config():
         "url": url,
         "email": email,
         "token": token,
+        "jql": jql,
+        "page_size": max(1, min(page_size, 100)),
+    }
+
+
+def load_fixed_config():
+    """Carrega apenas as variáveis fixas do servidor (URL, JQL, page size).
+
+    Usado pela versão web (api/index.py): e-mail e token não vêm do
+    ambiente, são fornecidos pelo usuário a cada requisição e nunca
+    persistidos. Ao contrário de load_config(), levanta JiraExtractorError
+    em vez de sys.exit(), para não derrubar o processo do servidor.
+    """
+    load_dotenv()
+
+    url = os.getenv("JIRA_URL", "").rstrip("/")
+    jql = os.getenv("JIRA_JQL", "")
+    page_size = int(os.getenv("JIRA_PAGE_SIZE", "100"))
+
+    if not url:
+        raise JiraExtractorError("JIRA_URL não configurada no ambiente do servidor.")
+
+    return {
+        "url": url,
         "jql": jql,
         "page_size": max(1, min(page_size, 100)),
     }
@@ -183,6 +225,108 @@ def _extract(field_value, key="displayName"):
     if isinstance(field_value, dict):
         return field_value.get(key) or field_value.get("name") or field_value.get("value")
     return field_value
+
+
+def _extract_values(field_value, key="value"):
+    """Extrai uma lista de valores legíveis de um campo, tratando tanto um
+    objeto único quanto uma lista de objetos — vários campos do Jira (Select
+    List, Group Picker etc.) podem vir como lista mesmo quando configurados
+    como seleção única, dependendo do esquema do projeto. Usado para
+    contagens (cada valor encontrado soma 1), onde um chamado com múltiplos
+    valores reais deve contar em cada um, não travar como tipo não-hashável
+    nem virar uma string combinada.
+    """
+    if isinstance(field_value, list):
+        return [v for v in (_extract(item, key) for item in field_value) if v]
+    valor = _extract(field_value, key)
+    return [valor] if valor else []
+
+
+# Cache em memória de processo: (workspace_id, object_id) -> label resolvido
+# via API de Assets. Assim como os outros caches deste módulo, guarda só
+# metadado (nome de um objeto do catálogo), não credencial nem dado de
+# chamado — sobrevive enquanto o processo do servidor estiver de pé.
+_asset_label_cache = {}
+
+
+def _extract_asset_refs(field_value):
+    """Se o valor for uma referência a objeto do Jira Assets/Insight
+    (formato {"workspaceId": ..., "objectId": ...}, único ou em lista —
+    é como campos desse tipo aparecem na REST API, mesmo em campos
+    configurados como seleção única), devolve uma lista de (workspace_id,
+    object_id). Devolve None se não for esse formato, para quem chamar
+    tentar a extração de texto normal (Select List, Group Picker etc.)."""
+    itens = field_value if isinstance(field_value, list) else [field_value]
+    refs = [
+        (item["workspaceId"], item["objectId"])
+        for item in itens
+        if isinstance(item, dict) and item.get("workspaceId") and item.get("objectId")
+    ]
+    return refs or None
+
+
+def _resolve_asset_label(config, workspace_id, object_id):
+    """Busca o nome legível (label) de um objeto do catálogo Jira Assets.
+    Usa a mesma autenticação (e-mail + API Token) das demais chamadas —
+    a API de Assets aceita Basic Auth igual ao restante da REST API do
+    Jira Cloud, só que por um domínio diferente (api.atlassian.com)."""
+    cache_key = (workspace_id, object_id)
+    cached = _asset_label_cache.get(cache_key)
+    if cached:
+        return cached
+
+    url = f"https://api.atlassian.com/jsm/assets/workspace/{workspace_id}/v1/object/{object_id}"
+    response = requests.get(
+        url,
+        auth=(config["email"], config["token"]),
+        headers={"Accept": "application/json"},
+        timeout=15,
+    )
+    response.raise_for_status()
+    data = response.json()
+    label = data.get("label") or data.get("name") or object_id
+
+    _asset_label_cache[cache_key] = label
+    return label
+
+
+def _extract_categoria_values(config, field_value):
+    """Extrai os valores de um campo de categoria, cobrindo os dois formatos
+    possíveis: referência a objeto do Jira Assets (resolve o nome via API,
+    com fallback pro próprio ID se a resolução falhar) ou texto/seleção
+    simples (Select List etc., via _extract_values)."""
+    asset_refs = _extract_asset_refs(field_value)
+    if asset_refs is None:
+        return _extract_values(field_value)
+
+    valores = []
+    for workspace_id, object_id in asset_refs:
+        try:
+            valores.append(_resolve_asset_label(config, workspace_id, object_id))
+        except Exception as e:
+            log.warning(
+                "Falha ao resolver objeto do Jira Assets (workspace=%s, object=%s): %s. "
+                "Usando o ID bruto como nome.",
+                workspace_id,
+                object_id,
+                e,
+            )
+            valores.append(object_id)
+    return valores
+
+
+def _extract_grupo_solucionador(field_value):
+    """Extrai o nome do grupo do campo 'Grupo Solucionador' (Group Picker).
+
+    O esperado é um único objeto ({"name": "..."}), mas alguns esquemas do
+    Jira retornam uma lista mesmo para campos configurados como grupo único
+    — sem tratar isso, o valor bruto (dict/lista) vazava para a tela como
+    "[object Object]" em vez do nome do grupo.
+    """
+    if isinstance(field_value, list):
+        nomes = [n for n in (_extract(v, "name") for v in field_value) if n]
+        return ", ".join(nomes) if nomes else None
+    return _extract(field_value, "name")
 
 
 def flatten_issue(issue, fields):
@@ -252,10 +396,15 @@ def extract_fornecedor(issue_fields):
     return None
 
 
-def fetch_chamados_a_violar(config, days_ahead=0, incluir_fornecedor=False):
+def fetch_chamados_a_violar(config, days_ahead=0, incluir_fornecedor=False, grupo_field_id=None):
     """Busca chamados cujo prazo de SLA (Tempo de Resolução) estoura no dia-alvo
     (hoje se days_ahead=0, amanhã se days_ahead=1), dentro da janela de
     atendimento configurada (07:00 às 23:59).
+
+    "grupo_field_id" é opcional: quando informado (ID do campo customizado
+    "Grupo Solucionador"), o valor do grupo é lido em uma única busca e
+    incluído em cada linha como "grupo_solucionador" — evita ter que repetir
+    a busca uma vez por grupo só para contar quantos chamados cada um tem.
     """
     base_jql = config["jql"]
     if not base_jql:
@@ -271,6 +420,8 @@ def fetch_chamados_a_violar(config, days_ahead=0, incluir_fornecedor=False):
     fields = ["summary", "status", "assignee", "reporter", "project", "issuetype"] + SLA_RESOLUTION_FIELDS
     if incluir_fornecedor:
         fields = fields + FORNECEDOR_RESPONSAVEL_FIELDS
+    if grupo_field_id:
+        fields = fields + [grupo_field_id]
 
     log.info("Buscando chamados com JQL: %s", jql)
     issues = fetch_issues(config, jql, fields)
@@ -313,6 +464,8 @@ def fetch_chamados_a_violar(config, days_ahead=0, incluir_fornecedor=False):
         }
         if incluir_fornecedor:
             row["fornecedor_responsavel"] = extract_fornecedor(issue_fields)
+        if grupo_field_id:
+            row["grupo_solucionador"] = _extract_grupo_solucionador(issue_fields.get(grupo_field_id))
         rows.append(row)
 
     rows.sort(key=lambda r: r["sla_estoura_em"])
@@ -492,18 +645,109 @@ def _top_analistas(config, grupo, ambos_projetos, start_str, end_str, n=3):
     return ranking[:n]
 
 
-def build_consolidated_report(config, start_date, end_date):
-    """Monta o "Relatório Consolidado" (SLA, taxas de reabertura e top
-    analistas por caixa) para o período informado (datas, dia inteiro
-    00:00–23:59), sempre considerando os 3 Grupos Solucionador fixos.
-    SLA e Reaberturas consideram só o projeto "Central de Incidentes";
-    Top Analistas combina "Central de Incidentes" + "Abertura de Chamados".
+CATEGORIA_ENCERRAMENTO_TOP_N = 10
+
+
+def _linhas_top_categorias(titulo, counts, limite=CATEGORIA_ENCERRAMENTO_TOP_N):
+    """Monta as linhas de uma seção "# titulo #" com as top N categorias de
+    encerramento (contagem + percentual sobre o total categorizado, mesma
+    lógica das demais seções do Relatório Consolidado). Devolve [] quando
+    não há contagens (campo não resolvido ou nenhum chamado categorizado)
+    — nesse caso a seção inteira não aparece no report."""
+    if not counts:
+        return []
+
+    total_categorizados = sum(counts.values())
+    linhas = ["", f"# {titulo} #", ""]
+    for categoria, qtd in counts.most_common(limite):
+        percentual = round(qtd / total_categorizados * 100, 1) if total_categorizados else 0.0
+        linhas.append(f"🔸 {categoria}: {qtd} ({percentual}%)")
+    return linhas
+
+
+def fetch_categoria_encerrados(config, grupos, start_date, end_date, categoria_field_id, projetos=None):
+    """Busca a contagem por 'Categoria de Encerramento' entre os chamados
+    encerrados (resolutiondate) no período — mesma população de 'Total
+    geral de chamados encerrados' no Relatório Consolidado.
+
+    "grupos" aceita tanto uma lista de strings quanto a lista de dicts
+    {"nome": ...} usada no Relatório Consolidado. "projetos" (opcional)
+    restringe os projetos considerados; por padrão só "Central de
+    Incidentes" (mesmo comportamento de sempre). Devolve (Counter, total
+    de chamados encerrados no período, categorizados ou não).
     """
+    nomes_grupos = [g["nome"] if isinstance(g, dict) else g for g in grupos]
+    grupo_clause_all = _grupo_clause(nomes_grupos)
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC]))
+    projeto_clause = f"project IN ({projetos_str})"
     start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
     end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
 
-    grupos = [GRUPO_N1, GRUPO_N2, GRUPO_PROD]
-    grupo_clause_all = _grupo_clause(grupos)
+    jql = (
+        f'{grupo_clause_all} AND {projeto_clause} '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    issues = fetch_issues(config, jql, ["key", categoria_field_id])
+
+    counts = Counter()
+    for issue in issues:
+        valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
+        counts.update(valores)
+    return counts, len(issues)
+
+
+def fetch_categoria_reabertos(config, grupos, start_date, end_date, categoria_field_id, projetos=None):
+    """Busca a contagem por 'Categoria de Encerramento' entre os chamados que
+    passaram por 'Reaberto' no período — mesma população de 'Soma total de
+    reabertura' no Relatório Consolidado (uma busca por grupo, somadas).
+    "projetos" (opcional) restringe os projetos considerados; por padrão só
+    "Central de Incidentes" (mesmo comportamento de sempre)."""
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC]))
+    projeto_clause = f"project IN ({projetos_str})"
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+
+    counts = Counter()
+    total = 0
+    for g in grupos:
+        nome = g["nome"] if isinstance(g, dict) else g
+        jql = (
+            f'{_grupo_clause([nome])} AND {projeto_clause} AND status WAS "Reaberto" '
+            f'AND created >= "{start_str}" AND created <= "{end_str}"'
+        )
+        issues = fetch_issues(config, jql, ["key", categoria_field_id])
+        total += len(issues)
+        for issue in issues:
+            valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
+            counts.update(valores)
+    return counts, total
+
+
+def build_consolidated_report(config, start_date, end_date, grupos=None, categoria_encerramento_field_id=None):
+    """Monta o "Relatório Consolidado" (SLA, taxas de reabertura e top
+    analistas por caixa) para o período informado (datas, dia inteiro
+    00:00–23:59). SLA e Reaberturas consideram só o projeto "Central de
+    Incidentes"; Top Analistas combina "Central de Incidentes" + "Abertura
+    de Chamados".
+
+    "grupos" (opcional) é uma lista de dicts {"label", "nome", "top_analistas"}
+    — por padrão, os 3 Grupos Solucionador da caixa Solar (N1/N2/Prod, sem
+    Prod no ranking de Top Analistas, como sempre foi). Outras "caixas
+    solucionadoras" (ex.: Mops Tv do Futuro) passam sua própria lista.
+
+    "categoria_encerramento_field_id" (opcional): ID do campo customizado
+    "Categoria de Encerramento". Quando informado, adiciona uma seção com a
+    contagem por categoria, reaproveitando os mesmos chamados já buscados
+    para "Total geral de chamados encerrados" (nenhuma consulta extra).
+    """
+    if grupos is None:
+        grupos = CONSOLIDADO_GRUPOS_PADRAO
+
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+
+    nomes_grupos = [g["nome"] for g in grupos]
+    grupo_clause_all = _grupo_clause(nomes_grupos)
     apenas_inc = f'project IN ("{PROJETO_INC}")'
     ambos_projetos = f'project IN ("{PROJETO_INC}", "{PROJETO_PDST}")'
 
@@ -520,7 +764,31 @@ def build_consolidated_report(config, start_date, end_date):
         f'{grupo_clause_all} AND {apenas_inc} '
         f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
     )
-    total_encerrados = len(fetch_issues(config, encerrados_jql, ["key"]))
+    encerrados_fields = ["key"]
+    if categoria_encerramento_field_id:
+        encerrados_fields.append(categoria_encerramento_field_id)
+    encerrados_issues = fetch_issues(config, encerrados_jql, encerrados_fields)
+    total_encerrados = len(encerrados_issues)
+
+    categoria_encerramento_counts = None
+    if categoria_encerramento_field_id:
+        categoria_encerramento_counts = Counter()
+        for issue in encerrados_issues:
+            valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_encerramento_field_id))
+            categoria_encerramento_counts.update(valores)
+
+        if encerrados_issues and not categoria_encerramento_counts:
+            # Campo foi resolvido (tem ID), mas nenhum dos chamados encerrados
+            # trouxe valor nele — ajuda a diferenciar "campo errado/vazio" de
+            # "não achei o campo" (que já loga um warning em outro lugar).
+            exemplo = encerrados_issues[0].get("fields", {}).get(categoria_encerramento_field_id)
+            log.warning(
+                'Campo de categoria de encerramento (%s) resolvido, mas nenhum dos %d chamados '
+                "encerrados no período trouxe valor nele. Valor bruto de exemplo (1º chamado): %r",
+                categoria_encerramento_field_id,
+                len(encerrados_issues),
+                exemplo,
+            )
 
     # Já "dentro do prazo" x "violados" exige status atual Resolvido/Encerrado.
     status_resolvido_clause = 'status IN ("Resolvido", "Encerrado")'
@@ -550,13 +818,23 @@ def build_consolidated_report(config, start_date, end_date):
         round(encerrados_violados / total_dentro_violados * 100, 1) if total_dentro_violados else 0.0
     )
 
+    reabertos_fields = ["key"]
+    if categoria_encerramento_field_id:
+        reabertos_fields.append(categoria_encerramento_field_id)
+
     reabertos_por_grupo = {}
-    for label, grupo in (("N1", GRUPO_N1), ("N2", GRUPO_N2), ("Prod", GRUPO_PROD)):
+    reabertos_categoria_counts = Counter() if categoria_encerramento_field_id else None
+    for g in grupos:
         jql = (
-            f'{_grupo_clause([grupo])} AND {apenas_inc} AND status WAS "Reaberto" '
+            f'{_grupo_clause([g["nome"]])} AND {apenas_inc} AND status WAS "Reaberto" '
             f'AND created >= "{start_str}" AND created <= "{end_str}"'
         )
-        reabertos_por_grupo[label] = len(fetch_issues(config, jql, ["key"]))
+        issues = fetch_issues(config, jql, reabertos_fields)
+        reabertos_por_grupo[g["label"]] = len(issues)
+        if categoria_encerramento_field_id:
+            for issue in issues:
+                valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_encerramento_field_id))
+                reabertos_categoria_counts.update(valores)
 
     total_reabertos = sum(reabertos_por_grupo.values())
     percentual_reabertos_grupo = {
@@ -585,8 +863,11 @@ def build_consolidated_report(config, start_date, end_date):
     percentual_criticos = round(total_criticos / total_abertos * 100, 1) if total_abertos else 0.0
     percentual_pontuais = round(total_pontuais / total_criticos * 100, 1) if total_criticos else 0.0
 
-    top_n1 = _top_analistas(config, GRUPO_N1, ambos_projetos, start_str, end_str)
-    top_n2 = _top_analistas(config, GRUPO_N2, ambos_projetos, start_str, end_str)
+    tops = {
+        g["label"]: _top_analistas(config, g["nome"], ambos_projetos, start_str, end_str)
+        for g in grupos
+        if g.get("top_analistas")
+    }
 
     def _linha_top(rotulo, ranking, posicao):
         if len(ranking) > posicao:
@@ -596,41 +877,51 @@ def build_consolidated_report(config, start_date, end_date):
         return f"🔸 {rotulo}: Nenhum"
 
     periodo_str = f"{start_date.strftime('%d/%m/%Y')} a {end_date.strftime('%d/%m/%Y')}"
+    qtd_caixas = len(grupos)
 
     linhas = [
         f"📊 RELATÓRIO CONSOLIDADO - {periodo_str}",
         "",
         "# SLA - CAIXAS GERAIS #",
         "",
-        f"🔸 Total geral de chamados abertos (considere as 3 caixas): {total_abertos}",
-        f"🔸 Total geral de chamados encerrados (considere as 3 caixas): {total_encerrados}",
+        f"🔸 Total geral de chamados abertos (considere as {qtd_caixas} caixas): {total_abertos}",
+        f"🔸 Total geral de chamados encerrados (considere as {qtd_caixas} caixas): {total_encerrados}",
         f"🔸 Encerrados dentro do prazo: {encerrados_dentro_prazo} ({percentual_dentro_prazo}%)",
         f"🔸 Encerrados violados: {encerrados_violados} ({percentual_violados}%)",
         f"🔸 SLA percentual (dentro do prazo x violados): {sla_percentual}%",
         "",
         "# TAXAS DE REABERTURA - CAIXAS GERAIS #",
         "",
-        f'🔸 Reabertos N1 ({GRUPO_N1}): {reabertos_por_grupo["N1"]} ({percentual_reabertos_grupo["N1"]}%)',
-        f'🔸 Reabertos N2 ({GRUPO_N2}): {reabertos_por_grupo["N2"]} ({percentual_reabertos_grupo["N2"]}%)',
-        f'🔸 Reabertos Prod ({GRUPO_PROD}): {reabertos_por_grupo["Prod"]} ({percentual_reabertos_grupo["Prod"]}%)',
-        f"🔸 Soma total de reabertura: {total_reabertos} ({percentual_reabertos_geral}%)",
-        "",
-        "# TOP ANALISTAS #",
-        "",
-        _linha_top("Top 1 analista N1", top_n1, 0),
-        _linha_top("Top 2 analista N1", top_n1, 1),
-        _linha_top("Top 3 analista N1", top_n1, 2),
-        _linha_top("Top 1 analista N2", top_n2, 0),
-        _linha_top("Top 2 analista N2", top_n2, 1),
-        _linha_top("Top 3 analista N2", top_n2, 2),
-        "",
-        "# ESCALONAMENTOS E PRIORIDADES #",
-        "",
-        f"🔸 Chamados Clarinha: {total_clarinha}",
-        f"🔸 Escalonamentos LJ: {total_escalonamentos_lj}",
-        f"🔸 Chamados Críticos totais: {total_criticos} ({percentual_criticos}%)",
-        f"🔸 Chamados Pontuais: {total_pontuais} ({percentual_pontuais}%)",
     ]
+    for g in grupos:
+        label = g["label"]
+        linhas.append(
+            f'🔸 Reabertos {label} ({g["nome"]}): {reabertos_por_grupo[label]} ({percentual_reabertos_grupo[label]}%)'
+        )
+    linhas.append(f"🔸 Soma total de reabertura: {total_reabertos} ({percentual_reabertos_geral}%)")
+    linhas.append("")
+    linhas.append("# TOP ANALISTAS #")
+    linhas.append("")
+    for label, ranking in tops.items():
+        for posicao in range(3):
+            linhas.append(_linha_top(f"Top {posicao + 1} analista {label}", ranking, posicao))
+    linhas.extend(
+        [
+            "",
+            "# ESCALONAMENTOS E PRIORIDADES #",
+            "",
+            f"🔸 Chamados Clarinha: {total_clarinha}",
+            f"🔸 Escalonamentos LJ: {total_escalonamentos_lj}",
+            f"🔸 Chamados Críticos totais: {total_criticos} ({percentual_criticos}%)",
+            f"🔸 Chamados Pontuais: {total_pontuais} ({percentual_pontuais}%)",
+        ]
+    )
+
+    linhas.extend(_linhas_top_categorias("CATEGORIA DE ENCERRAMENTO", categoria_encerramento_counts))
+    linhas.extend(
+        _linhas_top_categorias("CATEGORIA DE ENCERRAMENTO - CHAMADOS REABERTOS", reabertos_categoria_counts)
+    )
+
     return "\n".join(linhas) + "\n"
 
 
@@ -638,6 +929,11 @@ def save_output(rows, output_base, fmt):
     if not rows:
         log.warning("Nenhum chamado encontrado para a JQL informada. Nada será salvo.")
         return
+
+    # Import local (não no topo do módulo): só a GUI/CLI usam pandas para
+    # salvar CSV/Excel em disco. A versão web (api/index.py) não chama esta
+    # função e assim não precisa de pandas instalado no deploy.
+    import pandas as pd
 
     df = pd.DataFrame(rows)
 
@@ -716,8 +1012,13 @@ def export_report_pdf(texto, caminho, titulo="Relatório", subtitulo="Central de
     """Gera um PDF estilizado a partir do texto de um report (Report Diário
     ou Relatório Consolidado): cabeçalho colorido, seções destacadas e
     marcadores tratados (a fonte padrão do PDF não tem glifos de emoji).
+
+    "caminho" aceita tanto um caminho de arquivo (str, usado pela GUI/CLI)
+    quanto um buffer em memória como io.BytesIO (usado pela versão web,
+    que não grava nada em disco no servidor).
     """
-    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    if isinstance(caminho, str):
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
 
     linhas = texto.strip("\n").split("\n")
     # A primeira linha é o título do report (já vira o cabeçalho colorido);

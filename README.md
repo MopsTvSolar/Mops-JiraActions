@@ -1,8 +1,80 @@
 # Extração de Chamados Jira
 
-Ferramenta Python que extrai chamados do Jira Cloud via REST API (JQL configurável) e exporta para CSV e/ou Excel. Disponível em duas formas: uma **interface gráfica** ([jira_gui.py](jira_gui.py)), pensada para o time todo usar sem precisar mexer em `.env`/terminal, e uma **linha de comando** ([jira_extractor.py](jira_extractor.py)), útil para automação.
+Ferramenta Python que extrai chamados do Jira Cloud via REST API (JQL configurável) e exporta para CSV e/ou Excel. Disponível em três formas: uma **versão web** ([api/index.py](api/index.py) + [public/](public/)), para o time acessar por navegador sem instalar nada; uma **interface gráfica** ([jira_gui.py](jira_gui.py)), para uso local sem mexer em `.env`/terminal; e uma **linha de comando** ([jira_extractor.py](jira_extractor.py)), útil para automação.
 
-## Interface gráfica (recomendado para o time)
+## Versão web (Vercel)
+
+Pensada como ferramenta de exportação sob demanda: **o sistema não guarda nada**.
+
+- `JIRA_URL`, `JIRA_JQL`, `JIRA_JQL_TV` e `JIRA_PAGE_SIZE` são fixos no servidor (variáveis de ambiente do projeto na Vercel) — não aparecem na tela.
+- `JIRA_EMAIL` e `JIRA_API_TOKEN` são digitados por cada usuário na tela de login. Ficam **apenas na memória do JavaScript daquela aba** (nunca em `localStorage`, `sessionStorage`, cookie, banco ou log do servidor) — somem sozinhos ao fechar ou recarregar a aba, e precisam ser digitados de novo na próxima vez.
+- Cada requisição à API é *stateless*: o servidor usa e-mail/token só para autenticar na chamada ao Jira daquele pedido e descarta em seguida.
+- CSV, Excel e PDF são montados em memória e baixados direto pelo navegador — nada é salvo em disco no servidor.
+
+### Caixa solucionadora (Mops Solar / Mops Tv do Futuro)
+
+Acima das ações, um alternador escolhe qual "caixa" todas as ações usam: as 4 ações de extração (Extração completa, A violar hoje/amanhã, Violados) com seus cards "por grupo", **e também** o Report Diário e o Relatório Consolidado.
+
+- **Mops Solar** (padrão): usa `JIRA_JQL` e os 3 grupos de sempre (`CLBR-TI-OPS-OGS-SOLAR-SALESFORCE-N2`, `CLBR-TI-OPS-OGS SOLAR SALESFORCE`, `CLBR-TI-OPS-PROD SOLAR SALESFORCE`; no Relatório Consolidado, N1/N2/Prod) — comportamento idêntico ao de antes desse alternador existir.
+- **Mops Tv do Futuro**: usa `JIRA_JQL_TV` (variável separada, só lida pelas 4 ações de extração — Report Diário/Consolidado nem chegam a olhar essa variável, pois montam a própria consulta a partir dos grupos) e os grupos `CLBR-TI-OPS-MOPS TV DO FUTURO` (N1) / `CLBR-TI-OPS-MOPS-TV DO FUTURO N2` (N2, sem "Prod"). Se `JIRA_JQL_TV` não estiver configurada, as ações de extração mostram um erro claro em vez de usar dado errado (o Report Diário/Consolidado funcionam normalmente mesmo sem ela).
+- "A violar hoje/amanhã" considera os status `Aguardando Suporte`, `Encaminhado`, `Em atendimento` e `Reaberto` em ambas as caixas.
+
+Trocar de caixa limpa o resultado/report exibido na tela (evita mostrar dado de uma caixa com o rótulo da outra).
+
+### Extração completa (painel de opções)
+
+Diferente das outras 3 ações de extração (que buscam na hora com a JQL fixa da caixa), o botão **📋 Extração completa** abre um painel de opções embaixo dele (mesmo efeito de colapso do "Categorias de Encerramento") com:
+
+- **Selecionar caixas**: checkboxes dos grupos da caixa atual (3 para Mops Solar, 2 para Mops Tv do Futuro) — todos marcados por padrão.
+- **Status**: checkboxes dos status a considerar (mesma lista do `jira_gui.py`) — todos marcados por padrão.
+- **Período (opcional)**: data início/fim; se preenchido, filtra por `created` nesse intervalo. Se preencher só uma das duas, a tela avisa pra completar a outra.
+
+A JQL é montada na hora a partir dessas escolhas (projeto fixo em "Central de Incidentes", igual às outras caixas) — essa ação específica não depende mais de `JIRA_JQL`/`JIRA_JQL_TV`. O resultado (cards de KPI + tabela) e o download continuam exatamente como antes, só reaproveitando os mesmos filtros escolhidos.
+
+### A violar (Hoje / Amanhã / Plano semanal)
+
+**⏰ A violar hoje** e **📅 A violar amanhã** viraram um único botão **⏰ A violar**, que abre um painel com 3 opções:
+
+- **Hoje** e **Amanhã**: comportamento idêntico ao de antes (tabela + cards de KPI, cards "por grupo", download) — só mudou de onde são disparados.
+- **Plano semanal**: mostra um **mapa de calor** com 7 quadrados, um por dia corrido a partir de hoje (não só dias úteis), cada um com o total de chamados a violar naquele dia (mesma lógica de SLA de "Hoje"/"Amanhã", repetida para os 7 dias). A cor de cada quadrado é relativa ao pior dia da semana visível: dias com carga ≥75% do pico ficam em tom crítico (vermelho), ≥40% em alerta (âmbar), o resto fica neutro — não é uma escala fixa, é sempre relativa aos 7 dias mostrados.
+
+Abaixo do heatmap, o Plano semanal também traz a tabela padrão (cards de resumo + tabela + download) com os chamados dos 7 dias combinados, ordenados por horário de estouro do SLA — mesmo mecanismo de download das outras ações.
+
+O Relatório Consolidado inclui duas seções de "Categoria de Encerramento" (campo customizado, ID resolvido automaticamente — mesmo mecanismo do "Grupo Solucionador"; se não for encontrado, o relatório é gerado normalmente, só sem essas duas seções), disponíveis em ambas as caixas:
+
+- **# CATEGORIA DE ENCERRAMENTO #**: top 10 categorias (contagem + %) entre os mesmos chamados de "Total geral de chamados encerrados" — chamados sem esse campo preenchido não entram na contagem.
+- **# CATEGORIA DE ENCERRAMENTO - CHAMADOS REABERTOS #** (logo abaixo): top 10 categorias entre os chamados que passaram por "Reaberto" no período (mesma população somada em "Soma total de reabertura" — todos os grupos da caixa combinados).
+
+Esse campo, neste Jira, é do tipo **Jira Assets** (referência a objeto de catálogo, não texto direto) — o nome de cada categoria é resolvido via API de Assets (`api.atlassian.com/jsm/assets/...`, mesma autenticação e-mail/API Token), com cache em memória por objeto (uma chamada por categoria distinta, não por chamado). Se a resolução de um objeto falhar, o relatório mostra o ID bruto no lugar do nome em vez de quebrar.
+
+### Categorias de Encerramento (botão dedicado)
+
+Além das seções fixas do Relatório Consolidado, o botão **🏷️ Categorias de Encerramento** (no card REPORTS) abre um diálogo próprio:
+
+- **Data início / fim** — período livre, independente do Relatório Consolidado.
+- **Encerrados** / **Reabertos** — checkboxes (ao menos um marcado) para escolher quais das duas populações buscar.
+- **Top** — 3, 5, 10 ou 20 categorias mais frequentes.
+
+O resultado aparece como **tabela** (Categoria / Quantidade / %) abaixo do diálogo — uma tabela por população marcada, cada uma com o total de chamados e quantos foram categorizados. Assim como no Relatório Consolidado, se o campo "Categoria de Encerramento" não for encontrado no Jira, o botão mostra um erro claro (diferente do Consolidado, que degrada silenciosamente — aqui é o único propósito da tela).
+
+### Deploy
+
+1. Crie um projeto na Vercel apontando para este repositório.
+2. Configure as variáveis de ambiente do projeto na Vercel (Settings → Environment Variables): `JIRA_URL`, `JIRA_JQL`, `JIRA_PAGE_SIZE` e, se for usar a caixa "Mops Tv do Futuro", `JIRA_JQL_TV` (os mesmos valores de [.env.example](.env.example), **sem** `JIRA_EMAIL`/`JIRA_API_TOKEN` — esses não devem ir para o servidor).
+3. Deploy (`vercel` ou push para a branch conectada). O roteamento já está pronto em [vercel.json](vercel.json): `/api/*` vai para o backend Flask ([api/index.py](api/index.py)), o resto é servido estaticamente a partir de [public/](public/).
+
+### Rodar localmente
+
+```
+pip install -r api/requirements.txt
+python api/index.py
+```
+
+Abre em `http://127.0.0.1:5000`. Localmente, o `.env` na raiz do projeto (mesmo formato do `.env.example`) supre `JIRA_URL`/`JIRA_JQL`/`JIRA_PAGE_SIZE` — e-mail/token continuam sendo digitados na tela, não vêm do `.env`.
+
+**Auto-login em dev**: se o `.env` também tiver `JIRA_EMAIL`/`JIRA_API_TOKEN` preenchidos (como no `jira_gui.py`/CLI), a tela conecta sozinha ao abrir, poupando digitar de novo a cada teste. Isso só funciona rodando `python api/index.py` direto — a rota que expõe isso (`/api/dev-autologin`) nem é registrada quando o app roda importado como WSGI (produção na Vercel), então não existe risco disso vazar credencial em deploy.
+
+## Interface gráfica (recomendado para uso local)
 
 ```
 pip install -r requirements.txt

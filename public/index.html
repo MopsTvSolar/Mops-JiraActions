@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Extração de Chamados Jira</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Extração de Chamados Jira</h1>
+    <p>Central de Incidentes · monitoramento de SLA</p>
+  </header>
+
+  <main>
+    <!-- ===== Tela de login (e-mail + token, nada é salvo) ===== -->
+    <section id="login-card" class="card">
+      <h2>Conectar ao Jira</h2>
+      <p class="hint">
+        Informe seu e-mail e API Token do Jira. Nada é salvo: as credenciais ficam
+        apenas na memória desta aba enquanto ela estiver aberta e são
+        descartadas ao fechar ou recarregar a página.
+      </p>
+
+      <div class="field">
+        <label for="input-email">E-mail</label>
+        <input id="input-email" type="email" autocomplete="off" placeholder="seu.email@claro.com.br" />
+      </div>
+
+      <div class="field">
+        <label for="input-token">API Token</label>
+        <input id="input-token" type="password" autocomplete="new-password" placeholder="API Token do Jira" />
+      </div>
+
+      <button id="btn-connect" class="btn-primary btn-block" type="button">Conectar</button>
+      <div id="login-error" class="hint" style="color: var(--danger); display: none"></div>
+    </section>
+
+    <!-- ===== Tela principal (após conectar) ===== -->
+    <section id="app-view" class="hidden">
+      <div class="card" id="status-bar">
+        <div>
+          <span class="dot">●</span>
+          <strong id="status-text">Conectado</strong>
+          <span id="status-identity"></span>
+        </div>
+        <button id="btn-logout" class="btn-secondary" type="button">Sair</button>
+      </div>
+
+      <div class="card">
+        <div class="section-label">CAIXA SOLUCIONADORA</div>
+        <div class="caixa-toggle" id="caixa-toggle">
+          <button type="button" class="caixa-btn active" data-caixa="solar">Mops Solar</button>
+          <button type="button" class="caixa-btn" data-caixa="tv">Mops Tv do Futuro</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom: 8px">PROJETOS</div>
+        <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
+        <div class="hint" style="margin-top: 8px">
+          Vale para A violar, Violados, Extração completa e Categorias de Encerramento.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">AÇÕES</div>
+        <div class="actions-grid">
+          <button id="btn-extracao-completa" class="btn-primary" type="button">📋 Extração completa</button>
+          <button id="btn-a-violar" class="btn-primary" type="button">⏰ A violar</button>
+          <button class="btn-primary" type="button" data-action="violados">🔴 Violados</button>
+          <button id="btn-categorias-encerramento" class="btn-primary" type="button">🏷️ Categorias de Encerramento</button>
+        </div>
+
+        <div id="result-banner"></div>
+
+        <!-- A violar: escolher Hoje / Amanhã / Plano semanal -->
+        <div id="violar-dialog" class="collapse">
+          <div class="actions-grid">
+            <button id="btn-violar-hoje" class="btn-secondary" type="button">Hoje</button>
+            <button id="btn-violar-amanha" class="btn-secondary" type="button">Amanhã</button>
+            <button id="btn-violar-semanal" class="btn-secondary" type="button">Plano semanal</button>
+          </div>
+        </div>
+
+        <!-- Extração completa: expande aqui mesmo, sob o botão -->
+        <div id="extracao-dialog" class="collapse">
+          <div class="option-group">
+            <div class="section-label" style="margin-bottom: 8px">SELECIONAR CAIXAS</div>
+            <div class="radio-row" id="extracao-grupos-checkboxes" style="margin-bottom: 0"></div>
+          </div>
+
+          <div class="option-group">
+            <div class="section-label" style="margin-bottom: 8px">STATUS</div>
+            <div class="radio-row" id="extracao-status-checkboxes" style="margin-bottom: 0; flex-wrap: wrap"></div>
+          </div>
+
+          <div class="option-group">
+            <div class="section-label" style="margin-bottom: 8px">PERÍODO (OPCIONAL)</div>
+            <div class="dialog-row" style="margin-bottom: 0">
+              <div class="field">
+                <label for="extracao-input-inicio">Data início</label>
+                <input id="extracao-input-inicio" type="date" />
+              </div>
+              <div class="field">
+                <label for="extracao-input-fim">Data fim</label>
+                <input id="extracao-input-fim" type="date" />
+              </div>
+            </div>
+          </div>
+
+          <div class="dialog-row" style="margin-top: 14px">
+            <button id="btn-extracao-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-extracao-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <!-- Categorias de Encerramento: expande aqui mesmo, sob o botão -->
+        <div id="categorias-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="cat-input-inicio">Data início</label>
+              <input id="cat-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="cat-input-fim">Data fim</label>
+              <input id="cat-input-fim" type="date" />
+            </div>
+            <div class="field">
+              <label for="cat-top-n">Top</label>
+              <select id="cat-top-n">
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+              </select>
+            </div>
+          </div>
+          <div class="radio-row" style="margin-bottom: 10px">
+            <label><input type="checkbox" id="cat-check-encerrados" checked /> Encerrados</label>
+            <label><input type="checkbox" id="cat-check-reabertos" checked /> Reabertos</label>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-categorias-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-categorias-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div id="categorias-results" class="hidden" style="margin-top: 14px">
+          <span class="date-badge" id="categorias-date" style="margin-bottom: 10px"></span>
+
+          <div id="categorias-encerrados-block" class="hidden">
+            <div class="top-assignees-title">
+              Encerrados — <span id="cat-encerrados-total"></span> chamados
+              (<span id="cat-encerrados-categorizados"></span> categorizados)
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="cat-encerrados-table">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="categorias-reabertos-block" class="hidden" style="margin-top: 14px">
+            <div class="top-assignees-title">
+              Reabertos — <span id="cat-reabertos-total"></span> chamados
+              (<span id="cat-reabertos-categorizados"></span> categorizados)
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="cat-reabertos-table">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Tela de resultados: KPIs + tabela da última extração ===== -->
+      <section id="results-card" class="card hidden">
+        <div class="results-header">
+          <div class="section-label" id="results-title" style="margin: 0">RESULTADOS</div>
+          <span class="date-badge" id="results-date"></span>
+          <span class="spacer"></span>
+          <select id="download-format">
+            <option value="csv">CSV</option>
+            <option value="excel">Excel</option>
+            <option value="both" selected>Ambos (.zip)</option>
+          </select>
+          <button id="btn-download" class="btn-secondary" type="button">⬇ Baixar arquivo</button>
+        </div>
+
+        <!-- Plano semanal: mapa de calor dos próximos 7 dias (só aparece nessa ação) -->
+        <div id="heatmap-block" class="hidden" style="margin-bottom: 14px">
+          <div class="top-assignees-title">Chamados a violar — próximos 7 dias</div>
+          <div class="heatmap-grid" id="heatmap-grid"></div>
+        </div>
+
+        <div id="summary-cards" class="summary-cards"></div>
+
+        <div id="por-grupo-block" class="hidden">
+          <div class="section-label" style="margin-bottom: 8px">POR GRUPO SOLUCIONADOR</div>
+          <div id="por-grupo-cards" class="summary-cards"></div>
+        </div>
+
+        <div id="top-assignees" class="top-assignees"></div>
+
+        <div class="table-wrap">
+          <table id="results-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="table-note" class="hint" style="margin-top: 8px"></div>
+      </section>
+
+      <div class="card">
+        <div class="report-header">
+          <div class="section-label" style="margin: 0">REPORTS</div>
+          <button id="btn-report-diario" class="btn-primary" type="button">📝 Report Diário</button>
+          <button id="btn-report-consolidado" class="btn-primary" type="button">📊 Relatório Consolidado</button>
+          <span class="spacer"></span>
+          <button id="btn-report-copiar" class="btn-secondary" type="button" disabled>Copiar</button>
+          <button id="btn-report-pdf" class="btn-secondary" type="button" disabled>📄 Exportar PDF</button>
+          <button id="btn-report-limpar" class="btn-secondary" type="button" disabled>Limpar</button>
+        </div>
+
+        <div id="consolidado-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="input-inicio">Data início</label>
+              <input id="input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="input-fim">Data fim</label>
+              <input id="input-fim" type="date" />
+            </div>
+            <button id="btn-consolidado-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-consolidado-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <textarea id="report-box" readonly placeholder="Os reports gerados aparecem aqui..."></textarea>
+      </div>
+    </section>
+
+    <!-- ===== Dicionário: o que cada botão busca no Jira ===== -->
+    <div class="card" style="margin-top: 4px">
+      <div class="section-label" id="jql-atual-label" style="margin-bottom: 8px">QUERY GERAL — MOPS SOLAR</div>
+      <code id="jql-atual-code" class="jql-atual-block">Carregando...</code>
+
+      <button id="btn-info-queries" class="link-subtle" type="button" style="margin-top: 16px">
+        📖 Como cada botão busca os dados
+      </button>
+
+      <div id="info-queries" class="collapse">
+        <dl class="query-dict">
+          <dt>📋 Extração completa</dt>
+          <dd>
+            <code>"Grupo Solucionador" IN (caixas marcadas) AND project IN (projetos marcados) AND status IN (status marcados) [AND created no período, se preenchido] ORDER BY cf[10419] ASC</code>
+            <p>JQL montada na hora a partir do que você marcar no painel — não usa a JQL fixa do servidor.</p>
+          </dd>
+
+          <dt>⏰ A violar hoje / amanhã</dt>
+          <dd>
+            <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados no painel "PROJETOS") AND status IN ("Aguardando Suporte", "Encaminhado", "Em atendimento", "Reaberto")</code>
+            <p>Depois, entre esses, mantém só quem tem o campo de SLA "Tempo de Resolução" com prazo (<code>breachTime</code>) caindo no dia-alvo (hoje ou amanhã) dentro de 07:00–23:59, e que ainda não estourou.</p>
+          </dd>
+
+          <dt>📅 Plano semanal</dt>
+          <dd>
+            <p>Mesma consulta e mesma regra de "A violar hoje/amanhã", repetida para cada um dos 7 dias corridos a partir de hoje (hoje + 6). Cada quadrado do mapa de calor é um dia dessas 7 buscas.</p>
+          </dd>
+
+          <dt>🔴 Violados</dt>
+          <dd>
+            <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados no painel "PROJETOS") AND ("Tempo de Resolução" &lt; 0h OR "Tempo de resolução" &lt; 0h)</code>
+            <p>Chamados cujo SLA de resolução já estourou (tempo negativo).</p>
+          </dd>
+
+          <dt>🏷️ Categorias de Encerramento</dt>
+          <dd>
+            <p><strong>Encerrados:</strong> <code>caixas selecionadas AND project IN (projetos marcados) AND resolutiondate no período</code> — conta por valor do campo "Categoria de Encerramento".</p>
+            <p><strong>Reabertos:</strong> mesma ideia, mas <code>status WAS "Reaberto" AND created no período</code>, uma busca por caixa, somadas.</p>
+            <p>Em ambas, chamados sem o campo de categoria preenchido não entram na contagem. Mostra o top N escolhido (3/5/10/20).</p>
+          </dd>
+
+          <dt>📝 Report Diário</dt>
+          <dd>
+            <p>Para cada Grupo Solucionador (e um resumo com os 3 juntos): chamados com <code>status = "Resolvido"</code> resolvidos hoje (separado por projeto Central de Incidentes/Abertura de Chamados), a mesma busca de "A violar hoje", chamados com <code>status = "Aguardando Fornecedor"</code>, e chamados já violados cujo estouro caiu hoje.</p>
+          </dd>
+
+          <dt>📊 Relatório Consolidado</dt>
+          <dd>
+            <p>Para o período informado, sempre nos 3/2 Grupos Solucionador da caixa: total de <code>created</code> e de <code>resolutiondate</code> no período; dentro desses, quantos têm status atual Resolvido/Encerrado com o SLA dentro do prazo ou violado; quantos passaram por <code>status WAS "Reaberto"</code>; top 3 analistas por chamados encerrados (Central de Incidentes + Abertura de Chamados); chamados com "Nível de Escalonamento" ou "Tipo Incidente MOPS" preenchidos; chamados que já foram P0/P1/P2 (<code>priority WAS IN (P0,P1,P2)</code>); e a mesma contagem por "Categoria de Encerramento" das duas ações acima.</p>
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </main>
+
+  <footer>Nada é salvo pelo sistema — apenas exportação sob demanda.</footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
