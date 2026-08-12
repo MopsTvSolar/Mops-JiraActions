@@ -186,14 +186,15 @@ button {
 .collapse {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease, opacity 0.25s ease;
+  transition: max-height 0.3s ease, opacity 0.25s ease, padding-top 0.3s ease;
   opacity: 0;
-  padding-top: 16px;
+  padding-top: 0;
 }
 
 .collapse.open {
   max-height: 700px;
   opacity: 1;
+  padding-top: 16px;
 }
 
 /* dicionário de queries tem bem mais conteúdo que os outros painéis */
@@ -353,6 +354,210 @@ button {
   display: none;
 }
 
+/* tag/pill genérico (ex.: "Reaberto?" na tabela VIOLADOS POR DIA) */
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tag-sim {
+  background: rgba(74, 222, 128, 0.16);
+  color: var(--success);
+}
+
+.tag-nao {
+  background: rgba(169, 158, 196, 0.16);
+  color: var(--muted);
+}
+
+/* quantidade de violados por dia: sublinhado pontilhado sinaliza que passar o
+   mouse mostra as keys dos chamados daquele dia (via atributo title) */
+.violados-qtd-hover {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--muted);
+  text-underline-offset: 3px;
+}
+
+.violados-qtd-hover:hover {
+  color: var(--accent-soft);
+  text-decoration-color: var(--accent-soft);
+}
+
+/* popover flutuante com as keys do dia (hover na Quantidade) — clique em uma
+   key copia ela pra área de transferência. */
+.hover-popover {
+  position: fixed;
+  z-index: 50;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-width: 260px;
+}
+
+.hover-popover-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+
+.hover-popover-key {
+  display: block;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--accent-soft);
+  cursor: pointer;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.hover-popover-key:hover {
+  background: var(--secondary-bg);
+}
+
+.hover-popover-key.copiado {
+  color: var(--success);
+}
+
+.hover-popover-key.erro-copia {
+  color: var(--danger);
+}
+
+/* Chamados Clarinha (grupo 2 de Chamados Críticos): Frame 1 (contador) ao
+   lado do Frame 2 (tabela por nível), lado a lado como no wireframe. Empilha
+   em telas estreitas pra não espremer a tabela. */
+.criticos-clarinha-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.criticos-clarinha-frame2 {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+#criticos-clarinha-frame1 {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#criticos-clarinha-frame1 .summary-card {
+  flex: 1;
+}
+
+/* linha de totais no fim de uma tabela (ex.: Escalonamento Informal) */
+.data-table-total-row td {
+  font-weight: 700;
+  color: var(--text);
+  border-top: 2px solid var(--card-border);
+  background: var(--card-bg-elevated);
+}
+
+/* Anel "dentro do prazo x fora do prazo" (Criados x Resolvidos) — duas cores
+   de status fixas (verde = dentro, vermelho = fora), nunca por ranking. */
+.prazo-donut {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.prazo-donut-holder {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  flex-shrink: 0;
+}
+
+.prazo-donut-svg {
+  display: block;
+}
+
+.prazo-donut-dentro {
+  stroke: var(--success);
+}
+
+.prazo-donut-fora {
+  stroke: var(--danger);
+}
+
+.prazo-donut-track {
+  stroke: var(--card-border);
+}
+
+.prazo-donut-centro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.prazo-donut-valor {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.prazo-donut-linha {
+  width: 28px;
+  height: 1px;
+  background: var(--card-border);
+  margin: 6px 0;
+}
+
+.prazo-donut-pct {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+
+.prazo-donut-legenda {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.prazo-donut-legenda-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prazo-donut-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.prazo-donut-dot-dentro {
+  background: var(--success);
+}
+
+.prazo-donut-dot-fora {
+  background: var(--danger);
+}
+
 .summary-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -392,6 +597,14 @@ button {
 }
 
 #por-grupo-block:not(.hidden) {
+  margin-bottom: 14px;
+}
+
+#por-turno-block:not(.hidden) {
+  margin-bottom: 14px;
+}
+
+#por-dia-violados-block:not(.hidden) {
   margin-bottom: 14px;
 }
 
@@ -595,6 +808,51 @@ button {
 
 .heat-tile.tone-danger {
   background: rgba(248, 113, 113, 0.3);
+}
+
+/* Criados x Resolvidos: seta de tendência por dia (resolvidos vs. criados) */
+.cr-seta-up {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.cr-seta-down {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.cr-seta-neutro {
+  color: var(--muted);
+}
+
+/* Relatório Geral: blocos empilhados, um por ação marcada */
+.geral-block + .geral-block {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  margin-top: 20px;
+  padding-top: 20px;
+}
+
+.geral-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-soft);
+  margin-bottom: 10px;
+}
+
+.geral-block-resumo {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+.geral-block-texto {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--card-bg-elevated);
+  border-radius: 6px;
+  padding: 12px;
 }
 
 footer {

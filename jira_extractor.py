@@ -21,10 +21,10 @@ from datetime import datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 # Quando empacotado como executável "windowed" (sem console), sys.stderr é
 # None e um StreamHandler padrão quebraria no primeiro log. Nesse caso não
@@ -90,6 +90,10 @@ SLA_RESOLUTION_FIELDS = ["customfield_10419", "customfield_10629"]
 
 # Apenas chamados nestes status entram no cálculo de "chamados a violar no dia".
 VIOLAR_STATUSES = ["Aguardando Suporte", "Encaminhado", "Em atendimento", "Reaberto"]
+
+# Status considerados "fechados" para o grupo Chamados Clarinha (Chamados
+# Críticos): tudo que não estiver num desses três ainda conta como aberto.
+STATUS_FECHADOS_CLARINHA = {"Cancelado", "Resolvido", "Encerrado"}
 
 # Campo "Fornecedor Responsável": customfield_31880 é o usado no projeto "Central
 # de Incidentes"; customfield_16762 fica como alternativa para outros esquemas.
@@ -329,6 +333,17 @@ def _extract_grupo_solucionador(field_value):
     return _extract(field_value, "name")
 
 
+def _extract_nome_usuario(field_value):
+    """Extrai o nome de exibição de um campo User Picker (ex.: 'Responsável
+    pela Solicitação MOPS', customfield_25267) — objeto de usuário do Jira
+    Cloud usa "displayName", não "value"/"name" como os campos de seleção
+    simples (Select List, Dropdown etc.)."""
+    if isinstance(field_value, list):
+        nomes = [n for n in (_extract(v, "displayName") for v in field_value) if n]
+        return ", ".join(nomes) if nomes else None
+    return _extract(field_value, "displayName")
+
+
 def flatten_issue(issue, fields):
     row = {"key": issue.get("key")}
     issue_fields = issue.get("fields", {})
@@ -472,9 +487,35 @@ def fetch_chamados_a_violar(config, days_ahead=0, incluir_fornecedor=False, grup
     return rows
 
 
-def fetch_chamados_violados(config, incluir_fornecedor=False):
+def _fetch_keys_reabertos(config, keys):
+    """Dado uma lista de keys de chamados, devolve o subconjunto que já
+    passou por 'Reaberto' (status WAS "Reaberto") em algum momento — uma
+    única consulta (key IN (...)), não uma por chamado. Usado para marcar a
+    coluna "reaberto" da tabela de Violados."""
+    if not keys:
+        return set()
+    keys_str = ", ".join(f'"{k}"' for k in keys)
+    jql = f'key IN ({keys_str}) AND status WAS "Reaberto"'
+    issues = fetch_issues(config, jql, ["key"])
+    return {issue.get("key") for issue in issues}
+
+
+def fetch_chamados_violados(config, incluir_fornecedor=False, start_date=None, end_date=None):
     """Busca chamados cujo SLA de resolução já estourou (tempo negativo),
     reaproveitando os filtros base (grupo/projeto/status) da JQL configurada.
+
+    "start_date"/"end_date" (opcionais, os dois juntos) restringem aos
+    chamados cujo horário de estouro do SLA ("sla_estourou_em") caiu dentro
+    desse período (dia inteiro, 00:00–23:59). O filtro é feito em Python
+    sobre o breach_dt já calculado — não dá pra fazer isso em JQL porque o
+    horário de estouro vem de um campo aninhado (breachTime dentro do ciclo
+    de SLA), mesma limitação de fetch_chamados_a_violar. Sem as duas datas,
+    devolve todos os violados (comportamento "Tudo").
+
+    Cada linha traz também "reaberto" ("Sim"/"Não"), indicando se o chamado
+    já passou por status "Reaberto" em algum momento (independente do status
+    atual) — checado numa única consulta extra (key IN (...)), depois do
+    filtro de período, não uma consulta por chamado.
     """
     base_jql = config["jql"]
     if not base_jql:
@@ -490,16 +531,35 @@ def fetch_chamados_violados(config, incluir_fornecedor=False):
     log.info("Buscando chamados violados com JQL: %s", jql)
     issues = fetch_issues(config, jql, fields)
 
+    window_start_dt = window_end_dt = None
+    if start_date and end_date:
+        window_start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=BRAZIL_TZ)
+        window_end_dt = datetime.combine(end_date, datetime.min.time(), tzinfo=BRAZIL_TZ).replace(
+            hour=23, minute=59, second=59
+        )
+
     now = datetime.now(BRAZIL_TZ)
-    rows = []
+    candidatos = []
     for issue in issues:
         issue_fields = issue.get("fields", {})
         sla_campo, breach_dt, _breached = extract_sla_breach(issue_fields)
 
+        if window_start_dt is not None:
+            if breach_dt is None or not (window_start_dt <= breach_dt <= window_end_dt):
+                continue
+
+        candidatos.append((issue, issue_fields, sla_campo, breach_dt))
+
+    keys_reabertos = _fetch_keys_reabertos(config, [issue.get("key") for issue, *_ in candidatos])
+
+    rows = []
+    for issue, issue_fields, sla_campo, breach_dt in candidatos:
+        key = issue.get("key")
         row = {
-            "key": issue.get("key"),
+            "key": key,
             "summary": issue_fields.get("summary"),
             "status": _extract(issue_fields.get("status"), "name"),
+            "reaberto": "Sim" if key in keys_reabertos else "Não",
             "assignee": _extract(issue_fields.get("assignee"), "displayName"),
             "reporter": _extract(issue_fields.get("reporter"), "displayName"),
             "project": _extract(issue_fields.get("project"), "key"),
@@ -516,9 +576,185 @@ def fetch_chamados_violados(config, incluir_fornecedor=False):
     return rows
 
 
+def fetch_chamados_reabertos(config, start_date, end_date, incluir_fornecedor=False):
+    """Busca chamados que passaram por 'Reaberto' (status WAS "Reaberto")
+    dentro do período informado, reaproveitando os filtros base (grupo/
+    projeto) da JQL configurada. Considera "created" no período — mesma
+    convenção já usada em fetch_categoria_reabertos e nas Taxas de
+    Reabertura do Relatório Consolidado — não o status atual do chamado
+    (um reaberto que já foi resolvido de novo continua contando aqui).
+    """
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    jql = f'({base_jql}) AND status WAS "Reaberto" AND created >= "{start_str}" AND created <= "{end_str}"'
+
+    fields = ["summary", "status", "assignee", "reporter", "project", "issuetype"]
+    if incluir_fornecedor:
+        fields = fields + FORNECEDOR_RESPONSAVEL_FIELDS
+
+    log.info("Buscando chamados reabertos com JQL: %s", jql)
+    issues = fetch_issues(config, jql, fields)
+
+    rows = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        row = {
+            "key": issue.get("key"),
+            "summary": issue_fields.get("summary"),
+            "status": _extract(issue_fields.get("status"), "name"),
+            "assignee": _extract(issue_fields.get("assignee"), "displayName"),
+            "reporter": _extract(issue_fields.get("reporter"), "displayName"),
+            "project": _extract(issue_fields.get("project"), "key"),
+            "issuetype": _extract(issue_fields.get("issuetype"), "name"),
+        }
+        if incluir_fornecedor:
+            row["fornecedor_responsavel"] = extract_fornecedor(issue_fields)
+        rows.append(row)
+
+    rows.sort(key=lambda r: r["key"])
+    return rows
+
+
+def fetch_total_criados_periodo(config, start_date, end_date):
+    """Conta quantos chamados foram criados (created) no período informado,
+    reaproveitando os filtros base (grupo/projeto) da JQL configurada — usado
+    em Chamados Reabertos para calcular o percentual de reabertura em relação
+    ao total de criados no mesmo período/caixa/projetos."""
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    jql = f'({base_jql}) AND created >= "{start_str}" AND created <= "{end_str}"'
+
+    issues = fetch_issues(config, jql, ["key"])
+    return len(issues)
+
+
 def _grupo_clause(grupos):
     grupos_str = ", ".join(f'"{g}"' for g in grupos)
     return f'"Grupo Solucionador[Group Picker (single group)]" IN ({grupos_str})'
+
+
+def fetch_chamados_criticos(
+    config,
+    grupos,
+    start_date,
+    end_date,
+    projetos=None,
+    nivel_escalonamento_field_id=None,
+    responsavel_mops_field_id=None,
+):
+    """Compara, entre os chamados criados no período informado, quantos já
+    foram abertos como COTI (priority WAS IN (P0, P1, P2)) em algum momento x
+    quantos realmente são COTI agora (priority IN (P0, P1, P2)) — mesma ideia
+    da seção "Escalonamentos e Prioridades" do Relatório Consolidado, mas como
+    ação própria, sem travar no projeto "Central de Incidentes". "projetos"
+    (opcional) restringe os projetos considerados; por padrão os dois
+    (Central de Incidentes + Abertura de Chamados, igual às demais ações de
+    tela).
+
+    "Pontuais" (abertos − atual) são os que já foram COTI mas não são mais —
+    desceram de prioridade ou já foram resolvidos abaixo de P0/P1/P2.
+
+    Também traz o grupo "Chamados Clarinha": quantos, dentro da mesma
+    população (grupo/projeto/criado no período), têm o campo "Nível de
+    Escalonamento" preenchido, quantos desses ainda estão abertos (status
+    atual fora de Cancelado/Resolvido/Encerrado) e a contagem por valor desse
+    campo. "nivel_escalonamento_field_id" (opcional): ID do campo
+    customizado resolvido por nome — sem ele, os totais ainda saem certos (a
+    condição "is not EMPTY" não depende do ID), só a contagem por nível fica
+    vazia.
+
+    Também traz o grupo "Escalonamento Informal": entre os chamados da mesma
+    população com o campo "Responsável pela Solicitação MOPS" preenchido,
+    agrupa por responsável — quantos chamados cada um priorizou e quantos
+    desses já estão resolvidos (status IN Resolvido/Encerrado).
+    "responsavel_mops_field_id" (opcional): sem ele, a tabela sai vazia (ao
+    contrário do Nível de Escalonamento, aqui o nome do responsável só é
+    lido através do campo, não tem como contar sem o ID).
+    """
+    grupo_clause_all = _grupo_clause(grupos)
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
+    projeto_clause = f"project IN ({projetos_str})"
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    base_clause = f'{grupo_clause_all} AND {projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
+
+    total_criados = len(fetch_issues(config, base_clause, ["key"]))
+
+    abertos_jql = f"{base_clause} AND priority WAS IN (P0, P1, P2)"
+    total_criticos_abertos = len(fetch_issues(config, abertos_jql, ["key"]))
+
+    atual_jql = f"{base_clause} AND priority IN (P0, P1, P2)"
+    total_criticos_atual = len(fetch_issues(config, atual_jql, ["key"]))
+
+    total_pontuais = total_criticos_abertos - total_criticos_atual
+    percentual_pontuais = (
+        round(total_pontuais / total_criticos_abertos * 100, 1) if total_criticos_abertos else 0.0
+    )
+    percentual_criticos = round(total_criticos_abertos / total_criados * 100, 1) if total_criados else 0.0
+
+    clarinha_jql = f'{base_clause} AND "Nivel de Escalonamento" is not EMPTY'
+    clarinha_fields = ["key", "status"] + ([nivel_escalonamento_field_id] if nivel_escalonamento_field_id else [])
+    clarinha_issues = fetch_issues(config, clarinha_jql, clarinha_fields)
+    total_escalonados = len(clarinha_issues)
+
+    total_escalonados_abertos = sum(
+        1
+        for issue in clarinha_issues
+        if _extract(issue.get("fields", {}).get("status"), "name") not in STATUS_FECHADOS_CLARINHA
+    )
+
+    por_nivel_counts = Counter()
+    if nivel_escalonamento_field_id:
+        for issue in clarinha_issues:
+            valores = _extract_categoria_values(
+                config, issue.get("fields", {}).get(nivel_escalonamento_field_id)
+            )
+            por_nivel_counts.update(valores)
+    por_nivel = [{"nivel": nivel, "total": total} for nivel, total in por_nivel_counts.most_common()]
+
+    escalonamento_informal = []
+    if responsavel_mops_field_id:
+        informal_jql = f'{base_clause} AND "Responsável pela Solicitação MOPS" is not EMPTY'
+        informal_issues = fetch_issues(config, informal_jql, ["key", "status", responsavel_mops_field_id])
+
+        priorizados_counts = Counter()
+        resolvidos_counts = Counter()
+        for issue in informal_issues:
+            issue_fields = issue.get("fields", {})
+            nome = _extract_nome_usuario(issue_fields.get(responsavel_mops_field_id))
+            if not nome:
+                continue
+            priorizados_counts[nome] += 1
+            if _extract(issue_fields.get("status"), "name") in ("Resolvido", "Encerrado"):
+                resolvidos_counts[nome] += 1
+
+        escalonamento_informal = [
+            {"responsavel": nome, "priorizados": total, "resolvidos": resolvidos_counts.get(nome, 0)}
+            for nome, total in priorizados_counts.most_common()
+        ]
+
+    return {
+        "total_criados": total_criados,
+        "total_criticos_abertos": total_criticos_abertos,
+        "total_criticos_atual": total_criticos_atual,
+        "total_pontuais": total_pontuais,
+        "percentual_pontuais": percentual_pontuais,
+        "percentual_criticos": percentual_criticos,
+        "total_escalonados": total_escalonados,
+        "total_escalonados_abertos": total_escalonados_abertos,
+        "por_nivel": por_nivel,
+        "escalonamento_informal": escalonamento_informal,
+    }
 
 
 def _compute_grupo_metrics(config, grupos, window_start_dt, window_end_dt, window_start_str, window_end_str):
@@ -721,6 +957,78 @@ def fetch_categoria_reabertos(config, grupos, start_date, end_date, categoria_fi
             valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
             counts.update(valores)
     return counts, total
+
+
+def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=None):
+    """Compara, dia a dia dentro do período informado, quantos chamados foram
+    criados (created) e quantos foram resolvidos (status IN ("Resolvido",
+    "Encerrado") AND resolutiondate no período) — mesma ideia do gadget
+    nativo "Created vs Resolved" do Jira, com o filtro de Grupo Solucionador
+    da caixa atual. "projetos" (opcional) restringe os projetos considerados;
+    por padrão os dois (Central de Incidentes + Abertura de Chamados, igual
+    às demais ações de tela).
+
+    Também calcula, entre os resolvidos (Resolvido + Encerrado), quantos
+    ficaram dentro do prazo de SLA "Tempo de Resolução" x quantos violaram —
+    mesma lógica/campo já usados no Relatório Consolidado. Chamados sem esse
+    campo de SLA preenchido não entram em nenhuma das duas contagens.
+    """
+    grupo_clause_all = _grupo_clause(grupos)
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
+    projeto_clause = f"project IN ({projetos_str})"
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+
+    criados_jql = f'{grupo_clause_all} AND {projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
+    criados_issues = fetch_issues(config, criados_jql, ["created"])
+
+    resolvidos_jql = (
+        f'{grupo_clause_all} AND {projeto_clause} AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    resolvidos_issues = fetch_issues(config, resolvidos_jql, ["resolutiondate"] + SLA_RESOLUTION_FIELDS)
+
+    def _dia(valor_iso):
+        return valor_iso[:10] if valor_iso else None
+
+    criados_por_dia = Counter(_dia(i.get("fields", {}).get("created")) for i in criados_issues)
+    resolvidos_por_dia = Counter(_dia(i.get("fields", {}).get("resolutiondate")) for i in resolvidos_issues)
+
+    dias = []
+    dia_atual = start_date
+    while dia_atual <= end_date:
+        chave = dia_atual.strftime("%Y-%m-%d")
+        dias.append({
+            "data": chave,
+            "criados": criados_por_dia.get(chave, 0),
+            "resolvidos": resolvidos_por_dia.get(chave, 0),
+        })
+        dia_atual += timedelta(days=1)
+
+    resolvidos_dentro_prazo = 0
+    resolvidos_fora_prazo = 0
+    for issue in resolvidos_issues:
+        _campo, breach_dt, breached = extract_sla_breach(issue.get("fields", {}))
+        if breach_dt is None:
+            continue
+        if breached:
+            resolvidos_fora_prazo += 1
+        else:
+            resolvidos_dentro_prazo += 1
+
+    total_com_sla = resolvidos_dentro_prazo + resolvidos_fora_prazo
+    percentual_dentro_prazo = round(resolvidos_dentro_prazo / total_com_sla * 100, 1) if total_com_sla else 0.0
+    percentual_fora_prazo = round(resolvidos_fora_prazo / total_com_sla * 100, 1) if total_com_sla else 0.0
+
+    return {
+        "total_criados": len(criados_issues),
+        "total_resolvidos": len(resolvidos_issues),
+        "resolvidos_dentro_prazo": resolvidos_dentro_prazo,
+        "resolvidos_fora_prazo": resolvidos_fora_prazo,
+        "percentual_dentro_prazo": percentual_dentro_prazo,
+        "percentual_fora_prazo": percentual_fora_prazo,
+        "dias": dias,
+    }
 
 
 def build_consolidated_report(config, start_date, end_date, grupos=None, categoria_encerramento_field_id=None):
@@ -960,7 +1268,37 @@ _PDF_TEXT = colors.HexColor("#0f172a")
 _PDF_MUTED = colors.HexColor("#64748b")
 _PDF_RULE = colors.HexColor("#e2e8f0")
 
-_TITULO_EMOJIS = ("📄", "⏰", "📊")
+_TITULO_EMOJIS = ("📄", "⏰", "📊", "🗂️", "📋", "📅", "📆", "🔴", "🏷️", "📝", "📈", "🔄", "🚨")
+
+# Estilos de parágrafo do PDF (compartilhados entre export_report_pdf e
+# export_general_report_pdf — instâncias reaproveitáveis, ParagraphStyle não
+# guarda estado de uma chamada para outra).
+_PDF_SECAO_STYLE = ParagraphStyle(
+    "Secao", fontName="Helvetica-Bold", fontSize=12, leading=15,
+    textColor=_PDF_ACCENT, spaceBefore=14, spaceAfter=6,
+)
+_PDF_TITULO_BLOCO_STYLE = ParagraphStyle(
+    "TituloBlocoGeral", fontName="Helvetica-Bold", fontSize=13, leading=16,
+    textColor=_PDF_ACCENT, spaceBefore=4, spaceAfter=4,
+)
+_PDF_BULLET_STYLE = ParagraphStyle(
+    "Bullet", fontName="Helvetica", fontSize=10, leading=14,
+    textColor=_PDF_TEXT, leftIndent=10, spaceAfter=2,
+)
+_PDF_TEXTO_STYLE = ParagraphStyle(
+    "Texto", fontName="Helvetica", fontSize=10, leading=14, textColor=_PDF_TEXT,
+)
+_PDF_TABLE_CELL_STYLE = ParagraphStyle(
+    "TableCell", fontName="Helvetica", fontSize=7, leading=9, textColor=_PDF_TEXT,
+)
+_PDF_TABLE_HEADER_STYLE = ParagraphStyle(
+    "TableHeader", fontName="Helvetica-Bold", fontSize=7.5, leading=9, textColor=colors.white,
+)
+
+# Limite de linhas por tabela no PDF do Relatório Geral — evita PDFs enormes
+# quando várias ações com muitos chamados são combinadas; a tela e o
+# download continuam trazendo tudo, o PDF é só um resumo consolidado.
+MAX_ROWS_PDF = 150
 
 
 def _escapar_xml(texto):
@@ -973,6 +1311,77 @@ def _limpar_titulo(linha):
     return linha.strip()
 
 
+def _linhas_para_flowables(linhas):
+    """Converte linhas de texto de um report (sintaxe "# Seção #" / "🔸
+    item") em flowables do reportlab. Compartilhado por export_report_pdf
+    (Report Diário/Consolidado) e export_general_report_pdf (seções de
+    texto dentro do Relatório Geral)."""
+    conteudo = []
+    for linha in linhas:
+        linha_limpa = linha.strip()
+
+        if not linha_limpa:
+            conteudo.append(Spacer(1, 4))
+            continue
+
+        secao = re.match(r"^#\s*(.+?)\s*#?$", linha_limpa)
+        if secao:
+            conteudo.append(Paragraph(_escapar_xml(secao.group(1)), _PDF_SECAO_STYLE))
+            conteudo.append(HRFlowable(width="100%", thickness=0.75, color=_PDF_RULE, spaceAfter=6))
+            continue
+
+        if linha_limpa.startswith("🔸"):
+            item = _escapar_xml(linha_limpa.lstrip("🔸").strip())
+            if ":" in item:
+                rotulo, valor = item.split(":", 1)
+                item = f"{rotulo}:<b>{valor}</b>"
+            conteudo.append(Paragraph(f'<font color="#2563eb">•</font>&nbsp;&nbsp;{item}', _PDF_BULLET_STYLE))
+            continue
+
+        conteudo.append(Paragraph(_escapar_xml(linha_limpa), _PDF_TEXTO_STYLE))
+    return conteudo
+
+
+def _construir_tabela_pdf(fields, rows, largura_disponivel, max_rows=MAX_ROWS_PDF):
+    """Monta uma tabela do reportlab a partir de fields/rows (mesmo formato
+    devolvido pelas rotas /api/* da versão web) — usada pelas seções
+    tabulares do Relatório Geral (Extração completa, A violar, Violados,
+    Plano semanal, Categorias de Encerramento)."""
+    if not rows:
+        return [Paragraph("Nenhum chamado encontrado.", _PDF_TEXTO_STYLE)]
+
+    linhas_mostradas = rows[:max_rows]
+
+    def _celula(valor):
+        texto = "" if valor is None else str(valor)
+        return Paragraph(_escapar_xml(texto), _PDF_TABLE_CELL_STYLE)
+
+    cabecalho = [Paragraph(_escapar_xml(str(f)), _PDF_TABLE_HEADER_STYLE) for f in fields]
+    dados = [cabecalho] + [[_celula(row.get(f)) for f in fields] for row in linhas_mostradas]
+
+    largura_coluna = largura_disponivel / len(fields)
+    tabela = Table(dados, colWidths=[largura_coluna] * len(fields), repeatRows=1)
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _PDF_HEADER_BG),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f1f5f9")]),
+        ("GRID", (0, 0), (-1, -1), 0.5, _PDF_RULE),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+
+    flowables = [tabela]
+    if len(rows) > max_rows:
+        flowables.append(Spacer(1, 4))
+        flowables.append(Paragraph(
+            _escapar_xml(f"Mostrando {max_rows} de {len(rows)} chamados — baixe o arquivo pela ação individual para ver todos."),
+            _PDF_TEXTO_STYLE,
+        ))
+    return flowables
+
+
 class _PdfCanvasComCabecalho:
     """Desenha a faixa colorida do cabeçalho e o rodapé (data + nº de página)
     em toda página do PDF."""
@@ -982,7 +1391,7 @@ class _PdfCanvasComCabecalho:
         self.subtitulo = subtitulo
 
     def __call__(self, canvas_obj, doc):
-        largura, altura = A4
+        largura, altura = doc.pagesize
         canvas_obj.saveState()
 
         canvas_obj.setFillColor(_PDF_HEADER_BG)
@@ -1029,47 +1438,81 @@ def export_report_pdf(texto, caminho, titulo="Relatório", subtitulo="Central de
     else:
         titulo_pdf = titulo
 
-    secao_style = ParagraphStyle(
-        "Secao", fontName="Helvetica-Bold", fontSize=12, leading=15,
-        textColor=_PDF_ACCENT, spaceBefore=14, spaceAfter=6,
-    )
-    bullet_style = ParagraphStyle(
-        "Bullet", fontName="Helvetica", fontSize=10, leading=14,
-        textColor=_PDF_TEXT, leftIndent=10, spaceAfter=2,
-    )
-    texto_style = ParagraphStyle(
-        "Texto", fontName="Helvetica", fontSize=10, leading=14, textColor=_PDF_TEXT,
-    )
-
-    conteudo = []
-    for linha in linhas:
-        linha_limpa = linha.strip()
-
-        if not linha_limpa:
-            conteudo.append(Spacer(1, 4))
-            continue
-
-        secao = re.match(r"^#\s*(.+?)\s*#?$", linha_limpa)
-        if secao:
-            conteudo.append(Paragraph(_escapar_xml(secao.group(1)), secao_style))
-            conteudo.append(HRFlowable(width="100%", thickness=0.75, color=_PDF_RULE, spaceAfter=6))
-            continue
-
-        if linha_limpa.startswith("🔸"):
-            item = _escapar_xml(linha_limpa.lstrip("🔸").strip())
-            if ":" in item:
-                rotulo, valor = item.split(":", 1)
-                item = f"{rotulo}:<b>{valor}</b>"
-            conteudo.append(Paragraph(f'<font color="#2563eb">•</font>&nbsp;&nbsp;{item}', bullet_style))
-            continue
-
-        conteudo.append(Paragraph(_escapar_xml(linha_limpa), texto_style))
+    conteudo = _linhas_para_flowables(linhas)
 
     doc = SimpleDocTemplate(
         caminho, pagesize=A4,
         leftMargin=2 * cm, rightMargin=2 * cm, topMargin=3.2 * cm, bottomMargin=2 * cm,
     )
     on_page = _PdfCanvasComCabecalho(titulo_pdf, subtitulo)
+    doc.build(conteudo, onFirstPage=on_page, onLaterPages=on_page)
+
+
+def export_general_report_pdf(secoes, caminho, titulo="Relatório Geral", subtitulo="Central de Incidentes · Monitoramento de SLA"):
+    """Gera o PDF combinado do Relatório Geral (público-alvo: web) a partir de
+    seções heterogêneas, uma por ação marcada no checkbox. Cada item de
+    "secoes" é um dict com:
+      - "titulo": cabeçalho do bloco (ex.: "📋 Extração completa")
+      - "resumo" (opcional): lista de strings viram bullets logo abaixo do título
+      - "texto" (opcional): texto já formatado (Report Diário/Consolidado),
+        reaproveita a mesma sintaxe "# Seção #" / "🔸 item" do texto normal
+      - "tabela" (opcional): {"fields": [...], "rows": [...]} — mesmo formato
+        devolvido pelas rotas /api/* da versão web
+
+    Usa página em paisagem (mais colunas cabem sem apertar demais) e limita
+    cada tabela a MAX_ROWS_PDF linhas — a tela e o download por ação
+    individual continuam com o total completo.
+
+    "caminho" aceita tanto um caminho de arquivo (str) quanto um buffer em
+    memória (io.BytesIO, usado pela versão web).
+    """
+    if isinstance(caminho, str):
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+
+    pagesize = landscape(A4)
+    margem = 2 * cm
+    largura_disponivel = pagesize[0] - 2 * margem
+
+    conteudo = []
+    for i, secao in enumerate(secoes):
+        if i > 0:
+            conteudo.append(Spacer(1, 10))
+
+        titulo_bloco = _limpar_titulo(str(secao.get("titulo") or ""))
+        conteudo.append(Paragraph(_escapar_xml(titulo_bloco), _PDF_TITULO_BLOCO_STYLE))
+        conteudo.append(HRFlowable(width="100%", thickness=1, color=_PDF_ACCENT, spaceAfter=8))
+
+        resumo = secao.get("resumo")
+        if resumo:
+            for linha in resumo:
+                conteudo.append(
+                    Paragraph(f'<font color="#2563eb">•</font>&nbsp;&nbsp;{_escapar_xml(str(linha))}', _PDF_BULLET_STYLE)
+                )
+            conteudo.append(Spacer(1, 6))
+
+        texto = secao.get("texto")
+        if texto:
+            linhas_texto = texto.strip("\n").split("\n")
+            # A 1ª linha de Report Diário/Consolidado costuma trazer um emoji de
+            # título (ex.: "⏰RELATÓRIO...") — sem glifo na fonte do PDF, vira
+            # um quadrado. O bloco já tem seu próprio título (o nome da ação),
+            # então aqui só limpa o emoji, sem descartar a linha (tem timestamp).
+            if linhas_texto and any(e in linhas_texto[0] for e in _TITULO_EMOJIS):
+                linhas_texto[0] = _limpar_titulo(linhas_texto[0])
+            conteudo.extend(_linhas_para_flowables(linhas_texto))
+
+        tabela = secao.get("tabela")
+        if tabela and tabela.get("rows"):
+            conteudo.extend(_construir_tabela_pdf(tabela["fields"], tabela["rows"], largura_disponivel))
+
+    if not conteudo:
+        conteudo.append(Paragraph("Nenhuma seção selecionada.", _PDF_TEXTO_STYLE))
+
+    doc = SimpleDocTemplate(
+        caminho, pagesize=pagesize,
+        leftMargin=margem, rightMargin=margem, topMargin=3.4 * cm, bottomMargin=2 * cm,
+    )
+    on_page = _PdfCanvasComCabecalho(titulo, subtitulo)
     doc.build(conteudo, onFirstPage=on_page, onLaterPages=on_page)
 
 

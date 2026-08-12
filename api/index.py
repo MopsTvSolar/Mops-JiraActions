@@ -36,12 +36,17 @@ from jira_extractor import (  # noqa: E402
     PROJETO_PDST,
     build_consolidated_report,
     build_daily_report,
+    export_general_report_pdf,
     export_report_pdf,
     extract_fornecedor,
     fetch_categoria_encerrados,
     fetch_categoria_reabertos,
     fetch_chamados_a_violar,
+    fetch_chamados_criticos,
+    fetch_chamados_reabertos,
     fetch_chamados_violados,
+    fetch_criados_x_resolvidos,
+    fetch_total_criados_periodo,
     fetch_issues,
     flatten_issue,
     load_fixed_config,
@@ -308,6 +313,8 @@ def _respond(rows, base_name, body, extra=None):
 
 GRUPO_FIELD_NAME = "Grupo Solucionador"
 CATEGORIA_ENCERRAMENTO_FIELD_NAME = "Categoria de Encerramento"
+NIVEL_ESCALONAMENTO_FIELD_NAME = "Nivel de Escalonamento"
+RESPONSAVEL_MOPS_FIELD_NAME = "Responsável pela Solicitação MOPS"
 
 # ID de campos customizados resolvidos por nome (Grupo Solucionador,
 # Categoria de Encerramento etc.), um cache por (URL da instância, nome do
@@ -370,6 +377,14 @@ def _resolve_categoria_encerramento_field_id(config):
     return _resolve_field_id(config, CATEGORIA_ENCERRAMENTO_FIELD_NAME)
 
 
+def _resolve_nivel_escalonamento_field_id(config):
+    return _resolve_field_id(config, NIVEL_ESCALONAMENTO_FIELD_NAME)
+
+
+def _resolve_responsavel_mops_field_id(config):
+    return _resolve_field_id(config, RESPONSAVEL_MOPS_FIELD_NAME)
+
+
 def _por_grupo_a_violar(rows, grupos):
     """Conta, para cada grupo da caixa selecionada, quantos chamados do
     resultado de 'a violar' pertencem àquele grupo. Não faz nenhuma busca
@@ -377,6 +392,71 @@ def _por_grupo_a_violar(rows, grupos):
     (que já vêm com "grupo_solucionador" quando o campo foi resolvido)."""
     contagem = Counter(r.get("grupo_solucionador") for r in rows if r.get("grupo_solucionador"))
     return [{"grupo": grupo, "total": contagem.get(grupo, 0)} for grupo in grupos]
+
+
+# Turnos fixos para o detalhamento de "Violados" — intervalos em minutos desde
+# 00:00, extremos inclusivos. Cobrem 07:00–23:59; fora disso (madrugada) cai
+# no bucket "Fora do horário" (só aparece se houver algum chamado nele).
+TURNOS_VIOLADOS = [
+    {"label": "Turno 1 (07:00–09:00)", "inicio_min": 7 * 60, "fim_min": 9 * 60},
+    {"label": "Turno comercial (09:01–18:00)", "inicio_min": 9 * 60 + 1, "fim_min": 18 * 60},
+    {"label": "Turno 2 (18:01–23:59)", "inicio_min": 18 * 60 + 1, "fim_min": 23 * 60 + 59},
+]
+TURNO_FORA_HORARIO = "Fora do horário (00:00–06:59)"
+
+
+def _por_turno_violados(rows):
+    """Conta, para cada turno fixo, quantos chamados violados têm o horário de
+    estouro do SLA ("sla_estourou_em") dentro daquele intervalo. Não faz
+    nenhuma busca extra no Jira: só agrupa as linhas já retornadas pela busca
+    principal de Violados. Chamados sem SLA estourado preenchido (não deveria
+    acontecer nesta ação, mas por segurança) não entram em nenhum turno."""
+    contagem = Counter()
+    for row in rows:
+        sla_estourou_em = row.get("sla_estourou_em")
+        if not sla_estourou_em or len(sla_estourou_em) < 16:
+            continue
+        try:
+            hora, minuto = int(sla_estourou_em[11:13]), int(sla_estourou_em[14:16])
+        except ValueError:
+            continue
+        minutos_totais = hora * 60 + minuto
+
+        turno_encontrado = TURNO_FORA_HORARIO
+        for turno in TURNOS_VIOLADOS:
+            if turno["inicio_min"] <= minutos_totais <= turno["fim_min"]:
+                turno_encontrado = turno["label"]
+                break
+        contagem[turno_encontrado] += 1
+
+    resultado = [{"turno": t["label"], "total": contagem.get(t["label"], 0)} for t in TURNOS_VIOLADOS]
+    if contagem.get(TURNO_FORA_HORARIO):
+        resultado.append({"turno": TURNO_FORA_HORARIO, "total": contagem[TURNO_FORA_HORARIO]})
+    return resultado
+
+
+def _por_dia_violados(rows):
+    """Conta, por dia, quantos chamados tiveram o SLA estourado nesse dia (com
+    base em "sla_estourou_em"). Não faz nenhuma busca extra no Jira: só
+    agrupa as linhas já retornadas pela busca principal de Violados (que já
+    vêm com "reaberto" calculado). Dias sem nenhum violado simplesmente não
+    aparecem no resultado (não têm o que contar) — ordenado do mais antigo
+    para o mais recente. "reaberto" no dia é True se ao menos um dos
+    chamados daquele dia já passou por status "Reaberto"."""
+    contagem = Counter()
+    tem_reaberto = set()
+    for row in rows:
+        sla_estourou_em = row.get("sla_estourou_em")
+        if not sla_estourou_em or len(sla_estourou_em) < 10:
+            continue
+        dia = sla_estourou_em[:10]
+        contagem[dia] += 1
+        if row.get("reaberto") == "Sim":
+            tem_reaberto.add(dia)
+    return [
+        {"data": dia, "total": total, "reaberto": dia in tem_reaberto}
+        for dia, total in sorted(contagem.items())
+    ]
 
 
 def _send_rows(rows, base_name, fmt):
@@ -574,8 +654,35 @@ def violados():
     caixa_id = _resolve_caixa(body)
     projetos = _projetos_selecionados(body)
     config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
-    rows = fetch_chamados_violados(config, incluir_fornecedor=True)
-    return _respond(rows, "chamados_violados", body)
+    inicio, fim = _parse_periodo_opcional(body)
+    rows = fetch_chamados_violados(config, incluir_fornecedor=True, start_date=inicio, end_date=fim)
+
+    extra = None
+    if not _is_download(body):
+        extra = {"por_turno": _por_turno_violados(rows), "por_dia": _por_dia_violados(rows)}
+
+    return _respond(rows, "chamados_violados", body, extra=extra)
+
+
+@app.route("/api/reabertos", methods=["POST"])
+def reabertos():
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    projetos = _projetos_selecionados(body)
+    config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+    inicio, fim = _parse_periodo(body)
+    rows = fetch_chamados_reabertos(config, inicio, fim, incluir_fornecedor=True)
+
+    extra = None
+    if not _is_download(body):
+        # Só calcula pra exibição na tela — o download do arquivo não precisa
+        # dessa consulta extra (mesma economia já aplicada ao "por_grupo" de
+        # "A violar hoje/amanhã").
+        total_criados = fetch_total_criados_periodo(config, inicio, fim)
+        percentual_reabertura = round(len(rows) / total_criados * 100, 1) if total_criados else 0.0
+        extra = {"total_criados_periodo": total_criados, "percentual_reabertura": percentual_reabertura}
+
+    return _respond(rows, "chamados_reabertos", body, extra=extra)
 
 
 @app.route("/api/report-diario", methods=["POST"])
@@ -623,6 +730,19 @@ def _parse_periodo(body):
     if inicio > fim:
         raise JiraExtractorError("A data início não pode ser depois da data fim.")
     return inicio, fim
+
+
+def _parse_periodo_opcional(body):
+    """Como _parse_periodo, mas devolve (None, None) quando nenhuma data foi
+    informada — usado em ações onde o período é opcional (ex.: Violados,
+    modo "Tudo" sem filtro de data)."""
+    inicio_str = (body.get("inicio") or "").strip()
+    fim_str = (body.get("fim") or "").strip()
+    if not inicio_str and not fim_str:
+        return None, None
+    if bool(inicio_str) != bool(fim_str):
+        raise JiraExtractorError("Informe as duas datas (início e fim) ou nenhuma.")
+    return _parse_periodo(body)
 
 
 CATEGORIAS_TOP_N_OPCOES = (3, 5, 10, 20)
@@ -682,6 +802,59 @@ def categorias_encerramento():
     return jsonify(payload)
 
 
+@app.route("/api/criados-resolvidos", methods=["POST"])
+def criados_resolvidos():
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    config = _config_from_request(body)
+    inicio, fim = _parse_periodo(body)
+    projetos = _projetos_selecionados(body)
+
+    resultado = fetch_criados_x_resolvidos(config, CAIXAS[caixa_id]["grupos"], inicio, fim, projetos=projetos)
+    return jsonify(resultado)
+
+
+@app.route("/api/chamados-criticos", methods=["POST"])
+def chamados_criticos():
+    """COTI (P0/P1/P2) é uma classificação específica da caixa Mops Solar —
+    a tela já esconde o botão fora dela, isso aqui é só a garantia do lado
+    do servidor caso a rota seja chamada direto."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    if caixa_id != CAIXA_SOLAR:
+        raise JiraExtractorError('Chamados Críticos (COTI) é uma ação específica da caixa "Mops Solar".')
+
+    config = _config_from_request(body)
+    inicio, fim = _parse_periodo(body)
+    projetos = _projetos_selecionados(body)
+
+    try:
+        nivel_field_id = _resolve_nivel_escalonamento_field_id(config)
+    except Exception:
+        # Best-effort, mesmo padrão de Categoria de Encerramento/Grupo
+        # Solucionador: sem o ID, "Chamados Clarinha" ainda sai com o total
+        # certo, só a contagem por nível fica vazia.
+        app.logger.exception("Falha ao resolver o campo Nível de Escalonamento")
+        nivel_field_id = None
+
+    try:
+        responsavel_mops_field_id = _resolve_responsavel_mops_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Responsável pela Solicitação MOPS")
+        responsavel_mops_field_id = None
+
+    resultado = fetch_chamados_criticos(
+        config,
+        CAIXAS[caixa_id]["grupos"],
+        inicio,
+        fim,
+        projetos=projetos,
+        nivel_escalonamento_field_id=nivel_field_id,
+        responsavel_mops_field_id=responsavel_mops_field_id,
+    )
+    return jsonify(resultado)
+
+
 @app.route("/api/exportar-pdf", methods=["POST"])
 def exportar_pdf():
     body = request.get_json(silent=True) or {}
@@ -696,6 +869,29 @@ def exportar_pdf():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return send_file(
         buf, mimetype="application/pdf", as_attachment=True, download_name=f"relatorio_{timestamp}.pdf"
+    )
+
+
+@app.route("/api/relatorio-geral-pdf", methods=["POST"])
+def relatorio_geral_pdf():
+    """Monta o PDF combinado do Relatório Geral a partir das seções já
+    calculadas no navegador (cada uma veio de uma chamada anterior a uma das
+    rotas /api/* acima) — não refaz nenhuma busca no Jira, só formata o que
+    já foi buscado, mesmo padrão de /api/exportar-pdf."""
+    body = request.get_json(silent=True) or {}
+    secoes = body.get("secoes") or []
+    if not secoes:
+        raise JiraExtractorError("Nada para exportar.")
+
+    titulo = (body.get("titulo") or "Relatório Geral").strip() or "Relatório Geral"
+
+    buf = io.BytesIO()
+    export_general_report_pdf(secoes, buf, titulo=titulo)
+    buf.seek(0)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return send_file(
+        buf, mimetype="application/pdf", as_attachment=True, download_name=f"relatorio_geral_{timestamp}.pdf"
     )
 
 

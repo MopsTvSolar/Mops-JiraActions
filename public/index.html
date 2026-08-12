@@ -59,7 +59,8 @@
         <div class="section-label" style="margin-bottom: 8px">PROJETOS</div>
         <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
         <div class="hint" style="margin-top: 8px">
-          Vale para A violar, Violados, Extração completa e Categorias de Encerramento.
+          Vale para A violar, Violados, Extração completa, Categorias de Encerramento, Criados x Resolvidos,
+          Reabertos e Chamados Críticos.
         </div>
       </div>
 
@@ -68,8 +69,11 @@
         <div class="actions-grid">
           <button id="btn-extracao-completa" class="btn-primary" type="button">📋 Extração completa</button>
           <button id="btn-a-violar" class="btn-primary" type="button">⏰ A violar</button>
-          <button class="btn-primary" type="button" data-action="violados">🔴 Violados</button>
+          <button id="btn-violados" class="btn-primary" type="button">🔴 Violados</button>
           <button id="btn-categorias-encerramento" class="btn-primary" type="button">🏷️ Categorias de Encerramento</button>
+          <button id="btn-criados-resolvidos" class="btn-primary" type="button">📈 Criados x Resolvidos</button>
+          <button id="btn-reabertos" class="btn-primary" type="button">🔄 Reabertos</button>
+          <button id="btn-criticos" class="btn-primary" type="button">🚨 Chamados Críticos</button>
         </div>
 
         <div id="result-banner"></div>
@@ -80,6 +84,29 @@
             <button id="btn-violar-hoje" class="btn-secondary" type="button">Hoje</button>
             <button id="btn-violar-amanha" class="btn-secondary" type="button">Amanhã</button>
             <button id="btn-violar-semanal" class="btn-secondary" type="button">Plano semanal</button>
+          </div>
+        </div>
+
+        <!-- Violados: Tudo (padrão, sem filtro de data) / Hoje / Personalizado -->
+        <div id="violados-dialog" class="collapse">
+          <div class="radio-row" style="margin-bottom: 10px">
+            <label><input type="radio" name="violados-modo" value="tudo" checked /> Tudo</label>
+            <label><input type="radio" name="violados-modo" value="hoje" /> Hoje</label>
+            <label><input type="radio" name="violados-modo" value="personalizado" /> Personalizado</label>
+          </div>
+          <div id="violados-periodo-fields" class="dialog-row" style="display: none">
+            <div class="field">
+              <label for="violados-input-inicio">Data início</label>
+              <input id="violados-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="violados-input-fim">Data fim</label>
+              <input id="violados-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-violados-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-violados-cancelar" class="btn-secondary" type="button">Cancelar</button>
           </div>
         </div>
 
@@ -175,6 +202,102 @@
             </div>
           </div>
         </div>
+
+        <!-- Criados x Resolvidos: expande aqui mesmo, sob o botão -->
+        <div id="criados-resolvidos-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="cr-input-inicio">Data início</label>
+              <input id="cr-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="cr-input-fim">Data fim</label>
+              <input id="cr-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-criados-resolvidos-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-criados-resolvidos-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div id="criados-resolvidos-results" class="hidden" style="margin-top: 14px">
+          <span class="date-badge" id="cr-date" style="margin-bottom: 10px"></span>
+          <div id="cr-summary-cards" class="summary-cards"></div>
+          <div id="cr-prazo-donut" class="hidden" style="margin: 0 0 14px"></div>
+          <div class="table-wrap">
+            <table class="data-table" id="cr-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Reabertos: expande aqui mesmo, sob o botão. Resultado usa a mesma
+             tela de RESULTADOS (results-card) das demais ações de lista. -->
+        <div id="reabertos-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="reabertos-input-inicio">Data início</label>
+              <input id="reabertos-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="reabertos-input-fim">Data fim</label>
+              <input id="reabertos-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-reabertos-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-reabertos-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <!-- Chamados Críticos: expande aqui mesmo, sob o botão -->
+        <div id="criticos-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="criticos-input-inicio">Data início</label>
+              <input id="criticos-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="criticos-input-fim">Data fim</label>
+              <input id="criticos-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-criticos-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-criticos-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div id="criticos-results" class="hidden" style="margin-top: 14px">
+          <span class="date-badge" id="criticos-date" style="margin-bottom: 10px"></span>
+
+          <!-- Grupo 1 de 3: COTI -->
+          <div class="section-label" style="margin-bottom: 8px">COTI</div>
+          <div id="criticos-coti-cards" class="summary-cards"></div>
+
+          <!-- Grupo 2 de 3: Chamados Clarinha -->
+          <div class="section-label" style="margin: 14px 0 8px">CHAMADOS CLARINHA</div>
+          <div class="criticos-clarinha-row">
+            <div id="criticos-clarinha-frame1"></div>
+            <div class="table-wrap criticos-clarinha-frame2">
+              <table class="data-table" id="criticos-clarinha-table">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Grupo 3 de 3: Escalonamento Informal -->
+          <div class="section-label" style="margin: 14px 0 8px">ESCALONAMENTO INFORMAL</div>
+          <div class="table-wrap">
+            <table class="data-table" id="criticos-informal-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- ===== Tela de resultados: KPIs + tabela da última extração ===== -->
@@ -204,6 +327,24 @@
           <div id="por-grupo-cards" class="summary-cards"></div>
         </div>
 
+        <!-- Só aparece em Violados -->
+        <div id="por-turno-block" class="hidden">
+          <div class="section-label" style="margin-bottom: 8px">VIOLADOS POR TURNO</div>
+          <div id="por-turno-cards" class="summary-cards"></div>
+        </div>
+
+        <!-- Só aparece em Violados: quantidade de violados por dia (dias sem
+             nenhum violado não entram na tabela). -->
+        <div id="por-dia-violados-block" class="hidden">
+          <div class="section-label" style="margin-bottom: 8px">VIOLADOS POR DIA</div>
+          <div class="table-wrap">
+            <table class="data-table" id="por-dia-violados-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
         <div id="top-assignees" class="top-assignees"></div>
 
         <div class="table-wrap">
@@ -213,6 +354,66 @@
           </table>
         </div>
         <div id="table-note" class="hint" style="margin-top: 8px"></div>
+      </section>
+
+      <!-- ===== Relatório Geral: escolha em checkbox quais ações incluir, tudo junto ===== -->
+      <div class="card">
+        <div class="report-header">
+          <div class="section-label" style="margin: 0">RELATÓRIO GERAL</div>
+          <button id="btn-report-geral" class="btn-primary" type="button">🗂️ Relatório Geral</button>
+        </div>
+        <div class="hint" style="margin: 0 0 4px">
+          Marque as ações que quer incluir: roda cada uma com os filtros padrão (todas as caixas/status/projetos
+          marcados) e junta tudo num só lugar, com exportação em PDF.
+        </div>
+
+        <div id="geral-dialog" class="collapse">
+          <div class="option-group">
+            <div class="section-label" style="margin-bottom: 8px">AÇÕES A INCLUIR</div>
+            <div class="radio-row" id="geral-acoes-checkboxes" style="margin-bottom: 0; flex-wrap: wrap"></div>
+          </div>
+
+          <div class="option-group">
+            <div class="section-label" style="margin-bottom: 8px">
+              PERÍODO (opcional na extração completa; obrigatório para categorias de encerramento, criados x
+              resolvidos, reabertos e chamados críticos)
+            </div>
+            <div class="dialog-row" style="margin-bottom: 0">
+              <div class="field">
+                <label for="geral-input-inicio">Data início</label>
+                <input id="geral-input-inicio" type="date" />
+              </div>
+              <div class="field">
+                <label for="geral-input-fim">Data fim</label>
+                <input id="geral-input-fim" type="date" />
+              </div>
+              <div class="field">
+                <label for="geral-top-n">Top categorias</label>
+                <select id="geral-top-n">
+                  <option value="3">3</option>
+                  <option value="5">5</option>
+                  <option value="10" selected>10</option>
+                  <option value="20">20</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="dialog-row" style="margin-top: 14px">
+            <button id="btn-geral-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-geral-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <section id="geral-results" class="card hidden">
+        <div class="results-header">
+          <div class="section-label" id="geral-results-title" style="margin: 0">RESULTADO — RELATÓRIO GERAL</div>
+          <span class="date-badge" id="geral-date"></span>
+          <span class="spacer"></span>
+          <button id="btn-geral-pdf" class="btn-secondary" type="button" disabled>📄 Exportar PDF</button>
+        </div>
+        <div id="geral-blocks"></div>
       </section>
 
       <div class="card">
@@ -277,6 +478,10 @@
           <dd>
             <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados no painel "PROJETOS") AND ("Tempo de Resolução" &lt; 0h OR "Tempo de resolução" &lt; 0h)</code>
             <p>Chamados cujo SLA de resolução já estourou (tempo negativo).</p>
+            <p>Também mostra a contagem por turno, com base no horário em que o SLA estourou ("sla_estourou_em"): Turno 1 (07:00–09:00), Turno comercial (09:01–18:00) e Turno 2 (18:01–23:59). Estouros de madrugada (00:00–06:59) aparecem num turno "Fora do horário" à parte, só quando houver algum.</p>
+            <p><strong>Tudo / Hoje / Personalizado:</strong> filtro opcional sobre o mesmo "sla_estourou_em" — "Tudo" não filtra nada (todos os violados atuais), "Hoje" restringe ao dia de hoje e "Personalizado" pede início/fim. O filtro é aplicado em cima do resultado já buscado (não muda a JQL), então também vale para o download.</p>
+            <p>Também mostra uma tabela "VIOLADOS POR DIA", com a quantidade de chamados por dia de estouro do SLA — dias sem nenhum violado não entram na tabela. A coluna "Reaberto?" mostra "Sim" (tag) quando ao menos um dos violados daquele dia já passou por status "Reaberto".</p>
+            <p>A tabela de chamados traz uma coluna "reaberto" (Sim/Não): uma consulta extra (<code>key IN (chamados encontrados) AND status WAS "Reaberto"</code>) marca quem já passou por "Reaberto" em algum momento, independente do status atual.</p>
           </dd>
 
           <dt>🏷️ Categorias de Encerramento</dt>
@@ -284,6 +489,33 @@
             <p><strong>Encerrados:</strong> <code>caixas selecionadas AND project IN (projetos marcados) AND resolutiondate no período</code> — conta por valor do campo "Categoria de Encerramento".</p>
             <p><strong>Reabertos:</strong> mesma ideia, mas <code>status WAS "Reaberto" AND created no período</code>, uma busca por caixa, somadas.</p>
             <p>Em ambas, chamados sem o campo de categoria preenchido não entram na contagem. Mostra o top N escolhido (3/5/10/20).</p>
+          </dd>
+
+          <dt>📈 Criados x Resolvidos</dt>
+          <dd>
+            <p><strong>Criados:</strong> <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND created no período</code>.</p>
+            <p><strong>Resolvidos:</strong> mesma caixa/projetos, mas <code>status IN ("Resolvido", "Encerrado") AND resolutiondate no período</code>.</p>
+            <p>Cada chamado entra no dia (data local, sem hora) do respectivo campo — a tabela mostra a comparação dia a dia dentro do período informado, além dos totais e do saldo (criados − resolvidos). A coluna "Seta" sobe (▲) quando o dia resolveu mais do que criou e desce (▼) quando resolveu menos.</p>
+            <p>Também mostra, entre os resolvidos (Resolvido + Encerrado), o percentual dentro do prazo x fora do prazo de SLA "Tempo de Resolução" — mesmo campo/lógica do Relatório Consolidado. Chamados sem esse campo preenchido não entram em nenhuma das duas contagens.</p>
+          </dd>
+
+          <dt>🔄 Reabertos</dt>
+          <dd>
+            <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND status WAS "Reaberto" AND created no período</code>
+            <p>Mesma convenção usada em "Categorias de Encerramento" e no Relatório Consolidado: considera o <code>created</code> do chamado, não a data em que ele foi reaberto — um chamado reaberto que já foi resolvido de novo continua contando aqui.</p>
+            <p>Também mostra o percentual de reabertura: <code>total de reabertos ÷ total de chamados criados no mesmo período (mesma caixa/projetos)</code>, sem o filtro de "status WAS Reaberto".</p>
+          </dd>
+
+          <dt>🚨 Chamados Críticos</dt>
+          <dd>
+            <p>Específico da caixa <strong>Mops Solar</strong> — o botão só aparece nela (some em Mops Tv do Futuro) e a rota recusa a chamada se a caixa não for Solar.</p>
+            <p>Base: <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND created no período</code> — mesma população usada no total de criados.</p>
+            <p><strong>Total de COTI Abertos:</strong> dentro dessa base, <code>priority WAS IN (P0, P1, P2)</code> — já foi aberto como COTI em algum momento.</p>
+            <p><strong>Total real de COTI:</strong> dentro dessa base, <code>priority IN (P0, P1, P2)</code> — realmente é COTI agora.</p>
+            <p><strong>Pontuais:</strong> Total de COTI Abertos − Total real de COTI (já foi COTI, mas não é mais) — contador + percentual sobre os COTI Abertos.</p>
+            <p><strong>Percentual de COTI (Negócio):</strong> Total de COTI Abertos ÷ Total de chamados criados no período.</p>
+            <p><strong>Chamados Clarinha (grupo 2):</strong> dentro da mesma base, <code>"Nivel de Escalonamento" is not EMPTY</code> — Frame 1 mostra o total escalonado e, abaixo, quantos desses ainda estão abertos (status atual fora de "Cancelado"/"Resolvido"/"Encerrado"); Frame 2 mostra a contagem por valor do campo "Nível de Escalonamento".</p>
+            <p><strong>Escalonamento Informal (grupo 3):</strong> dentro da mesma base, <code>"Responsável pela Solicitação MOPS" is not EMPTY</code> — uma linha por responsável, com o total de chamados priorizados por ele e quantos já estão resolvidos (status IN "Resolvido"/"Encerrado"), mais uma linha de totais somados no fim da tabela.</p>
           </dd>
 
           <dt>📝 Report Diário</dt>
@@ -294,6 +526,11 @@
           <dt>📊 Relatório Consolidado</dt>
           <dd>
             <p>Para o período informado, sempre nos 3/2 Grupos Solucionador da caixa: total de <code>created</code> e de <code>resolutiondate</code> no período; dentro desses, quantos têm status atual Resolvido/Encerrado com o SLA dentro do prazo ou violado; quantos passaram por <code>status WAS "Reaberto"</code>; top 3 analistas por chamados encerrados (Central de Incidentes + Abertura de Chamados); chamados com "Nível de Escalonamento" ou "Tipo Incidente MOPS" preenchidos; chamados que já foram P0/P1/P2 (<code>priority WAS IN (P0,P1,P2)</code>); e a mesma contagem por "Categoria de Encerramento" das duas ações acima.</p>
+          </dd>
+
+          <dt>🗂️ Relatório Geral</dt>
+          <dd>
+            <p>Não é uma busca própria: roda, uma a uma, as ações marcadas no checkbox (com os filtros padrão — todas as caixas/status/projetos marcados, mesmo período compartilhado) e junta cada resultado num bloco, na mesma tela. O PDF exportado combina todos os blocos gerados.</p>
           </dd>
         </dl>
       </div>
