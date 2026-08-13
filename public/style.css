@@ -54,7 +54,7 @@ header p {
 }
 
 main {
-  max-width: 880px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px 20px 60px;
 }
@@ -111,6 +111,129 @@ main {
 .field select:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
+}
+
+/* combobox: campo de texto + dropdown customizado com busca (ex.: Analistas
+   de Encerramento) — substitui <datalist> nativo, que não dá pra estilizar
+   e destoa do tema escuro. */
+.combobox {
+  position: relative;
+}
+
+.combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  padding: 4px;
+}
+
+.combobox-option {
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.combobox-option:hover,
+.combobox-option.active {
+  background: var(--secondary-bg);
+}
+
+.combobox-option mark {
+  background: none;
+  color: var(--accent-soft);
+  font-weight: 700;
+}
+
+.combobox-empty {
+  padding: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* calendário do detalhe de analista — um mini-calendário por mês tocado
+   pelo período, com a contagem do dia bem discreta dentro do quadrado. */
+.calendario-mes {
+  margin-bottom: 18px;
+}
+
+.calendario-mes-titulo {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+  text-transform: capitalize;
+}
+
+.calendario-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  border: 2px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.calendario-dow {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.calendario-dia {
+  aspect-ratio: 2 / 1;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.calendario-dia.vazio {
+  border-color: transparent;
+}
+
+.calendario-dia-numero {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.calendario-dia.vazio .calendario-dia-numero {
+  color: var(--muted);
+  opacity: 0.4;
+}
+
+.calendario-dia-info {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 9px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.calendario-dia-encerrados {
+  color: var(--success);
+}
+
+.calendario-dia-reabertos {
+  color: var(--warning);
 }
 
 input[type="checkbox"] {
@@ -200,6 +323,12 @@ button {
 /* dicionário de queries tem bem mais conteúdo que os outros painéis */
 #info-queries.open {
   max-height: 3000px;
+}
+
+/* analistas de encerramento: painel único com dropdown + detalhe (cards,
+   tabelas e calendário de até 2 meses) — cresce bem além dos 700px padrão */
+#analistas-dialog.open {
+  max-height: 6000px;
 }
 
 .btn-block {
@@ -375,6 +504,12 @@ button {
   color: var(--muted);
 }
 
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* quantidade de violados por dia: sublinhado pontilhado sinaliza que passar o
    mouse mostra as keys dos chamados daquele dia (via atributo title) */
 .violados-qtd-hover {
@@ -409,6 +544,31 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 6px;
+}
+
+/* Copia todas as keys de uma vez, formatadas 'KEY1', 'KEY2' — fica entre o
+   título e a lista rolável, como uma ação separada de copiar uma por uma. */
+.hover-popover-copy-all {
+  display: block;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hover-popover-copy-all:hover {
+  background: var(--secondary-bg);
+}
+
+/* Altura de ~4 linhas de .hover-popover-key, com rolagem pro resto — evita
+   um popover gigante quando o dia tem dezenas de chamados. */
+.hover-popover-list {
+  max-height: 108px;
+  overflow-y: auto;
 }
 
 .hover-popover-key {
@@ -465,6 +625,22 @@ button {
   color: var(--text);
   border-top: 2px solid var(--card-border);
   background: var(--card-bg-elevated);
+}
+
+/* Donut (dentro/fora do prazo) e o detalhamento por grupo lado a lado —
+   quebra pra baixo sozinho (flex-wrap) se não couber os dois na largura
+   disponível. */
+.cr-donut-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+
+.cr-donut-row #cr-por-grupo-block {
+  flex: 1 1 320px;
+  min-width: 280px;
 }
 
 /* Anel "dentro do prazo x fora do prazo" (Criados x Resolvidos) — duas cores
@@ -558,9 +734,80 @@ button {
   background: var(--danger);
 }
 
+/* card central do Report Diário: os 3 números do dia juntos (resolvidos /
+   violados / reabertos), centralizado, cada número numa cor. */
+.hero-card {
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+}
+
+.hero-numbers {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.hero-number.tone-accent {
+  color: var(--accent-soft);
+}
+
+.hero-number.tone-danger {
+  color: var(--danger);
+}
+
+.hero-number.tone-warning {
+  color: var(--warning);
+}
+
+.hero-sep {
+  color: var(--muted);
+  margin: 0 10px;
+  font-weight: 400;
+}
+
+.hero-labels {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.hero-labels .tone-accent {
+  color: var(--accent-soft);
+}
+
+.hero-labels .tone-danger {
+  color: var(--danger);
+}
+
+.hero-labels .tone-warning {
+  color: var(--warning);
+}
+
+/* número/rótulo do card central são clicáveis — abrem a tabela daquele
+   grupo em collapse, logo abaixo do card. */
+.hero-clickable {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.hero-clickable:hover {
+  opacity: 0.75;
+}
+
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  /* auto-fit (não auto-fill) colapsa as colunas vazias quando há menos
+     cards que caberiam no mínimo — sem isso sobrava um espaço em branco à
+     direita em vez dos cards esticarem pra preencher a linha toda. */
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -594,6 +841,27 @@ button {
   font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
+}
+
+/* ranking "Top responsáveis" de um grupo específico, dentro do próprio card
+   por grupo (N1/N2/PROD) — acompanha a coluna daquela caixa em vez de um
+   ranking único combinado embaixo de tudo. */
+.summary-card-top-assignees {
+  margin: 10px 0 0;
+  padding-left: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--card-border);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.summary-card-top-assignees li {
+  padding: 1px 0;
+}
+
+.summary-card-top-assignees .count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 #por-grupo-block:not(.hidden) {

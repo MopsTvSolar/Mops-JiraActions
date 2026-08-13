@@ -29,6 +29,7 @@
     $("btn-criados-resolvidos"),
     $("btn-reabertos"),
     $("btn-criticos"),
+    $("btn-analistas-encerramento"),
     $("btn-report-geral"),
   ];
 
@@ -118,6 +119,7 @@
     "reabertos-dialog",
     "violados-dialog",
     "criticos-dialog",
+    "analistas-dialog",
     "geral-dialog",
   ];
 
@@ -135,6 +137,9 @@
     $("categorias-results").classList.add("hidden");
     $("criados-resolvidos-results").classList.add("hidden");
     $("criticos-results").classList.add("hidden");
+    $("analista-detalhe").classList.add("hidden");
+    $("sem-chamados-block").classList.add("hidden");
+    $("report-diario-hero").classList.add("hidden");
     $("heatmap-block").classList.add("hidden");
     $("geral-results").classList.add("hidden");
     hideHoverPopover();
@@ -160,6 +165,7 @@
     "violar-semanal": "Plano semanal (próximos 7 dias)",
     violados: "Chamados violados",
     reabertos: "Chamados reabertos",
+    "report-diario": "Chamados resolvidos hoje",
   };
 
   // Tom de cor do card de total, de acordo com o significado da ação
@@ -171,6 +177,7 @@
     "violar-semanal": "tone-warning",
     violados: "tone-danger",
     reabertos: "tone-warning",
+    "report-diario": "tone-accent",
   };
 
   function setBanner(message, kind) {
@@ -226,6 +233,7 @@
   function rotuloDataResultado(action) {
     if (action === "violar-hoje") return `Dia de hoje (07:00 às 23:59) — ${dataVigente(0)}`;
     if (action === "violar-amanha") return `Amanhã (07:00 às 23:59) — ${dataVigente(1)}`;
+    if (action === "report-diario") return `Dia de hoje — ${dataVigente(0)}`;
     return dataVigente(0);
   }
 
@@ -371,8 +379,15 @@
     $("btn-criticos").classList.toggle("hidden", state.caixa !== "solar");
   }
 
+  // O roster de "Analistas de Encerramento" é uma lista fixa de nomes da
+  // caixa Mops Solar — mesma lógica de Chamados Críticos: some fora dela.
+  function atualizarBotaoAnalistas() {
+    $("btn-analistas-encerramento").classList.toggle("hidden", state.caixa !== "solar");
+  }
+
   carregarJqlAtual();
   atualizarBotaoCriticos();
+  atualizarBotaoAnalistas();
 
   document.querySelectorAll(".caixa-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -397,6 +412,7 @@
       clearBanner();
       carregarJqlAtual();
       atualizarBotaoCriticos();
+      atualizarBotaoAnalistas();
       buildGeralCheckboxes();
     });
   });
@@ -409,6 +425,7 @@
     "violar-semanal": "/api/violar-semanal",
     violados: "/api/violados",
     reabertos: "/api/reabertos",
+    "report-diario": "/api/report-diario",
   };
 
   // --------------------------------------------------------------- violados
@@ -615,6 +632,41 @@
     runViolar("violar-amanha", ACTION_ENDPOINTS["violar-amanha"])
   );
 
+  // ------------------------------------------------------- report diário
+  // Ação direta, sem diálogo (sempre "hoje") — mesmo padrão "tabela" de
+  // Violados/Reabertos: o ranking "Top Analistas do dia" sai de graça do
+  // summary.top_assignees, calculado a partir das mesmas linhas da tabela.
+  $("btn-report-diario").addEventListener("click", async () => {
+    const projetos = projetosSelecionados();
+    if (!projetos.length) {
+      setBanner("Selecione ao menos um projeto.", "error");
+      return;
+    }
+
+    closeAllDialogs();
+    setBusy(true);
+    setBanner("Buscando chamados resolvidos hoje...", "info");
+    hideAllResults();
+    try {
+      const resp = await apiCall(ACTION_ENDPOINTS["report-diario"], { caixa: state.caixa, projetos });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setBanner(data.error || "Erro ao buscar chamados resolvidos hoje.", "error");
+        return;
+      }
+
+      lastAction = "report-diario";
+      lastCaixa = state.caixa;
+      lastExtraBody = { projetos };
+      renderResults("report-diario", data);
+      clearBanner();
+    } catch (e) {
+      setBanner("Não foi possível conectar ao servidor.", "error");
+    } finally {
+      setBusy(false);
+    }
+  });
+
   // Tons do mapa de calor: só marca os dias com carga MAIOR em relação ao
   // pior dia da semana visível — o resto fica na cor neutra do card, sem
   // chamar atenção à toa (dia com 0 ou pouca coisa não precisa de destaque).
@@ -722,12 +774,124 @@
   // --------------------------------------------------------- resultados
   const MAX_ROWS_RENDERED = 500;
 
+  // Só no Report Diário (caixa Mops Solar): quem do roster fixo de
+  // Analistas de Encerramento não aparece como assignee de nenhuma linha —
+  // cálculo local em cima do que a busca principal já trouxe, sem pedir
+  // nada novo ao Jira. Fora daí (outra ação, ou caixa Tv do Futuro, onde o
+  // roster nem se aplica) o bloco fica escondido.
+  function renderSemChamadosEncerrados(action, rows) {
+    const bloco = $("sem-chamados-block");
+    if (action !== "report-diario" || state.caixa !== "solar") {
+      bloco.classList.add("hidden");
+      return;
+    }
+
+    const resolveramHoje = new Set(rows.map((r) => r.assignee).filter(Boolean));
+    const semChamados = ANALISTAS_ENCERRAMENTO_ROSTER.filter((nome) => !resolveramHoje.has(nome));
+
+    const lista = $("sem-chamados-lista");
+    lista.innerHTML = "";
+    if (!semChamados.length) {
+      bloco.classList.add("hidden");
+      return;
+    }
+    semChamados.forEach((nome) => {
+      const tag = document.createElement("span");
+      tag.className = "tag tag-nao";
+      tag.textContent = nome;
+      lista.append(tag);
+    });
+    bloco.classList.remove("hidden");
+  }
+
+  // Preenche uma tabela genérica (fora de #results-table) a partir das
+  // colunas já vindas prontas nas linhas — usado pelas 3 tabelas em collapse
+  // do card central do Report Diário. Mesmas colunas de quem gerou a linha
+  // (Reabertos/Violados/a tabela principal), sem reformatar nada.
+  function preencherTabelaGenerica(tableId, rows) {
+    const thead = document.querySelector(`#${tableId} thead`);
+    const tbody = document.querySelector(`#${tableId} tbody`);
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
+
+    if (!rows || !rows.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.textContent = "Nenhum chamado.";
+      tr.append(td);
+      tbody.append(tr);
+      return;
+    }
+
+    const fields = Object.keys(rows[0]);
+    const trHead = document.createElement("tr");
+    fields.forEach((field) => {
+      const th = document.createElement("th");
+      th.textContent = field;
+      trHead.append(th);
+    });
+    thead.append(trHead);
+
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      fields.forEach((field) => {
+        const td = document.createElement("td");
+        td.textContent = escapeText(row[field]);
+        tr.append(td);
+      });
+      tbody.append(tr);
+    });
+  }
+
+  // Card central só do Report Diário: os 3 números do dia juntos (resolvidos
+  // / violados / reabertos), no início dos resultados. Com ele, o card
+  // "Total" da linha por grupo (N1/N2/PROD) logo abaixo fica redundante —
+  // renderSummary pula ele quando a action é "report-diario" (ver mais abaixo).
+  // Clicar em qualquer um dos 3 abre/fecha a tabela correspondente (mesmas
+  // colunas de quem gerou aquela linha) — os 3 painéis começam sempre
+  // fechados a cada nova busca.
+  function renderHeroReportDiario(data) {
+    const bloco = $("report-diario-hero");
+    const temTudo =
+      data.summary && typeof data.summary.total === "number" &&
+      typeof data.violados_hoje === "number" &&
+      typeof data.reabertos_hoje === "number";
+    if (!temTudo) {
+      bloco.classList.add("hidden");
+      return;
+    }
+    $("hero-resolvidos").textContent = data.summary.total;
+    $("hero-violados").textContent = data.violados_hoje;
+    $("hero-reabertos").textContent = data.reabertos_hoje;
+
+    preencherTabelaGenerica("hero-table-resolvidos", data.rows);
+    preencherTabelaGenerica("hero-table-violados", data.violados_hoje_rows);
+    preencherTabelaGenerica("hero-table-reabertos", data.reabertos_hoje_rows);
+    ["resolvidos", "violados", "reabertos"].forEach((chave) => {
+      $(`hero-collapse-${chave}`).classList.remove("open");
+    });
+
+    bloco.classList.remove("hidden");
+  }
+
+  document.querySelectorAll(".hero-clickable").forEach((el) => {
+    el.addEventListener("click", () => {
+      $(`hero-collapse-${el.dataset.hero}`).classList.toggle("open");
+    });
+  });
+
   function renderResults(action, data) {
     $("results-title").textContent = `RESULTADOS — ${ACTION_LABELS[action]}`;
     $("results-date").textContent = rotuloDataResultado(action);
     renderSummary(action, data.summary, data.por_grupo, data.por_turno);
+    if (action === "report-diario") {
+      renderHeroReportDiario(data);
+    } else {
+      $("report-diario-hero").classList.add("hidden");
+    }
     renderPorDiaViolados(data.por_dia, data.rows);
     renderTable(data.fields, data.rows);
+    renderSemChamadosEncerrados(action, data.rows);
     resultsCard.classList.remove("hidden");
     resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -784,9 +948,28 @@
 
     const titulo = document.createElement("div");
     titulo.className = "hover-popover-title";
-    titulo.textContent = `${keys.length} chamado${keys.length === 1 ? "" : "s"} — clique para copiar`;
+    titulo.textContent = `${keys.length} chamado${keys.length === 1 ? "" : "s"}`;
     popover.append(titulo);
 
+    // Copia tudo de uma vez, no formato 'KEY1', 'KEY2', 'KEY3' — pronto pra
+    // colar num "key IN (...)" de JQL, por exemplo.
+    const copiarTodos = document.createElement("div");
+    copiarTodos.className = "hover-popover-copy-all";
+    copiarTodos.textContent = "Copiar todos";
+    copiarTodos.addEventListener("click", async () => {
+      const texto = keys.map((key) => `'${key}'`).join(", ");
+      const copiou = await copiarTexto(texto);
+      copiarTodos.textContent = copiou ? "Copiado!" : "Erro ao copiar";
+      setTimeout(() => {
+        copiarTodos.textContent = "Copiar todos";
+      }, 900);
+    });
+    popover.append(copiarTodos);
+
+    // Lista com altura fixa (~4 linhas) e rolagem — evita um popover gigante
+    // quando o dia tem dezenas de chamados.
+    const lista = document.createElement("div");
+    lista.className = "hover-popover-list";
     keys.forEach((key) => {
       const item = document.createElement("span");
       item.className = "hover-popover-key";
@@ -800,8 +983,9 @@
           item.classList.remove("copiado", "erro-copia");
         }, 900);
       });
-      popover.append(item);
+      lista.append(item);
     });
+    popover.append(lista);
 
     popover.classList.remove("hidden");
 
@@ -844,18 +1028,39 @@
       (chavesPorDia[dia] = chavesPorDia[dia] || []).push(row.key);
     });
 
+    // "Previsto" (quem tinha prazo pra violar naquele dia, violado ou não)
+    // só vem preenchido com período definido (Hoje/Personalizado) — no modo
+    // "Tudo" a coluna nem aparece, em vez de mostrar 0 pra tudo.
+    const temPrevisto = porDia.some((d) => d.previsto !== undefined);
+
     const trHead = document.createElement("tr");
-    ["Data", "Quantidade", "Reaberto?"].forEach((label) => {
+    const colunas = ["Data"];
+    if (temPrevisto) colunas.push("Previsto pra violar");
+    colunas.push("Violados");
+    colunas.push("Reaberto?");
+    colunas.forEach((label) => {
       const th = document.createElement("th");
       th.textContent = label;
       trHead.append(th);
     });
     thead.append(trHead);
 
-    porDia.forEach(({ data: diaIso, total, reaberto }) => {
+    porDia.forEach(({ data: diaIso, total, previsto, previsto_chaves: previstoChaves, reaberto }) => {
       const tr = document.createElement("tr");
       const tdData = document.createElement("td");
       tdData.textContent = formatarDataBR(diaIso);
+      tr.append(tdData);
+      if (temPrevisto) {
+        const tdPrevisto = document.createElement("td");
+        tdPrevisto.textContent = previsto;
+        tdPrevisto.className = "violados-qtd-hover";
+        tdPrevisto.addEventListener("mouseenter", () => {
+          cancelHoverPopoverHide();
+          showHoverPopover(tdPrevisto, previstoChaves || []);
+        });
+        tdPrevisto.addEventListener("mouseleave", scheduleHoverPopoverHide);
+        tr.append(tdPrevisto);
+      }
       const tdTotal = document.createElement("td");
       tdTotal.textContent = total;
       tdTotal.className = "violados-qtd-hover";
@@ -865,19 +1070,20 @@
         showHoverPopover(tdTotal, keysDoDia);
       });
       tdTotal.addEventListener("mouseleave", scheduleHoverPopoverHide);
+      tr.append(tdTotal);
       const tdReaberto = document.createElement("td");
       const tag = document.createElement("span");
       tag.className = `tag ${reaberto ? "tag-sim" : "tag-nao"}`;
       tag.textContent = reaberto ? "Sim" : "Não";
       tdReaberto.append(tag);
-      tr.append(tdData, tdTotal, tdReaberto);
+      tr.append(tdReaberto);
       tbody.append(tr);
     });
 
     block.classList.remove("hidden");
   }
 
-  function summaryCard(value, label, tone) {
+  function summaryCard(value, label, tone, topAssignees) {
     const card = document.createElement("div");
     card.className = "summary-card" + (tone ? ` ${tone}` : "");
 
@@ -890,6 +1096,25 @@
     labelEl.textContent = label;
 
     card.append(valueEl, labelEl);
+
+    // Ranking "Top responsáveis" só daquele grupo — acompanha a coluna da
+    // caixa em vez de um ranking único combinando tudo.
+    if (topAssignees && topAssignees.length) {
+      const ol = document.createElement("ol");
+      ol.className = "summary-card-top-assignees";
+      topAssignees.forEach(([nome, count]) => {
+        const li = document.createElement("li");
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = nome;
+        const countSpan = document.createElement("span");
+        countSpan.className = "count";
+        countSpan.textContent = ` — ${count}`;
+        li.append(nameSpan, countSpan);
+        ol.append(li);
+      });
+      card.append(ol);
+    }
+
     return card;
   }
 
@@ -902,11 +1127,20 @@
 
     const totalCard = summaryCard(summary.total, "Total de chamados", ACTION_TONE[action]);
 
+    // Quando o card por grupo já vem com o ranking próprio (top_assignees),
+    // o bloco "Top responsáveis" combinado abaixo fica redundante — some pra
+    // não repetir a mesma informação duas vezes.
+    const temTopPorGrupo = porGrupo && porGrupo.some((g) => g.top_assignees && g.top_assignees.length);
+
     if (porGrupo && porGrupo.length) {
-      // Total desce para a mesma linha dos cards por grupo, como primeiro card.
-      porGrupoCardsEl.append(totalCard);
-      porGrupo.forEach(({ grupo, total }) => {
-        porGrupoCardsEl.append(summaryCard(total, grupo));
+      // Total desce para a mesma linha dos cards por grupo, como primeiro
+      // card — exceto no Report Diário, que já mostra o total no card
+      // central "62 / 2 / 0" logo acima, então repeti-lo aqui seria redundante.
+      if (action !== "report-diario") {
+        porGrupoCardsEl.append(totalCard);
+      }
+      porGrupo.forEach(({ grupo, total, top_assignees }) => {
+        porGrupoCardsEl.append(summaryCard(total, GRUPO_LABEL_CURTO[grupo] || grupo, null, top_assignees));
       });
       porGrupoBlock.classList.remove("hidden");
       totalCardsEl.classList.add("hidden");
@@ -931,7 +1165,7 @@
 
     const assigneesEl = $("top-assignees");
     assigneesEl.innerHTML = "";
-    if (summary.top_assignees && summary.top_assignees.length) {
+    if (!temTopPorGrupo && summary.top_assignees && summary.top_assignees.length) {
       const title = document.createElement("div");
       title.className = "top-assignees-title";
       title.textContent = "Top responsáveis";
@@ -1030,25 +1264,6 @@
     $("btn-report-limpar").disabled = false;
   }
 
-  $("btn-report-diario").addEventListener("click", async () => {
-    closeAllDialogs();
-    setBusy(true);
-    setBanner("Gerando report diário...", "info");
-    try {
-      const resp = await apiCall("/api/report-diario", { caixa: state.caixa });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao gerar report.", "error");
-        return;
-      }
-      showReport(data.text);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
 
   $("btn-report-consolidado").addEventListener("click", () => {
     closeAllDialogs("consolidado-dialog");
@@ -1324,6 +1539,40 @@
     return wrap;
   }
 
+  // Card por grupo (N1/N2/PROD) de "Criados x Resolvidos": contador de
+  // encerrados no período + média diária (total ÷ dias do período
+  // selecionado) + TMA aproximado (16h de expediente ÷ média diária — não é
+  // o tempo real em "Em atendimento", é só uma estimativa a partir do volume).
+  function criadosResolvidosGrupoCard(grupo, total, mediaDiaria, tmaHoras) {
+    const card = document.createElement("div");
+    card.className = "summary-card";
+
+    const valueEl = document.createElement("div");
+    valueEl.className = "summary-value";
+    valueEl.textContent = total;
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "summary-label";
+    labelEl.textContent = GRUPO_LABEL_CURTO[grupo] || grupo;
+
+    const mediaEl = document.createElement("div");
+    mediaEl.className = "summary-label";
+    mediaEl.style.marginTop = "2px";
+    mediaEl.textContent = `Média: ${mediaDiaria}/dia`;
+
+    card.append(valueEl, labelEl, mediaEl);
+
+    if (typeof tmaHoras === "number") {
+      const tmaEl = document.createElement("div");
+      tmaEl.className = "summary-label";
+      tmaEl.style.marginTop = "2px";
+      tmaEl.textContent = `TMA: ${tmaHoras}h`;
+      card.append(tmaEl);
+    }
+
+    return card;
+  }
+
   function renderCriadosResolvidos(data, inicio, fim) {
     const saldo = data.total_criados - data.total_resolvidos;
 
@@ -1342,6 +1591,18 @@
       donutEl.classList.remove("hidden");
     } else {
       donutEl.classList.add("hidden");
+    }
+
+    const porGrupoBlock = $("cr-por-grupo-block");
+    const porGrupoCardsEl = $("cr-por-grupo-cards");
+    porGrupoCardsEl.innerHTML = "";
+    if (data.por_grupo && data.por_grupo.length) {
+      data.por_grupo.forEach(({ grupo, total, media_diaria, tma_horas }) => {
+        porGrupoCardsEl.append(criadosResolvidosGrupoCard(grupo, total, media_diaria, tma_horas));
+      });
+      porGrupoBlock.classList.remove("hidden");
+    } else {
+      porGrupoBlock.classList.add("hidden");
     }
 
     const thead = document.querySelector("#cr-table thead");
@@ -1662,6 +1923,424 @@
       setBusy(false);
     }
   });
+
+  // ---------------------------------------------------- analistas de encerramento
+  // Time fixo (roster), não depende de período nem de nova busca no Jira —
+  // fica disponível assim que o painel abre. Escolher um nome + o período em
+  // Data início/Data fim é que dispara a busca de verdade (buscarDetalheAnalista).
+  const ANALISTAS_ENCERRAMENTO_ROSTER = [
+    "CRISTIAN SARAIVA BETTUCI",
+    "DANIEL DOS SANTOS REIS",
+    "DIEGHO MORAES BISTRATINI",
+    "DIEGO VERGA TEIXEIRA",
+    "EDUARDO MARTINS DOS SANTOS",
+    "EURICO ALEXANDRE RAMOS DA SILVA",
+    "FILIPI DA SILVA SOUZA",
+    "GUILHERME BONDEZAN YONAMINE",
+    "HUMBERTO SANTOS DIAS",
+    "JOAO PEDRO VILLAS BOAS DE CARVALHO",
+    "JOAO VITOR FALBI",
+    "JONATAS DA SILVA PEREIRA",
+    "JULIA OLIVEIRA LONGHI",
+    "LEONARDO CHIMINELLI",
+    "LETICIA NOVARINO BRITTO",
+    "MAURICIO JOSE PRADO CHINI",
+    "MICHELLE CRISTINA DA SILVA RICARDO",
+    "PAULO MARCELO MELO GOMES",
+    "TAMIRES COSTA SANTOS",
+    "THIAGO BORGHI LOPES GALVAO",
+    "VINICIUS SOARES PEREIRA MARTINS DE MOURA",
+  ];
+  let analistasAtuais = ANALISTAS_ENCERRAMENTO_ROSTER;
+  let analistasIndiceAtivo = -1;
+
+  // Remove acentos pra busca tolerante ("jose" encontra "JOSE"/"José").
+  function normalizarBusca(texto) {
+    return texto
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toLowerCase();
+  }
+
+  function analistasFiltrados(busca) {
+    const termo = normalizarBusca(busca.trim());
+    if (!termo) return analistasAtuais;
+    return analistasAtuais.filter((nome) => normalizarBusca(nome).includes(termo));
+  }
+
+  // Destaca o trecho batido (só quando o match é direto, sem acento
+  // envolvido — mais simples que mapear posições através da normalização).
+  function destacarTrecho(nome, termo) {
+    if (!termo) return document.createTextNode(nome);
+    const idx = nome.toLowerCase().indexOf(termo.toLowerCase());
+    if (idx === -1) return document.createTextNode(nome);
+    const frag = document.createDocumentFragment();
+    frag.append(document.createTextNode(nome.slice(0, idx)));
+    const mark = document.createElement("mark");
+    mark.textContent = nome.slice(idx, idx + termo.length);
+    frag.append(mark);
+    frag.append(document.createTextNode(nome.slice(idx + termo.length)));
+    return frag;
+  }
+
+  const CALENDARIO_MESES = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+  ];
+  const CALENDARIO_DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+  // Um mini-calendário por mês tocado pelo período — dias fora do período
+  // (mas dentro do mesmo mês) aparecem esmaecidos; os "buracos" de
+  // alinhamento antes do dia 1 ficam totalmente em branco.
+  function construirCalendario(dias) {
+    const porMes = new Map();
+    dias.forEach((dia) => {
+      const chaveMes = dia.data.slice(0, 7);
+      if (!porMes.has(chaveMes)) porMes.set(chaveMes, []);
+      porMes.get(chaveMes).push(dia);
+    });
+
+    const container = document.createElement("div");
+
+    Array.from(porMes.keys())
+      .sort()
+      .forEach((chaveMes) => {
+        const porData = new Map(porMes.get(chaveMes).map((d) => [d.data, d]));
+        const [ano, mes] = chaveMes.split("-").map(Number);
+
+        const bloco = document.createElement("div");
+        bloco.className = "calendario-mes";
+
+        const titulo = document.createElement("div");
+        titulo.className = "calendario-mes-titulo";
+        titulo.textContent = `${CALENDARIO_MESES[mes - 1]} de ${ano}`;
+        bloco.append(titulo);
+
+        const grid = document.createElement("div");
+        grid.className = "calendario-grid";
+
+        CALENDARIO_DOW.forEach((label) => {
+          const dow = document.createElement("div");
+          dow.className = "calendario-dow";
+          dow.textContent = label;
+          grid.append(dow);
+        });
+
+        // getDay(): 0=Dom...6=Sáb — converte pra semana começando na Segunda.
+        const primeiroDoMes = new Date(ano, mes - 1, 1);
+        const offsetSemana = (primeiroDoMes.getDay() + 6) % 7;
+        for (let i = 0; i < offsetSemana; i++) {
+          const vazio = document.createElement("div");
+          vazio.className = "calendario-dia vazio";
+          grid.append(vazio);
+        }
+
+        const totalDiasMes = new Date(ano, mes, 0).getDate();
+        for (let dia = 1; dia <= totalDiasMes; dia++) {
+          const chaveDia = `${chaveMes}-${String(dia).padStart(2, "0")}`;
+          const info = porData.get(chaveDia);
+
+          const celula = document.createElement("div");
+          celula.className = "calendario-dia" + (info ? "" : " vazio");
+
+          const numero = document.createElement("div");
+          numero.className = "calendario-dia-numero";
+          numero.textContent = dia;
+          celula.append(numero);
+
+          if (info && (info.encerrados_resolvidos || info.reabertos)) {
+            const infoEl = document.createElement("div");
+            infoEl.className = "calendario-dia-info";
+            if (info.encerrados_resolvidos) {
+              const linha = document.createElement("span");
+              linha.className = "calendario-dia-encerrados";
+              linha.textContent = `E ${info.encerrados_resolvidos}`;
+              infoEl.append(linha);
+            }
+            if (info.reabertos) {
+              const linha = document.createElement("span");
+              linha.className = "calendario-dia-reabertos";
+              linha.textContent = `R ${info.reabertos}`;
+              infoEl.append(linha);
+            }
+            celula.append(infoEl);
+          }
+
+          grid.append(celula);
+        }
+
+        bloco.append(grid);
+        container.append(bloco);
+      });
+
+    return container;
+  }
+
+  function renderAnalistaDetalhe(data, analista, inicio, fim) {
+    // O título usa .section-label (text-transform: uppercase) — sem o
+    // .date-badge aqui, o "a" do intervalo de datas vira "A" maiúsculo.
+    const tituloEl = $("analista-detalhe-titulo");
+    tituloEl.textContent = "";
+    tituloEl.append(`${analista} — `);
+    const dataBadge = document.createElement("span");
+    dataBadge.className = "date-badge";
+    dataBadge.textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
+    tituloEl.append(dataBadge);
+
+    const cardsEl = $("analista-detalhe-cards");
+    cardsEl.innerHTML = "";
+    cardsEl.append(
+      summaryCard(data.total_encerrados_resolvidos, "Chamados Encerrados/Resolvidos", "tone-accent")
+    );
+    cardsEl.append(
+      summaryCard(
+        `${data.total_reabertos} (${data.percentual_reabertos}%)`,
+        `Reabertos no período — % sobre ${data.total_resolvidos_gerais} resolvidos gerais`,
+        "tone-warning"
+      )
+    );
+
+    const fThead = document.querySelector("#analista-fornecedor-table thead");
+    const fTbody = document.querySelector("#analista-fornecedor-table tbody");
+    fThead.innerHTML = "";
+    fTbody.innerHTML = "";
+    const fTrHead = document.createElement("tr");
+    ["Fornecedor Responsável", "Quantidade"].forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      fTrHead.append(th);
+    });
+    fThead.append(fTrHead);
+
+    const porFornecedor = data.por_fornecedor || [];
+    if (!porFornecedor.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 2;
+      td.textContent = "Nenhum chamado aguardando fornecedor no período.";
+      tr.append(td);
+      fTbody.append(tr);
+    } else {
+      let somaFornecedor = 0;
+      porFornecedor.forEach(({ fornecedor, total }) => {
+        somaFornecedor += total;
+        const tr = document.createElement("tr");
+        const tdNome = document.createElement("td");
+        tdNome.textContent = fornecedor;
+        const tdTotal = document.createElement("td");
+        tdTotal.textContent = total;
+        tr.append(tdNome, tdTotal);
+        fTbody.append(tr);
+      });
+      const trTotal = document.createElement("tr");
+      trTotal.className = "data-table-total-row";
+      const tdLabel = document.createElement("td");
+      tdLabel.textContent = "Total";
+      const tdSoma = document.createElement("td");
+      tdSoma.textContent = somaFornecedor;
+      trTotal.append(tdLabel, tdSoma);
+      fTbody.append(trTotal);
+    }
+
+    const cThead = document.querySelector("#analista-categorias-table thead");
+    const cTbody = document.querySelector("#analista-categorias-table tbody");
+    cThead.innerHTML = "";
+    cTbody.innerHTML = "";
+    const cTrHead = document.createElement("tr");
+    ["Categoria de Encerramento", "Quantidade"].forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      cTrHead.append(th);
+    });
+    cThead.append(cTrHead);
+
+    const topCategorias = data.top_categorias || [];
+    if (!topCategorias.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 2;
+      td.textContent = "Nenhum chamado categorizado no período.";
+      tr.append(td);
+      cTbody.append(tr);
+    } else {
+      topCategorias.forEach(({ categoria, total }) => {
+        const tr = document.createElement("tr");
+        const tdNome = document.createElement("td");
+        tdNome.textContent = categoria;
+        const tdTotal = document.createElement("td");
+        tdTotal.textContent = total;
+        tr.append(tdNome, tdTotal);
+        cTbody.append(tr);
+      });
+    }
+
+    const calEl = $("analista-calendario");
+    calEl.innerHTML = "";
+    calEl.append(construirCalendario(data.calendario || []));
+
+    $("analista-detalhe").classList.remove("hidden");
+  }
+
+  async function buscarDetalheAnalista(analista) {
+    const inicio = $("analistas-input-inicio").value;
+    const fim = $("analistas-input-fim").value;
+    if (!inicio || !fim) return;
+
+    const projetos = projetosSelecionados();
+    if (!projetos.length) {
+      setBanner("Selecione ao menos um projeto.", "error");
+      return;
+    }
+
+    $("analista-detalhe").classList.add("hidden");
+    setBusy(true);
+    setBanner(`Buscando dados de ${analista}...`, "info");
+    try {
+      const resp = await apiCall("/api/analista-detalhe", {
+        analista,
+        inicio,
+        fim,
+        caixa: state.caixa,
+        projetos,
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setBanner(data.error || "Erro ao buscar dados do analista.", "error");
+        return;
+      }
+      // A busca é lenta (pode passar de 1 minuto) e "Fechar"/trocar de caixa
+      // continuam clicáveis nesse meio tempo — se o painel foi fechado
+      // enquanto isso, reabre aqui, senão o resultado chega mas fica
+      // escondido atrás do "collapse" do painel.
+      $("analistas-dialog").classList.add("open");
+      renderAnalistaDetalhe(data, analista, inicio, fim);
+      clearBanner();
+    } catch (e) {
+      setBanner("Não foi possível conectar ao servidor.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function selecionarAnalista(nome) {
+    $("analistas-busca").value = nome;
+    fecharAnalistasDropdown();
+    buscarDetalheAnalista(nome);
+  }
+
+  function fecharAnalistasDropdown() {
+    $("analistas-dropdown").classList.add("hidden");
+    $("analistas-busca").setAttribute("aria-expanded", "false");
+    analistasIndiceAtivo = -1;
+  }
+
+  function marcarIndiceAtivo(dropdown, indice) {
+    dropdown.querySelectorAll(".combobox-option").forEach((el, i) => {
+      const ativo = i === indice;
+      el.classList.toggle("active", ativo);
+      if (ativo) el.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  function abrirAnalistasDropdown() {
+    const dropdown = $("analistas-dropdown");
+    const termo = $("analistas-busca").value.trim();
+    const filtrados = analistasFiltrados(termo);
+    dropdown.innerHTML = "";
+    analistasIndiceAtivo = -1;
+
+    if (!filtrados.length) {
+      const vazio = document.createElement("div");
+      vazio.className = "combobox-empty";
+      vazio.textContent = "Nenhum analista encontrado.";
+      dropdown.append(vazio);
+    } else {
+      filtrados.forEach((nome) => {
+        const opt = document.createElement("div");
+        opt.className = "combobox-option";
+        opt.setAttribute("role", "option");
+        opt.append(destacarTrecho(nome, termo));
+        // mousedown (não click) dispara antes do blur do input, senão o
+        // dropdown já teria fechado quando o clique "chegasse".
+        opt.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          selecionarAnalista(nome);
+        });
+        dropdown.append(opt);
+      });
+    }
+
+    dropdown.classList.remove("hidden");
+    $("analistas-busca").setAttribute("aria-expanded", "true");
+  }
+
+  $("analistas-busca").addEventListener("input", abrirAnalistasDropdown);
+  $("analistas-busca").addEventListener("focus", abrirAnalistasDropdown);
+  $("analistas-busca").addEventListener("blur", () => {
+    setTimeout(fecharAnalistasDropdown, 120);
+  });
+
+  $("analistas-busca").addEventListener("keydown", (e) => {
+    const dropdown = $("analistas-dropdown");
+    if (dropdown.classList.contains("hidden")) return;
+    const opcoesEls = dropdown.querySelectorAll(".combobox-option");
+    if (!opcoesEls.length) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      analistasIndiceAtivo = Math.min(analistasIndiceAtivo + 1, opcoesEls.length - 1);
+      marcarIndiceAtivo(dropdown, analistasIndiceAtivo);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      analistasIndiceAtivo = Math.max(analistasIndiceAtivo - 1, 0);
+      marcarIndiceAtivo(dropdown, analistasIndiceAtivo);
+    } else if (e.key === "Enter") {
+      if (analistasIndiceAtivo >= 0) {
+        e.preventDefault();
+        const filtrados = analistasFiltrados($("analistas-busca").value.trim());
+        if (filtrados[analistasIndiceAtivo]) selecionarAnalista(filtrados[analistasIndiceAtivo]);
+      }
+    } else if (e.key === "Escape") {
+      fecharAnalistasDropdown();
+    }
+  });
+
+  // Data início, Data fim e Analista ficam numa linha só, sempre visíveis. O
+  // dropdown mostra o roster fixo assim que o painel abre (sem chamada ao
+  // Jira pra montar a lista); escolher um nome com o período preenchido é
+  // que dispara a busca de verdade (buscarDetalheAnalista).
+  function prepararAnalistasDropdown() {
+    analistasAtuais = ANALISTAS_ENCERRAMENTO_ROSTER;
+    $("analistas-busca").value = "";
+    $("analistas-busca").disabled = false;
+    fecharAnalistasDropdown();
+    $("analista-detalhe").classList.add("hidden");
+    $("analistas-status").textContent =
+      `${ANALISTAS_ENCERRAMENTO_ROSTER.length} analistas disponíveis — selecione um nome com o período preenchido.`;
+  }
+
+  $("btn-analistas-encerramento").addEventListener("click", () => {
+    const dialog = $("analistas-dialog");
+    const abrindo = !dialog.classList.contains("open");
+    closeAllDialogs("analistas-dialog");
+    dialog.classList.toggle("open", abrindo);
+    if (abrindo) {
+      const hoje = new Date().toISOString().slice(0, 10);
+      if (!$("analistas-input-inicio").value) $("analistas-input-inicio").value = hoje;
+      if (!$("analistas-input-fim").value) $("analistas-input-fim").value = hoje;
+      hideAllResults();
+      prepararAnalistasDropdown();
+    }
+  });
+
+  $("btn-analistas-cancelar").addEventListener("click", () => {
+    $("analistas-dialog").classList.remove("open");
+  });
+
+  // Trocar de data não mexe no roster (é fixo) — só limpa o detalhe já
+  // mostrado, já que os números eram do período anterior.
+  $("analistas-input-inicio").addEventListener("change", () => $("analista-detalhe").classList.add("hidden"));
+  $("analistas-input-fim").addEventListener("change", () => $("analista-detalhe").classList.add("hidden"));
 
   // --------------------------------------------------------- relatório geral
   // Não é uma busca própria: reexecuta as ações já existentes (mesmos

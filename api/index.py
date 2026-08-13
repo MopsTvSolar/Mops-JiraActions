@@ -35,7 +35,6 @@ from jira_extractor import (  # noqa: E402
     PROJETO_INC,
     PROJETO_PDST,
     build_consolidated_report,
-    build_daily_report,
     export_general_report_pdf,
     export_report_pdf,
     extract_fornecedor,
@@ -45,7 +44,10 @@ from jira_extractor import (  # noqa: E402
     fetch_chamados_criticos,
     fetch_chamados_reabertos,
     fetch_chamados_violados,
+    fetch_previstos_violar_por_dia,
     fetch_criados_x_resolvidos,
+    fetch_detalhe_analista,
+    fetch_resolvidos_hoje,
     fetch_total_criados_periodo,
     fetch_issues,
     flatten_issue,
@@ -386,12 +388,24 @@ def _resolve_responsavel_mops_field_id(config):
 
 
 def _por_grupo_a_violar(rows, grupos):
-    """Conta, para cada grupo da caixa selecionada, quantos chamados do
-    resultado de 'a violar' pertencem àquele grupo. Não faz nenhuma busca
-    extra no Jira: só agrupa as linhas já retornadas pela busca principal
-    (que já vêm com "grupo_solucionador" quando o campo foi resolvido)."""
-    contagem = Counter(r.get("grupo_solucionador") for r in rows if r.get("grupo_solucionador"))
-    return [{"grupo": grupo, "total": contagem.get(grupo, 0)} for grupo in grupos]
+    """Para cada grupo da caixa selecionada: quantos chamados do resultado
+    pertencem àquele grupo, e o ranking de "Top responsáveis" só daquele
+    grupo (pra acompanhar a coluna de cada caixa no card, em vez de um
+    ranking único combinando todos os grupos). Não faz nenhuma busca extra
+    no Jira: só agrupa as linhas já retornadas pela busca principal (que já
+    vêm com "grupo_solucionador" quando o campo foi resolvido)."""
+    resultado = []
+    for grupo in grupos:
+        linhas_grupo = [r for r in rows if r.get("grupo_solucionador") == grupo]
+        assignee_counts = Counter(r.get("assignee") for r in linhas_grupo if r.get("assignee"))
+        resultado.append(
+            {
+                "grupo": grupo,
+                "total": len(linhas_grupo),
+                "top_assignees": assignee_counts.most_common(TOP_ASSIGNEES_LIMIT),
+            }
+        )
+    return resultado
 
 
 # Turnos fixos para o detalhamento de "Violados" — intervalos em minutos desde
@@ -435,14 +449,19 @@ def _por_turno_violados(rows):
     return resultado
 
 
-def _por_dia_violados(rows):
+def _por_dia_violados(rows, previstos_por_dia=None):
     """Conta, por dia, quantos chamados tiveram o SLA estourado nesse dia (com
     base em "sla_estourou_em"). Não faz nenhuma busca extra no Jira: só
     agrupa as linhas já retornadas pela busca principal de Violados (que já
-    vêm com "reaberto" calculado). Dias sem nenhum violado simplesmente não
-    aparecem no resultado (não têm o que contar) — ordenado do mais antigo
-    para o mais recente. "reaberto" no dia é True se ao menos um dos
-    chamados daquele dia já passou por status "Reaberto"."""
+    vêm com "reaberto" calculado). "reaberto" no dia é True se ao menos um
+    dos chamados daquele dia já passou por status "Reaberto".
+
+    "previstos_por_dia" (opcional): dict {dia: [keys]} de
+    fetch_previstos_violar_por_dia — chamados que tinham a data PREVISTA de
+    estouro naquele dia, violado ou não (a quantidade é só len() da lista).
+    Só entra como coluna extra nos dias que já aparecem aqui (que tiveram
+    violado de fato); dias sem nenhum violado não entram na tabela mesmo que
+    tenham previstos. As keys vão junto pra alimentar o hover da coluna."""
     contagem = Counter()
     tem_reaberto = set()
     for row in rows:
@@ -453,10 +472,16 @@ def _por_dia_violados(rows):
         contagem[dia] += 1
         if row.get("reaberto") == "Sim":
             tem_reaberto.add(dia)
-    return [
-        {"data": dia, "total": total, "reaberto": dia in tem_reaberto}
-        for dia, total in sorted(contagem.items())
-    ]
+
+    resultado = []
+    for dia, total in sorted(contagem.items()):
+        entry = {"data": dia, "total": total, "reaberto": dia in tem_reaberto}
+        if previstos_por_dia is not None:
+            chaves = previstos_por_dia.get(dia, [])
+            entry["previsto"] = len(chaves)
+            entry["previsto_chaves"] = chaves
+        resultado.append(entry)
+    return resultado
 
 
 def _send_rows(rows, base_name, fmt):
@@ -659,9 +684,54 @@ def violados():
 
     extra = None
     if not _is_download(body):
-        extra = {"por_turno": _por_turno_violados(rows), "por_dia": _por_dia_violados(rows)}
+        # "previsto" (quem tinha prazo pra violar naquele dia, violado ou
+        # não) só entra com período definido — no modo "Tudo" a busca de
+        # fetch_previstos_violar_por_dia ficaria sem limite nenhum.
+        previstos_por_dia = None
+        if inicio and fim:
+            try:
+                previstos_por_dia = fetch_previstos_violar_por_dia(config, inicio, fim)
+            except Exception:
+                app.logger.exception("Falha ao buscar previstos para violar por dia")
+        extra = {"por_turno": _por_turno_violados(rows), "por_dia": _por_dia_violados(rows, previstos_por_dia)}
 
     return _respond(rows, "chamados_violados", body, extra=extra)
+
+
+@app.route("/api/analista-detalhe", methods=["POST"])
+def analista_detalhe():
+    """O roster de "Analistas de Encerramento" é uma lista fixa de nomes da
+    caixa Mops Solar — a tela já esconde o botão fora dela, isso aqui é só a
+    garantia do lado do servidor caso a rota seja chamada direto."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    if caixa_id != CAIXA_SOLAR:
+        raise JiraExtractorError('Analistas de Encerramento é uma ação específica da caixa "Mops Solar".')
+
+    config = _config_from_request(body)
+    projetos = _projetos_selecionados(body)
+    inicio, fim = _parse_periodo(body)
+
+    analista = (body.get("analista") or "").strip()
+    if not analista:
+        raise JiraExtractorError("Informe o analista.")
+
+    try:
+        categoria_field_id = _resolve_categoria_encerramento_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Categoria de Encerramento")
+        categoria_field_id = None
+
+    resultado = fetch_detalhe_analista(
+        config,
+        CAIXAS[caixa_id]["grupos"],
+        analista,
+        inicio,
+        fim,
+        projetos=projetos,
+        categoria_field_id=categoria_field_id,
+    )
+    return jsonify(resultado)
 
 
 @app.route("/api/reabertos", methods=["POST"])
@@ -687,13 +757,54 @@ def reabertos():
 
 @app.route("/api/report-diario", methods=["POST"])
 def report_diario():
+    """Chamados com status "Resolvido" no dia atual — mesmo padrão "tabela"
+    de Violados/Reabertos, então o ranking "Top Analistas do dia" já sai de
+    graça do summary.top_assignees calculado em _respond/_build_summary.
+    O detalhamento N1/N2/PROD segue o mesmo esquema best-effort de "A violar":
+    sem o campo Grupo Solucionador resolvido, a ação segue normal, só sem
+    essas colunas."""
     body = request.get_json(silent=True) or {}
     caixa_id = _resolve_caixa(body)
-    # O Report Diário monta a própria JQL a partir dos grupos (não lê
-    # config["jql"]), então não depende de nenhuma JQL pré-configurada.
-    config = _config_from_request(body)
-    texto = build_daily_report(config, CAIXAS[caixa_id]["grupos"])
-    return jsonify({"text": texto})
+    projetos = _projetos_selecionados(body)
+    config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+
+    grupo_field_id = None
+    try:
+        grupo_field_id = _resolve_grupo_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
+        grupo_field_id = None
+
+    rows = fetch_resolvidos_hoje(config, grupo_field_id=grupo_field_id)
+
+    extra = {}
+    if grupo_field_id:
+        try:
+            extra["por_grupo"] = _por_grupo_a_violar(rows, CAIXAS[caixa_id]["grupos"])
+        except Exception:
+            app.logger.exception("Falha ao agregar chamados por grupo")
+
+    if not _is_download(body):
+        # Só calcula pra exibição na tela (mesma economia já aplicada em
+        # Reabertos) — o download do arquivo de resolvidos não precisa desses
+        # contadores extras. As linhas completas (não só a contagem) vão
+        # junto, com as mesmas colunas das ações Reabertos/Violados — o card
+        # central usa isso pra abrir a tabela de cada um em collapse.
+        hoje = datetime.now(BRAZIL_TZ).date()
+        try:
+            reabertos_rows = fetch_chamados_reabertos(config, hoje, hoje, incluir_fornecedor=True)
+            extra["reabertos_hoje"] = len(reabertos_rows)
+            extra["reabertos_hoje_rows"] = reabertos_rows
+        except Exception:
+            app.logger.exception("Falha ao buscar reabertos hoje")
+        try:
+            violados_rows = fetch_chamados_violados(config, incluir_fornecedor=True, start_date=hoje, end_date=hoje)
+            extra["violados_hoje"] = len(violados_rows)
+            extra["violados_hoje_rows"] = violados_rows
+        except Exception:
+            app.logger.exception("Falha ao buscar violados hoje")
+
+    return _respond(rows, "resolvidos_hoje", body, extra=extra or None)
 
 
 @app.route("/api/relatorio-consolidado", methods=["POST"])
@@ -810,7 +921,15 @@ def criados_resolvidos():
     inicio, fim = _parse_periodo(body)
     projetos = _projetos_selecionados(body)
 
-    resultado = fetch_criados_x_resolvidos(config, CAIXAS[caixa_id]["grupos"], inicio, fim, projetos=projetos)
+    grupo_field_id = None
+    try:
+        grupo_field_id = _resolve_grupo_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
+
+    resultado = fetch_criados_x_resolvidos(
+        config, CAIXAS[caixa_id]["grupos"], inicio, fim, projetos=projetos, grupo_field_id=grupo_field_id
+    )
     return jsonify(resultado)
 
 

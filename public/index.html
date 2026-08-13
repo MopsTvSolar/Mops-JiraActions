@@ -60,7 +60,7 @@
         <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
         <div class="hint" style="margin-top: 8px">
           Vale para A violar, Violados, Extração completa, Categorias de Encerramento, Criados x Resolvidos,
-          Reabertos e Chamados Críticos.
+          Reabertos, Chamados Críticos, Analistas de Encerramento e Report Diário.
         </div>
       </div>
 
@@ -74,6 +74,8 @@
           <button id="btn-criados-resolvidos" class="btn-primary" type="button">📈 Criados x Resolvidos</button>
           <button id="btn-reabertos" class="btn-primary" type="button">🔄 Reabertos</button>
           <button id="btn-criticos" class="btn-primary" type="button">🚨 Chamados Críticos</button>
+          <button id="btn-analistas-encerramento" class="btn-primary" type="button">👤 Analistas de Encerramento</button>
+          <button id="btn-report-diario" class="btn-primary" type="button">📝 Report Diário</button>
         </div>
 
         <div id="result-banner"></div>
@@ -224,7 +226,22 @@
         <div id="criados-resolvidos-results" class="hidden" style="margin-top: 14px">
           <span class="date-badge" id="cr-date" style="margin-bottom: 10px"></span>
           <div id="cr-summary-cards" class="summary-cards"></div>
-          <div id="cr-prazo-donut" class="hidden" style="margin: 0 0 14px"></div>
+
+          <!-- Donut (dentro/fora do prazo) e o detalhamento por grupo ficam
+               lado a lado nessa linha — quebra pra baixo sozinho se a tela
+               for estreita demais pros dois juntos. -->
+          <div class="cr-donut-row">
+            <div id="cr-prazo-donut" class="hidden"></div>
+
+            <!-- Chamados encerrados por grupo (N1/N2/PROD): contador + média
+                 diária (total ÷ dias do período) — só quando o campo Grupo
+                 Solucionador foi resolvido no servidor. -->
+            <div id="cr-por-grupo-block" class="hidden">
+              <div class="section-label" style="margin-bottom: 8px">CHAMADOS ENCERRADOS POR GRUPO SOLUCIONADOR</div>
+              <div id="cr-por-grupo-cards" class="summary-cards"></div>
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table class="data-table" id="cr-table">
               <thead></thead>
@@ -298,6 +315,70 @@
             </table>
           </div>
         </div>
+
+        <!-- Analistas de Encerramento: Data início, Data fim e Analista ficam
+             juntos numa linha só, sempre visíveis de uma vez. A lista de
+             analistas recarrega sozinha quando as datas mudam (sem botão
+             "Gerar" no meio do caminho) e trocar de analista na busca não
+             mexe nas datas. -->
+        <div id="analistas-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="analistas-input-inicio">Data início</label>
+              <input id="analistas-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="analistas-input-fim">Data fim</label>
+              <input id="analistas-input-fim" type="date" />
+            </div>
+            <div class="field combobox" style="flex: 1 1 240px; min-width: 220px">
+              <label for="analistas-busca">Analista</label>
+              <input
+                id="analistas-busca"
+                type="text"
+                class="combobox-input"
+                placeholder="Buscar analista..."
+                autocomplete="off"
+                role="combobox"
+                aria-expanded="false"
+                aria-autocomplete="list"
+                aria-controls="analistas-dropdown"
+                disabled
+              />
+              <div id="analistas-dropdown" class="combobox-dropdown hidden" role="listbox"></div>
+            </div>
+            <button id="btn-analistas-cancelar" class="btn-secondary" type="button">Fechar</button>
+          </div>
+
+          <div class="hint" id="analistas-status" style="margin: -6px 0 14px"></div>
+
+          <!-- Detalhe do analista selecionado — some/reaparece conforme a
+               busca acima, sem mexer nas datas nem no restante do painel. -->
+          <div id="analista-detalhe" class="hidden" style="margin-top: 4px">
+            <div class="section-label" id="analista-detalhe-titulo" style="margin-bottom: 8px"></div>
+
+            <div id="analista-detalhe-cards" class="summary-cards"></div>
+
+            <div class="section-label" style="margin: 14px 0 8px">AGUARDANDO FORNECEDOR</div>
+            <div class="table-wrap">
+              <table class="data-table" id="analista-fornecedor-table">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="section-label" style="margin: 14px 0 8px">TOP CATEGORIAS DE ENCERRAMENTO</div>
+            <div class="table-wrap">
+              <table class="data-table" id="analista-categorias-table">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="section-label" style="margin: 14px 0 8px">CALENDÁRIO</div>
+            <div id="analista-calendario"></div>
+          </div>
+        </div>
       </div>
 
       <!-- ===== Tela de resultados: KPIs + tabela da última extração ===== -->
@@ -318,6 +399,53 @@
         <div id="heatmap-block" class="hidden" style="margin-bottom: 14px">
           <div class="top-assignees-title">Chamados a violar — próximos 7 dias</div>
           <div class="heatmap-grid" id="heatmap-grid"></div>
+        </div>
+
+        <!-- Só aparece no Report Diário: card central com os 3 números do dia
+             juntos (resolvidos / violados / reabertos), cada um numa cor.
+             Clicar em qualquer um abre/fecha (collapse) a tabela daquele
+             grupo logo abaixo, com as mesmas colunas das ações de origem
+             (Reabertos/Violados) — cada painel abre e fecha independente. -->
+        <div id="report-diario-hero" class="hidden" style="margin-bottom: 14px">
+          <div class="hero-card">
+            <div class="hero-numbers">
+              <span id="hero-resolvidos" class="hero-number tone-accent hero-clickable" data-hero="resolvidos"></span>
+              <span class="hero-sep">/</span>
+              <span id="hero-violados" class="hero-number tone-danger hero-clickable" data-hero="violados"></span>
+              <span class="hero-sep">/</span>
+              <span id="hero-reabertos" class="hero-number tone-warning hero-clickable" data-hero="reabertos"></span>
+            </div>
+            <div class="hero-labels">
+              <span class="tone-accent hero-clickable" data-hero="resolvidos">Resolvidos</span>
+              <span class="tone-danger hero-clickable" data-hero="violados">Violados</span>
+              <span class="tone-warning hero-clickable" data-hero="reabertos">Reabertos</span>
+            </div>
+          </div>
+
+          <div id="hero-collapse-resolvidos" class="collapse" style="margin-top: 10px">
+            <div class="table-wrap">
+              <table class="data-table" id="hero-table-resolvidos">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="hero-collapse-violados" class="collapse" style="margin-top: 10px">
+            <div class="table-wrap">
+              <table class="data-table" id="hero-table-violados">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="hero-collapse-reabertos" class="collapse" style="margin-top: 10px">
+            <div class="table-wrap">
+              <table class="data-table" id="hero-table-reabertos">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <div id="summary-cards" class="summary-cards"></div>
@@ -354,6 +482,14 @@
           </table>
         </div>
         <div id="table-note" class="hint" style="margin-top: 8px"></div>
+
+        <!-- Só aparece no Report Diário (caixa Mops Solar) — quem do roster
+             fixo de Analistas de Encerramento não teve nenhum chamado
+             encerrado hoje. Cálculo local, não pede nada novo ao Jira. -->
+        <div id="sem-chamados-block" class="hidden" style="margin-top: 14px">
+          <div class="section-label" style="margin-bottom: 8px">SEM CHAMADOS ENCERRADOS HOJE</div>
+          <div id="sem-chamados-lista" class="tag-list"></div>
+        </div>
       </section>
 
       <!-- ===== Relatório Geral: escolha em checkbox quais ações incluir, tudo junto ===== -->
@@ -419,7 +555,6 @@
       <div class="card">
         <div class="report-header">
           <div class="section-label" style="margin: 0">REPORTS</div>
-          <button id="btn-report-diario" class="btn-primary" type="button">📝 Report Diário</button>
           <button id="btn-report-consolidado" class="btn-primary" type="button">📊 Relatório Consolidado</button>
           <span class="spacer"></span>
           <button id="btn-report-copiar" class="btn-secondary" type="button" disabled>Copiar</button>
@@ -480,7 +615,8 @@
             <p>Chamados cujo SLA de resolução já estourou (tempo negativo).</p>
             <p>Também mostra a contagem por turno, com base no horário em que o SLA estourou ("sla_estourou_em"): Turno 1 (07:00–09:00), Turno comercial (09:01–18:00) e Turno 2 (18:01–23:59). Estouros de madrugada (00:00–06:59) aparecem num turno "Fora do horário" à parte, só quando houver algum.</p>
             <p><strong>Tudo / Hoje / Personalizado:</strong> filtro opcional sobre o mesmo "sla_estourou_em" — "Tudo" não filtra nada (todos os violados atuais), "Hoje" restringe ao dia de hoje e "Personalizado" pede início/fim. O filtro é aplicado em cima do resultado já buscado (não muda a JQL), então também vale para o download.</p>
-            <p>Também mostra uma tabela "VIOLADOS POR DIA", com a quantidade de chamados por dia de estouro do SLA — dias sem nenhum violado não entram na tabela. A coluna "Reaberto?" mostra "Sim" (tag) quando ao menos um dos violados daquele dia já passou por status "Reaberto".</p>
+            <p>Também mostra uma tabela "VIOLADOS POR DIA", com a coluna "Violados" contando quantos chamados por dia de estouro do SLA — dias sem nenhum violado nem nenhum previsto (ver abaixo) não entram na tabela. A coluna "Reaberto?" mostra "Sim" (tag) quando ao menos um dos violados daquele dia já passou por status "Reaberto".</p>
+            <p><strong>Previsto pra violar</strong> (coluna antes de "Violados", só com "Hoje" ou "Personalizado", nunca em "Tudo"): quantos chamados tinham a data PREVISTA de estouro do SLA caindo naquele dia, violado ou não — inclui os que acabaram sendo resolvidos antes de violar (por isso pode ser maior que "Violados"). Busca separada: <code>status != "Cancelado" AND created no intervalo de (início do período − 7 dias) até o fim do período</code> — qualquer outro status entra (aberto, resolvido, encerrado etc.), só "Cancelado" fica de fora. O limite de criação é necessário: sem ele a busca varre o histórico inteiro do grupo/projeto e não termina (testado, estourou 5 minutos).</p>
             <p>A tabela de chamados traz uma coluna "reaberto" (Sim/Não): uma consulta extra (<code>key IN (chamados encontrados) AND status WAS "Reaberto"</code>) marca quem já passou por "Reaberto" em algum momento, independente do status atual.</p>
           </dd>
 
@@ -497,6 +633,7 @@
             <p><strong>Resolvidos:</strong> mesma caixa/projetos, mas <code>status IN ("Resolvido", "Encerrado") AND resolutiondate no período</code>.</p>
             <p>Cada chamado entra no dia (data local, sem hora) do respectivo campo — a tabela mostra a comparação dia a dia dentro do período informado, além dos totais e do saldo (criados − resolvidos). A coluna "Seta" sobe (▲) quando o dia resolveu mais do que criou e desce (▼) quando resolveu menos.</p>
             <p>Também mostra, entre os resolvidos (Resolvido + Encerrado), o percentual dentro do prazo x fora do prazo de SLA "Tempo de Resolução" — mesmo campo/lógica do Relatório Consolidado. Chamados sem esse campo preenchido não entram em nenhuma das duas contagens.</p>
+            <p><strong>Chamados encerrados por grupo</strong> (N1/N2/PROD, lado a lado com o donut acima): dos resolvidos, quantos são de cada Grupo Solucionador, mais a média diária (total do grupo dividido pelo número de dias do período selecionado) e o <strong>TMA</strong> aproximado (16h de expediente ÷ média diária, em horas por chamado) — é uma estimativa a partir do volume, não o tempo real que o chamado passa "Em atendimento" (isso exigiria o changelog de status, chamado por chamado, e ficaria bem mais lento).</p>
           </dd>
 
           <dt>🔄 Reabertos</dt>
@@ -518,9 +655,17 @@
             <p><strong>Escalonamento Informal (grupo 3):</strong> dentro da mesma base, <code>"Responsável pela Solicitação MOPS" is not EMPTY</code> — uma linha por responsável, com o total de chamados priorizados por ele e quantos já estão resolvidos (status IN "Resolvido"/"Encerrado"), mais uma linha de totais somados no fim da tabela.</p>
           </dd>
 
+          <dt>👤 Analistas de Encerramento</dt>
+          <dd>
+            <p>Específico da caixa <strong>Mops Solar</strong> — o roster fixo é de analistas dessa caixa, então o botão só aparece nela (some em Mops Tv do Futuro) e a rota recusa a chamada se a caixa não for Solar.</p>
+            <p>Data início, Data fim e o campo de busca de Analista ficam numa linha só, sempre visíveis. O dropdown mostra um roster fixo de 21 analistas (combobox customizado, com destaque do trecho batido, busca por texto tolerante a acento) — não depende do período nem faz nenhuma chamada ao Jira só pra montar a lista.</p>
+            <p><strong>Detalhe do analista</strong> (ao selecionar um nome no dropdown, respeitando o período informado): total de <code>assignee = "Nome"</code> com <code>status IN ("Resolvido", "Encerrado")</code> resolvidos no período; total com <code>status WAS "Reaberto"</code> no período e o percentual sobre o total geral (todos os analistas) de Resolvido/Encerrado no mesmo período; chamados desse analista com <code>status = "Aguardando Fornecedor"</code> agrupados por fornecedor responsável (com linha de total somado); as 3 categorias de encerramento mais usadas entre os chamados resolvidos dele; e um calendário com um quadrado por dia do período, mostrando quantos chamados foram encerrados/resolvidos (E) e reabertos (R) naquele dia. Trocar a data limpa o detalhe já mostrado (os números eram do período anterior) — é só selecionar o analista de novo pra recalcular.</p>
+          </dd>
+
           <dt>📝 Report Diário</dt>
           <dd>
-            <p>Para cada Grupo Solucionador (e um resumo com os 3 juntos): chamados com <code>status = "Resolvido"</code> resolvidos hoje (separado por projeto Central de Incidentes/Abertura de Chamados), a mesma busca de "A violar hoje", chamados com <code>status = "Aguardando Fornecedor"</code>, e chamados já violados cujo estouro caiu hoje.</p>
+            <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND status = "Resolvido" AND resolutiondate no dia de hoje (00:00 às 23:59)</code>
+            <p>Ação direta, sem diálogo — clicar já busca. Cards por grupo (N1/N2/PROD) com o ranking de "Top responsáveis" de cada um; mais dois contadores do dia: <strong>Reabertos hoje</strong> (<code>status WAS "Reaberto"</code>, mesma convenção de "created" no dia usada em Reabertos) e <strong>Violados hoje</strong> (mesma busca de Violados, filtrando pelo horário de estouro do SLA no dia); e a <strong>tabela de resolvidos</strong> do dia, linha a linha, com a seção "Sem chamados encerrados hoje" logo abaixo (caixa Mops Solar).</p>
           </dd>
 
           <dt>📊 Relatório Consolidado</dt>

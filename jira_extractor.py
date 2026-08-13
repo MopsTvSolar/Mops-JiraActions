@@ -83,6 +83,11 @@ BRAZIL_TZ = timezone(timedelta(hours=-3))
 SLA_WINDOW_START = (7, 0, 0)
 SLA_WINDOW_END = (23, 59, 59)
 
+# TMA aproximado (não vem do changelog de status, só uma estimativa a partir
+# da média diária de encerramentos): 16h de expediente ÷ média diária de
+# chamados encerrados = horas médias "disponíveis" por chamado.
+HORAS_TRABALHO_DIA = 16
+
 # Campos de SLA "Tempo de Resolução" identificados neste Jira: o ID varia por
 # esquema de projeto (PDST usa customfield_10419, INC usa customfield_10629).
 # Para cada chamado, usa-se o primeiro destes campos que estiver preenchido.
@@ -576,6 +581,52 @@ def fetch_chamados_violados(config, incluir_fornecedor=False, start_date=None, e
     return rows
 
 
+def fetch_previstos_violar_por_dia(config, start_date, end_date):
+    """Pra cada dia do período, as keys dos chamados que tinham a data
+    PREVISTA de estouro do SLA ("sla_estoura_em") caindo naquele dia — inclui
+    os que acabaram sendo resolvidos antes de violar (evitaram a violação),
+    que fetch_chamados_violados não pega (ela só busca quem já violou de
+    fato, "Tempo de Resolução" < 0h). Devolve {dia: [keys]} — a quantidade é
+    só len() disso, mas as keys também dão pra listar no hover da tela.
+
+    Escopo da busca: TODO chamado do grupo/projeto, em qualquer status,
+    exceto "Cancelado" — mas limitado a quem foi CRIADO entre (início do
+    período − 7 dias) e o fim do período. Sem esse limite a busca varre o
+    histórico inteiro do grupo/projeto e não termina em tempo nenhum
+    (testado: estourou 5 minutos sem terminar); com ele, cobre até prazos de
+    SLA de até 7 dias antes do início do período. Só faz sentido com período
+    limitado (nunca no modo "Tudo", sem período, de Violados).
+    """
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    criado_desde = (start_date - timedelta(days=7)).strftime("%Y-%m-%d")
+    criado_ate = end_date.strftime("%Y-%m-%d")
+    jql = (
+        f'({base_jql}) AND status != "Cancelado" '
+        f'AND created >= "{criado_desde} 00:00" AND created <= "{criado_ate} 23:59"'
+    )
+
+    log.info("Buscando previstos para violar por dia com JQL: %s", jql)
+    issues = fetch_issues(config, jql, SLA_RESOLUTION_FIELDS)
+
+    window_start = datetime.combine(start_date, datetime.min.time(), tzinfo=BRAZIL_TZ)
+    window_end = datetime.combine(end_date, datetime.min.time(), tzinfo=BRAZIL_TZ).replace(
+        hour=23, minute=59, second=59
+    )
+
+    chaves_por_dia = {}
+    for issue in issues:
+        _campo, breach_dt, _breached = extract_sla_breach(issue.get("fields", {}))
+        if breach_dt and window_start <= breach_dt <= window_end:
+            dia = breach_dt.strftime("%Y-%m-%d")
+            chaves_por_dia.setdefault(dia, []).append(issue.get("key"))
+
+    return chaves_por_dia
+
+
 def fetch_chamados_reabertos(config, start_date, end_date, incluir_fornecedor=False):
     """Busca chamados que passaram por 'Reaberto' (status WAS "Reaberto")
     dentro do período informado, reaproveitando os filtros base (grupo/
@@ -620,6 +671,75 @@ def fetch_chamados_reabertos(config, start_date, end_date, incluir_fornecedor=Fa
     return rows
 
 
+def fetch_resolvidos_hoje(config, grupo_field_id=None):
+    """Chamados com status "Resolvido" e resolutiondate no dia atual (fuso
+    BRAZIL_TZ), reaproveitando os filtros base (grupo/projeto) da JQL
+    configurada. Usado pela ação web "Report Diário" — o ranking de "Top
+    Analistas do dia" sai de graça a partir dessas linhas (mesmo
+    _build_summary/top_assignees que as outras ações "tabela" já usam, não
+    precisa de nenhuma consulta extra).
+
+    "grupo_field_id" é opcional (mesmo padrão de fetch_chamados_a_violar):
+    quando informado, o valor do Grupo Solucionador é lido junto e incluído
+    em cada linha como "grupo_solucionador", pra dar o detalhamento N1/N2/PROD
+    sem precisar de uma busca extra por grupo.
+
+    Cada linha também traz "sla_estourou_em" (mesma coluna/mesmo cálculo da
+    ação Violados, via extract_sla_breach) — preenchido só quando o chamado
+    realmente violou o SLA em algum momento; vazio pros que foram resolvidos
+    dentro do prazo.
+    """
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    hoje = datetime.now(BRAZIL_TZ).date()
+    start_str = f"{hoje.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{hoje.strftime('%Y-%m-%d')} 23:59"
+    jql = (
+        f'({base_jql}) AND status = "Resolvido" '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+
+    fields = [
+        "summary",
+        "status",
+        "assignee",
+        "reporter",
+        "project",
+        "issuetype",
+        "resolutiondate",
+    ] + SLA_RESOLUTION_FIELDS
+    if grupo_field_id:
+        fields = fields + [grupo_field_id]
+
+    log.info("Buscando chamados resolvidos hoje com JQL: %s", jql)
+    issues = fetch_issues(config, jql, fields)
+
+    rows = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        _sla_campo, breach_dt, breached = extract_sla_breach(issue_fields)
+        row = {
+            "key": issue.get("key"),
+            "summary": issue_fields.get("summary"),
+            "status": _extract(issue_fields.get("status"), "name"),
+            "assignee": _extract(issue_fields.get("assignee"), "displayName"),
+            "reporter": _extract(issue_fields.get("reporter"), "displayName"),
+            "project": _extract(issue_fields.get("project"), "key"),
+            "issuetype": _extract(issue_fields.get("issuetype"), "name"),
+            "resolutiondate": issue_fields.get("resolutiondate"),
+            "sla_estourou_em": breach_dt.strftime("%Y-%m-%d %H:%M:%S") if breach_dt and breached else None,
+        }
+        if grupo_field_id:
+            row["grupo_solucionador"] = _extract_grupo_solucionador(issue_fields.get(grupo_field_id))
+        rows.append(row)
+
+    rows.sort(key=lambda r: r["key"])
+    return rows
+
+
 def fetch_total_criados_periodo(config, start_date, end_date):
     """Conta quantos chamados foram criados (created) no período informado,
     reaproveitando os filtros base (grupo/projeto) da JQL configurada — usado
@@ -641,6 +761,106 @@ def fetch_total_criados_periodo(config, start_date, end_date):
 def _grupo_clause(grupos):
     grupos_str = ", ".join(f'"{g}"' for g in grupos)
     return f'"Grupo Solucionador[Group Picker (single group)]" IN ({grupos_str})'
+
+
+def fetch_detalhe_analista(config, grupos, analista, start_date, end_date, projetos=None, categoria_field_id=None):
+    """Detalhe de um analista específico, dentro do período informado (grupo/
+    projetos da caixa atual):
+
+    - Total de chamados Encerrados/Resolvidos (assignee = analista, status IN
+      ("Resolvido", "Encerrado"), resolutiondate no período).
+    - Total de reabertos (assignee = analista, status WAS "Reaberto", created
+      no período — mesma convenção do resto do app) e o percentual disso
+      sobre o total de resolvidos GERAIS no mesmo período (todos os
+      assignees, não só esse analista).
+    - Chamados em "Aguardando Fornecedor" do analista, agrupados por
+      "Fornecedor Responsável" (created no período).
+    - Top categorias de encerramento entre os Encerrados/Resolvidos do
+      analista (mesma população do primeiro item, reaproveitada — sem
+      consulta extra). "categoria_field_id" opcional: sem ele, sai vazio.
+    - Calendário: contagem por dia de Encerrados/Resolvidos (por
+      resolutiondate) e de reabertos (por created), cobrindo cada dia do
+      período — usado pra desenhar a visão de calendário na tela.
+    """
+    grupo_clause_all = _grupo_clause(grupos)
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
+    projeto_clause = f"project IN ({projetos_str})"
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    base_geral = f"{grupo_clause_all} AND {projeto_clause}"
+    analista_escapado = analista.replace('"', '\\"')
+    analista_clause = f'assignee = "{analista_escapado}"'
+
+    resolvidos_jql = (
+        f'{base_geral} AND {analista_clause} AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    resolvidos_fields = ["resolutiondate"] + ([categoria_field_id] if categoria_field_id else [])
+    resolvidos_issues = fetch_issues(config, resolvidos_jql, resolvidos_fields)
+    total_encerrados_resolvidos = len(resolvidos_issues)
+
+    reabertos_jql = (
+        f'{base_geral} AND {analista_clause} AND status WAS "Reaberto" '
+        f'AND created >= "{start_str}" AND created <= "{end_str}"'
+    )
+    reabertos_issues = fetch_issues(config, reabertos_jql, ["created"])
+    total_reabertos = len(reabertos_issues)
+
+    resolvidos_gerais_jql = (
+        f'{base_geral} AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    total_resolvidos_gerais = len(fetch_issues(config, resolvidos_gerais_jql, ["key"]))
+    percentual_reabertos = (
+        round(total_reabertos / total_resolvidos_gerais * 100, 1) if total_resolvidos_gerais else 0.0
+    )
+
+    fornecedor_jql = (
+        f'{base_geral} AND {analista_clause} AND status = "Aguardando Fornecedor" '
+        f'AND created >= "{start_str}" AND created <= "{end_str}"'
+    )
+    fornecedor_issues = fetch_issues(config, fornecedor_jql, FORNECEDOR_RESPONSAVEL_FIELDS)
+    fornecedor_counts = Counter()
+    for issue in fornecedor_issues:
+        nome_fornecedor = extract_fornecedor(issue.get("fields", {})) or "Sem fornecedor"
+        fornecedor_counts[nome_fornecedor] += 1
+    por_fornecedor = [{"fornecedor": nome, "total": total} for nome, total in fornecedor_counts.most_common()]
+
+    categoria_counts = Counter()
+    if categoria_field_id:
+        for issue in resolvidos_issues:
+            valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
+            categoria_counts.update(valores)
+    top_categorias = [
+        {"categoria": categoria, "total": total} for categoria, total in categoria_counts.most_common(3)
+    ]
+
+    encerrados_por_dia = Counter(
+        (issue.get("fields", {}).get("resolutiondate") or "")[:10] for issue in resolvidos_issues
+    )
+    reabertos_por_dia = Counter(
+        (issue.get("fields", {}).get("created") or "")[:10] for issue in reabertos_issues
+    )
+    calendario = []
+    dia_atual = start_date
+    while dia_atual <= end_date:
+        chave = dia_atual.strftime("%Y-%m-%d")
+        calendario.append({
+            "data": chave,
+            "encerrados_resolvidos": encerrados_por_dia.get(chave, 0),
+            "reabertos": reabertos_por_dia.get(chave, 0),
+        })
+        dia_atual += timedelta(days=1)
+
+    return {
+        "total_encerrados_resolvidos": total_encerrados_resolvidos,
+        "total_reabertos": total_reabertos,
+        "total_resolvidos_gerais": total_resolvidos_gerais,
+        "percentual_reabertos": percentual_reabertos,
+        "por_fornecedor": por_fornecedor,
+        "top_categorias": top_categorias,
+        "calendario": calendario,
+    }
 
 
 def fetch_chamados_criticos(
@@ -959,7 +1179,7 @@ def fetch_categoria_reabertos(config, grupos, start_date, end_date, categoria_fi
     return counts, total
 
 
-def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=None):
+def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=None, grupo_field_id=None):
     """Compara, dia a dia dentro do período informado, quantos chamados foram
     criados (created) e quantos foram resolvidos (status IN ("Resolvido",
     "Encerrado") AND resolutiondate no período) — mesma ideia do gadget
@@ -972,6 +1192,14 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
     ficaram dentro do prazo de SLA "Tempo de Resolução" x quantos violaram —
     mesma lógica/campo já usados no Relatório Consolidado. Chamados sem esse
     campo de SLA preenchido não entram em nenhuma das duas contagens.
+
+    "grupo_field_id" é opcional (mesmo padrão best-effort de fetch_chamados_a_violar):
+    quando informado, calcula também "por_grupo" — pra cada grupo da caixa,
+    o total de chamados encerrados no período, a média diária (total
+    dividido pelo número de dias do período selecionado) e o TMA aproximado
+    em horas (HORAS_TRABALHO_DIA ÷ média diária — não vem do changelog de
+    status, é só uma estimativa a partir do volume). Sem esse campo,
+    "por_grupo" sai None.
     """
     grupo_clause_all = _grupo_clause(grupos)
     projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
@@ -986,7 +1214,10 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
         f'{grupo_clause_all} AND {projeto_clause} AND status IN ("Resolvido", "Encerrado") '
         f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
     )
-    resolvidos_issues = fetch_issues(config, resolvidos_jql, ["resolutiondate"] + SLA_RESOLUTION_FIELDS)
+    resolvidos_fields = ["resolutiondate"] + SLA_RESOLUTION_FIELDS
+    if grupo_field_id:
+        resolvidos_fields = resolvidos_fields + [grupo_field_id]
+    resolvidos_issues = fetch_issues(config, resolvidos_jql, resolvidos_fields)
 
     def _dia(valor_iso):
         return valor_iso[:10] if valor_iso else None
@@ -1020,6 +1251,27 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
     percentual_dentro_prazo = round(resolvidos_dentro_prazo / total_com_sla * 100, 1) if total_com_sla else 0.0
     percentual_fora_prazo = round(resolvidos_fora_prazo / total_com_sla * 100, 1) if total_com_sla else 0.0
 
+    num_dias = (end_date - start_date).days + 1
+
+    por_grupo = None
+    if grupo_field_id:
+        por_grupo = []
+        for grupo in grupos:
+            total_grupo = sum(
+                1
+                for issue in resolvidos_issues
+                if _extract_grupo_solucionador(issue.get("fields", {}).get(grupo_field_id)) == grupo
+            )
+            media_diaria = round(total_grupo / num_dias, 1)
+            por_grupo.append(
+                {
+                    "grupo": grupo,
+                    "total": total_grupo,
+                    "media_diaria": media_diaria,
+                    "tma_horas": round(HORAS_TRABALHO_DIA / media_diaria, 1) if media_diaria else None,
+                }
+            )
+
     return {
         "total_criados": len(criados_issues),
         "total_resolvidos": len(resolvidos_issues),
@@ -1028,6 +1280,7 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
         "percentual_dentro_prazo": percentual_dentro_prazo,
         "percentual_fora_prazo": percentual_fora_prazo,
         "dias": dias,
+        "por_grupo": por_grupo,
     }
 
 
