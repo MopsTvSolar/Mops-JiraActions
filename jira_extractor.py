@@ -763,7 +763,9 @@ def _grupo_clause(grupos):
     return f'"Grupo Solucionador[Group Picker (single group)]" IN ({grupos_str})'
 
 
-def fetch_detalhe_analista(config, grupos, analista, start_date, end_date, projetos=None, categoria_field_id=None):
+def fetch_detalhe_analista(
+    config, grupos, analista, start_date, end_date, projetos=None, categoria_field_id=None, account_id=None
+):
     """Detalhe de um analista específico, dentro do período informado (grupo/
     projetos da caixa atual):
 
@@ -781,6 +783,15 @@ def fetch_detalhe_analista(config, grupos, analista, start_date, end_date, proje
     - Calendário: contagem por dia de Encerrados/Resolvidos (por
       resolutiondate) e de reabertos (por created), cobrindo cada dia do
       período — usado pra desenhar a visão de calendário na tela.
+
+    "account_id" (recomendado): quando informado, filtra por
+    assignee = "<accountId>" em vez do nome como texto. Testado direto na
+    API: `assignee = "DIEGO VERGA TEIXEIRA"` (nome) devolve 0 resultados
+    mesmo com 46 chamados reais dele no período — o Jira Cloud não resolve
+    esse texto de forma confiável quando há ambiguidade de nome (outros
+    "TEIXEIRA"/"VERGA" cadastrados). `assignee = "<accountId>"` resolve os
+    46 corretamente. Sem account_id, cai no nome como texto (mesmo
+    comportamento de antes — não confiável, mantido só como fallback).
     """
     grupo_clause_all = _grupo_clause(grupos)
     projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
@@ -788,8 +799,11 @@ def fetch_detalhe_analista(config, grupos, analista, start_date, end_date, proje
     start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
     end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
     base_geral = f"{grupo_clause_all} AND {projeto_clause}"
-    analista_escapado = analista.replace('"', '\\"')
-    analista_clause = f'assignee = "{analista_escapado}"'
+    if account_id:
+        analista_clause = f'assignee = "{account_id}"'
+    else:
+        analista_escapado = analista.replace('"', '\\"')
+        analista_clause = f'assignee = "{analista_escapado}"'
 
     resolvidos_jql = (
         f'{base_geral} AND {analista_clause} AND status IN ("Resolvido", "Encerrado") '

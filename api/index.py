@@ -375,6 +375,49 @@ def _resolve_grupo_field_id(config):
     return _resolve_field_id(config, GRUPO_FIELD_NAME)
 
 
+_account_id_cache = {}
+
+
+def _resolve_account_id(config, nome_completo):
+    """Resolve o accountId de um usuário pelo nome (mesmo texto do
+    "assignee" exibido no Jira) — necessário porque `assignee = "Nome"` em
+    JQL não é confiável no Cloud quando há ambiguidade de nome: testado
+    direto na API, `assignee = "DIEGO VERGA TEIXEIRA"` devolveu 0 resultados
+    mesmo havendo 46 chamados reais dele no período (provavelmente por causa
+    de outros "TEIXEIRA"/"VERGA" cadastrados no mesmo Jira), enquanto
+    `assignee = "<accountId>"` resolveu os 46 certinho. Cache em memória por
+    (URL, nome em maiúsculas), mesmo padrão de _resolve_field_id."""
+    cache_key = (config["url"], nome_completo.strip().upper())
+    cached = _account_id_cache.get(cache_key)
+    if cached:
+        return cached
+
+    resp = requests.get(
+        f"{config['url']}/rest/api/3/user/search",
+        auth=(config["email"], config["token"]),
+        headers={"Accept": "application/json"},
+        params={"query": nome_completo},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    usuarios = resp.json()
+
+    alvo = nome_completo.strip().upper()
+    encontrados = [u for u in usuarios if (u.get("displayName") or "").strip().upper() == alvo]
+    if not encontrados:
+        raise JiraExtractorError(f'Não encontrei o usuário "{nome_completo}" no Jira.')
+    if len(encontrados) > 1:
+        app.logger.warning(
+            'Mais de um usuário chamado "%s" no Jira — usando o primeiro: %s.',
+            nome_completo,
+            encontrados[0]["accountId"],
+        )
+
+    account_id = encontrados[0]["accountId"]
+    _account_id_cache[cache_key] = account_id
+    return account_id
+
+
 def _resolve_categoria_encerramento_field_id(config):
     return _resolve_field_id(config, CATEGORIA_ENCERRAMENTO_FIELD_NAME)
 
@@ -722,6 +765,12 @@ def analista_detalhe():
         app.logger.exception("Falha ao resolver o campo Categoria de Encerramento")
         categoria_field_id = None
 
+    # Obrigatório (não best-effort): `assignee = "Nome"` em JQL não resolve
+    # de forma confiável no Cloud quando há ambiguidade de nome — sem o
+    # accountId a busca pode voltar zerada/incompleta silenciosamente (foi
+    # exatamente o que aconteceu, testado e confirmado direto na API).
+    account_id = _resolve_account_id(config, analista)
+
     resultado = fetch_detalhe_analista(
         config,
         CAIXAS[caixa_id]["grupos"],
@@ -730,6 +779,7 @@ def analista_detalhe():
         fim,
         projetos=projetos,
         categoria_field_id=categoria_field_id,
+        account_id=account_id,
     )
     return jsonify(resultado)
 
