@@ -12,8 +12,6 @@
   const appView = $("app-view");
   const loginError = $("login-error");
   const resultBanner = $("result-banner");
-  const reportBox = $("report-box");
-  const consolidadoDialog = $("consolidado-dialog");
   const resultsCard = $("results-card");
 
   const otherActionButtons = [
@@ -24,13 +22,11 @@
     $("btn-violar-semanal"),
     $("btn-violados"),
     $("btn-report-diario"),
-    $("btn-report-consolidado"),
     $("btn-categorias-encerramento"),
     $("btn-criados-resolvidos"),
     $("btn-reabertos"),
     $("btn-criticos"),
     $("btn-analistas-encerramento"),
-    $("btn-report-geral"),
     $("btn-report-vini"),
   ];
 
@@ -60,7 +56,12 @@
   // Espelha PROJETOS_DISPONIVEIS em api/index.py — vale para A violar,
   // Violados, Extração completa e Categorias de Encerramento (Report
   // Diário/Consolidado não usam isso, têm lógica própria de projeto).
-  const PROJETOS_DISPONIVEIS = ["Central de Incidentes", "Abertura de Chamados"];
+  // "label" é só o texto mostrado (INC/PDST); "value" continua sendo o
+  // nome real do projeto no Jira, que é o que vai pro servidor.
+  const PROJETOS_DISPONIVEIS = [
+    { value: "Central de Incidentes", label: "INC" },
+    { value: "Abertura de Chamados", label: "PDST" },
+  ];
 
   // Espelha STATUS_OPTIONS em api/index.py (mesma lista do jira_gui.py).
   const STATUS_OPTIONS = [
@@ -77,16 +78,22 @@
     "Cancelado",
   ];
 
+  // "options" aceita string simples (valor = rótulo, ex.: STATUS_OPTIONS)
+  // ou {value, label} quando o texto mostrado precisa ser diferente do
+  // valor enviado ao servidor (ex.: PROJETOS_DISPONIVEIS, "INC" na tela
+  // mas "Central de Incidentes" na JQL).
   function buildCheckboxes(container, options, namePrefix) {
     container.innerHTML = "";
     options.forEach((opcao, i) => {
+      const valor = typeof opcao === "object" ? opcao.value : opcao;
+      const rotulo = typeof opcao === "object" ? opcao.label : opcao;
       const label = document.createElement("label");
       const input = document.createElement("input");
       input.type = "checkbox";
       input.checked = true;
       input.id = `${namePrefix}-${i}`;
-      input.dataset.value = opcao;
-      label.append(input, document.createTextNode(` ${opcao}`));
+      input.dataset.value = valor;
+      label.append(input, document.createTextNode(` ${rotulo}`));
       container.append(label);
     });
   }
@@ -114,14 +121,12 @@
   const ALL_DIALOG_IDS = [
     "extracao-dialog",
     "violar-dialog",
-    "consolidado-dialog",
     "categorias-dialog",
     "criados-resolvidos-dialog",
     "reabertos-dialog",
     "violados-dialog",
     "criticos-dialog",
     "analistas-dialog",
-    "geral-dialog",
     "report-vini-dialog",
   ];
 
@@ -143,7 +148,6 @@
     $("sem-chamados-block").classList.add("hidden");
     $("report-diario-hero").classList.add("hidden");
     $("heatmap-block").classList.add("hidden");
-    $("geral-results").classList.add("hidden");
     $("report-vini-results").classList.add("hidden");
     hideHoverPopover();
   }
@@ -156,10 +160,6 @@
   let lastAction = null;
   let lastCaixa = null;
   let lastExtraBody = {};
-
-  // Seções acumuladas pela última execução do Relatório Geral, no formato que
-  // o backend espera para montar o PDF combinado (ver /api/relatorio-geral-pdf).
-  let lastGeralSecoes = [];
 
   const ACTION_LABELS = {
     "extracao-completa": "Extração completa",
@@ -202,14 +202,8 @@
       $("btn-reabertos-gerar"),
       $("btn-violados-gerar"),
       $("btn-criticos-gerar"),
-      $("btn-geral-gerar"),
       $("btn-vini-gerar"),
     ].forEach((btn) => (btn.disabled = busy));
-    if (!busy) {
-      $("btn-geral-pdf").disabled = lastGeralSecoes.length === 0;
-    } else {
-      $("btn-geral-pdf").disabled = true;
-    }
   }
 
   // Data vigente (data local do navegador), pra exibir discretamente junto
@@ -329,17 +323,10 @@
     document.querySelectorAll(".caixa-btn").forEach((b) => b.classList.toggle("active", b.dataset.caixa === "solar"));
     $("input-email").value = "";
     $("input-token").value = "";
-    reportBox.value = "";
-    $("btn-report-copiar").disabled = true;
-    $("btn-report-pdf").disabled = true;
-    $("btn-report-limpar").disabled = true;
     hideAllResults();
     lastAction = null;
     lastCaixa = null;
     lastExtraBody = {};
-    $("geral-blocks").innerHTML = "";
-    lastGeralSecoes = [];
-    $("btn-geral-pdf").disabled = true;
     closeAllDialogs();
     clearBanner();
     appView.classList.add("hidden");
@@ -347,7 +334,6 @@
     carregarJqlAtual();
     atualizarBotaoCriticos();
     atualizarBotaoReportVini();
-    buildGeralCheckboxes();
   });
 
   // Segurança extra: se o navegador restaurar a página do cache (bfcache),
@@ -380,7 +366,7 @@
 
   // "Chamados Críticos" (COTI) é uma classificação específica da caixa Mops
   // Solar — não faz sentido pra Mops Tv do Futuro, então o botão some fora
-  // dela (e a checkbox correspondente some do Relatório Geral).
+  // dela.
   function atualizarBotaoCriticos() {
     $("btn-criticos").classList.toggle("hidden", state.caixa !== "solar");
   }
@@ -415,21 +401,22 @@
       lastAction = null;
       lastCaixa = null;
       lastExtraBody = {};
-      reportBox.value = "";
-      $("btn-report-copiar").disabled = true;
-      $("btn-report-pdf").disabled = true;
-      $("btn-report-limpar").disabled = true;
-      $("geral-blocks").innerHTML = "";
-      lastGeralSecoes = [];
-      $("btn-geral-pdf").disabled = true;
       closeAllDialogs();
       clearBanner();
       carregarJqlAtual();
       atualizarBotaoCriticos();
       atualizarBotaoAnalistas();
       atualizarBotaoReportVini();
-      buildGeralCheckboxes();
     });
+  });
+
+  // Menu "AÇÕES" (barra lateral) expande/recolhe a lista de botões — mesmo
+  // padrão .collapse/.open já usado em todos os outros painéis do app.
+  $("btn-acoes-toggle").addEventListener("click", () => {
+    const grid = $("acoes-grid");
+    const abrindo = !grid.classList.contains("open");
+    grid.classList.toggle("open", abrindo);
+    $("acoes-toggle-icon").textContent = abrindo ? "▾" : "▸";
   });
 
   // ------------------------------------------------------------- ações
@@ -1271,54 +1258,6 @@
     }
   });
 
-  // ------------------------------------------------------------ reports
-  function showReport(text) {
-    reportBox.value = text;
-    $("btn-report-copiar").disabled = false;
-    $("btn-report-pdf").disabled = false;
-    $("btn-report-limpar").disabled = false;
-  }
-
-
-  $("btn-report-consolidado").addEventListener("click", () => {
-    closeAllDialogs("consolidado-dialog");
-    const hoje = new Date().toISOString().slice(0, 10);
-    $("input-inicio").value = hoje;
-    $("input-fim").value = hoje;
-    consolidadoDialog.classList.add("open");
-  });
-
-  $("btn-consolidado-cancelar").addEventListener("click", () => {
-    consolidadoDialog.classList.remove("open");
-  });
-
-  $("btn-consolidado-gerar").addEventListener("click", async () => {
-    const inicio = $("input-inicio").value;
-    const fim = $("input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    consolidadoDialog.classList.remove("open");
-    setBusy(true);
-    setBanner("Gerando relatório consolidado...", "info");
-    try {
-      const resp = await apiCall("/api/relatorio-consolidado", { inicio, fim, caixa: state.caixa });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao gerar relatório.", "error");
-        return;
-      }
-      showReport(data.text);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
   // -------------------------------------------- categorias de encerramento
   $("btn-categorias-encerramento").addEventListener("click", () => {
     const dialog = $("categorias-dialog");
@@ -1665,7 +1604,7 @@
   // "secao" pode vir no formato "chato" (Mops Solar: {categorias,
   // total_chamados, total_categorizados}) ou dividido por APP/BOX (Mops Tv
   // do Futuro: {app, box, outros?}) — buildCategoriaTableEl trata os dois
-  // (é a mesma função usada pelo Relatório Geral).
+  // (é a mesma função usada pelo Report Vini).
   function renderCategoriaTable(prefixo, secao, titulo) {
     const bloco = $(`categorias-${prefixo}-block`);
     bloco.innerHTML = "";
@@ -1750,13 +1689,11 @@
   });
 
   // Seta de tendência do dia: resolvidos > criados (backlog encolhendo) sobe,
-  // resolvidos < criados (backlog crescendo) desce. "ascii" usa "^"/"v" em vez
-  // dos triângulos Unicode — necessário para o PDF do Relatório Geral, cuja
-  // fonte padrão (Helvetica/WinAnsi) não tem esses glifos.
-  function setaTendencia(criados, resolvidos, ascii) {
-    if (resolvidos > criados) return ascii ? "^" : "▲";
-    if (resolvidos < criados) return ascii ? "v" : "▼";
-    return ascii ? "-" : "–";
+  // resolvidos < criados (backlog crescendo) desce.
+  function setaTendencia(criados, resolvidos) {
+    if (resolvidos > criados) return "▲";
+    if (resolvidos < criados) return "▼";
+    return "–";
   }
 
   function setaTendenciaClasse(criados, resolvidos) {
@@ -2341,13 +2278,10 @@
     }
   });
 
-  // Monta as "seções" no mesmo formato aceito por /api/relatorio-geral-pdf
-  // (já usado pelo Relatório Geral) a partir do resultado já em tela —
-  // mesma estrutura Resumo/Grupo/Reabertos/Categorias do PDF avulso gerado
-  // à mão antes desse botão existir.
-  // Monta as seções pro PDF com o mesmo visual da tela — cards coloridos
-  // (não texto corrido) e o donut de Dentro/Fora do prazo (ver
-  // _construir_cards_pdf/_construir_donut_pdf em jira_extractor.py).
+  // Monta as seções pro PDF (formato aceito por /api/relatorio-geral-pdf)
+  // com o mesmo visual da tela — cards coloridos (não texto corrido) e o
+  // donut de Dentro/Fora do prazo (ver _construir_cards_pdf/
+  // _construir_donut_pdf em jira_extractor.py).
   function viniSecoesPdf(data, inicio, fim) {
     const cr = data.criados_resolvidos;
     const saldo = cr.total_criados - cr.total_resolvidos;
@@ -2841,145 +2775,12 @@
   $("analistas-input-inicio").addEventListener("change", () => $("analista-detalhe").classList.add("hidden"));
   $("analistas-input-fim").addEventListener("change", () => $("analista-detalhe").classList.add("hidden"));
 
-  // --------------------------------------------------------- relatório geral
-  // Não é uma busca própria: reexecuta as ações já existentes (mesmos
-  // endpoints acima) com os filtros padrão (tudo marcado) e um período
-  // compartilhado, e empilha o resultado de cada uma num bloco só. O PDF
-  // combinado é montado no servidor a partir das seções acumuladas aqui.
-  const GERAL_ACOES = [
-    { id: "extracao-completa", label: "📋 Extração completa", endpoint: "/api/extracao-completa", kind: "tabela" },
-    { id: "violar-hoje", label: "⏰ A violar hoje", endpoint: "/api/violar-hoje", kind: "tabela" },
-    { id: "violar-amanha", label: "📅 A violar amanhã", endpoint: "/api/violar-amanha", kind: "tabela" },
-    { id: "violar-semanal", label: "📆 Plano semanal (7 dias)", endpoint: "/api/violar-semanal", kind: "semanal" },
-    { id: "violados", label: "🔴 Violados", endpoint: "/api/violados", kind: "tabela" },
-    {
-      id: "categorias-encerramento",
-      label: "🏷️ Categorias de Encerramento",
-      endpoint: "/api/categorias-encerramento",
-      kind: "categorias",
-    },
-    {
-      id: "criados-resolvidos",
-      label: "📈 Criados x Resolvidos",
-      endpoint: "/api/criados-resolvidos",
-      kind: "criados-resolvidos",
-    },
-    { id: "reabertos", label: "🔄 Reabertos", endpoint: "/api/reabertos", kind: "tabela" },
-    {
-      id: "chamados-criticos",
-      label: "🚨 Chamados Críticos",
-      endpoint: "/api/chamados-criticos",
-      kind: "criticos",
-      soloSolar: true,
-    },
-  ];
-
-  const ACOES_QUE_USAM_PROJETO = [
-    "extracao-completa",
-    "violar-hoje",
-    "violar-amanha",
-    "violar-semanal",
-    "violados",
-    "categorias-encerramento",
-    "criados-resolvidos",
-    "reabertos",
-    "chamados-criticos",
-  ];
-  const ACOES_QUE_EXIGEM_PERIODO = [
-    "categorias-encerramento",
-    "criados-resolvidos",
-    "reabertos",
-    "chamados-criticos",
-  ];
-
-  function buildGeralCheckboxes() {
-    const container = $("geral-acoes-checkboxes");
-    container.innerHTML = "";
-    GERAL_ACOES.filter((acao) => !acao.soloSolar || state.caixa === "solar").forEach((acao) => {
-      const label = document.createElement("label");
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = true;
-      input.id = `geral-acao-${acao.id}`;
-      input.dataset.value = acao.id;
-      label.append(input, document.createTextNode(` ${acao.label}`));
-      container.append(label);
-    });
-  }
-  buildGeralCheckboxes();
-
-  function geralBlockWrapper(titulo) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "geral-block";
-    const h = document.createElement("div");
-    h.className = "geral-block-title";
-    h.textContent = titulo;
-    wrapper.append(h);
-    $("geral-blocks").append(wrapper);
-    return wrapper;
-  }
-
-  // Mesma lógica de renderTable(), mas devolve um elemento novo em vez de
-  // escrever em #results-table — os blocos do Relatório Geral ficam
-  // empilhados, não podem competir pelo mesmo <table> fixo.
-  function buildDataTableEl(fields, rows) {
-    const holder = document.createElement("div");
-
-    if (!rows || !rows.length) {
-      const note = document.createElement("div");
-      note.className = "hint";
-      note.style.margin = "0";
-      note.textContent = "Nenhum chamado encontrado para os critérios atuais.";
-      holder.append(note);
-      return holder;
-    }
-
-    const wrap = document.createElement("div");
-    wrap.className = "table-wrap";
-    const table = document.createElement("table");
-    table.className = "data-table";
-    const thead = document.createElement("thead");
-    const tbody = document.createElement("tbody");
-
-    const trHead = document.createElement("tr");
-    fields.forEach((field) => {
-      const th = document.createElement("th");
-      th.textContent = field;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    rows.slice(0, MAX_ROWS_RENDERED).forEach((row) => {
-      const tr = document.createElement("tr");
-      fields.forEach((field) => {
-        const td = document.createElement("td");
-        td.textContent = escapeText(row[field]);
-        tr.append(td);
-      });
-      tbody.append(tr);
-    });
-
-    table.append(thead, tbody);
-    wrap.append(table);
-    holder.append(wrap);
-
-    if (rows.length > MAX_ROWS_RENDERED) {
-      const note = document.createElement("div");
-      note.className = "hint";
-      note.style.margin = "8px 0 0";
-      note.textContent = `Mostrando ${MAX_ROWS_RENDERED} de ${rows.length} chamados — baixe o arquivo pela ação individual para ver todos.`;
-      holder.append(note);
-    }
-
-    return holder;
-  }
-
   // Mops Tv do Futuro separa "Categoria de Encerramento" em sub-blocos por
   // "APP"/"BOX" (tag no fim do nome da categoria, resolvida no backend —
   // ver _dividir_categorias_tv) em vez de uma lista só como Mops Solar;
   // "secao" chega como {app, box, outros?} nesse caso, em vez do formato
   // "chato" {categorias, total_chamados, total_categorizados}. Usado tanto
-  // pela ação "Categorias de Encerramento" quanto pelo Relatório Geral.
+  // pela ação "Categorias de Encerramento" quanto pelo Report Vini.
   function buildCategoriaTableEl(titulo, secao) {
     if (secao.categorias) {
       const holder = document.createElement("div");
@@ -3045,7 +2846,7 @@
     return holder;
   }
 
-  // Linhas "Categoria/Quantidade/%" pro PDF do Relatório Geral — recursivo
+  // Linhas "Categoria/Quantidade/%" pro PDF do Report Vini — recursivo
   // pelo mesmo motivo do buildCategoriaTableEl acima (formato dividido de
   // Mops Tv do Futuro).
   function categoriaSecoesPdf(tituloBase, secao) {
@@ -3070,379 +2871,6 @@
     return partes;
   }
 
-  function renderGeralTabela(acao, data) {
-    const total = data.summary.total;
-    const wrapper = geralBlockWrapper(`${acao.label} — ${total} chamado${total === 1 ? "" : "s"}`);
-
-    const resumoLinhas = [`Total: ${total} chamado${total === 1 ? "" : "s"}`];
-    (data.por_grupo || []).forEach(({ grupo, total: t }) => resumoLinhas.push(`${grupo}: ${t}`));
-    (data.por_turno || []).forEach(({ turno, total: t }) => resumoLinhas.push(`${turno}: ${t}`));
-    if (data.summary.top_assignees && data.summary.top_assignees.length) {
-      const top = data.summary.top_assignees.map(([nome, c]) => `${nome} (${c})`).join(", ");
-      resumoLinhas.push(`Top responsáveis: ${top}`);
-    }
-    if (typeof data.percentual_reabertura === "number") {
-      resumoLinhas.push(
-        `Percentual de reabertura: ${data.percentual_reabertura}% (${total} de ${data.total_criados_periodo} criados no período)`
-      );
-    }
-
-    const resumoEl = document.createElement("div");
-    resumoEl.className = "geral-block-resumo";
-    resumoLinhas.forEach((linha) => {
-      const p = document.createElement("div");
-      p.textContent = linha;
-      resumoEl.append(p);
-    });
-    wrapper.append(resumoEl);
-    wrapper.append(buildDataTableEl(data.fields, data.rows));
-
-    lastGeralSecoes.push({
-      titulo: acao.label,
-      resumo: resumoLinhas,
-      tabela: data.rows && data.rows.length ? { fields: data.fields, rows: data.rows } : null,
-    });
-  }
-
-  function renderGeralSemanal(acao, data) {
-    const total = (data.rows || []).length;
-    const wrapper = geralBlockWrapper(`${acao.label} — ${total} chamado${total === 1 ? "" : "s"}`);
-
-    const dias = data.dias || [];
-    const max = dias.reduce((m, d) => Math.max(m, d.total), 0);
-    const heatWrap = document.createElement("div");
-    heatWrap.className = "heatmap-grid";
-    heatWrap.style.marginBottom = "10px";
-    dias.forEach((dia) => {
-      const tile = document.createElement("div");
-      const tom = heatTone(dia.total, max);
-      tile.className = "heat-tile" + (tom ? ` ${tom}` : "");
-      const label = document.createElement("span");
-      label.className = "heat-tile-label";
-      label.textContent = dia.dia_semana;
-      const value = document.createElement("span");
-      value.className = "heat-tile-value";
-      value.textContent = dia.total;
-      tile.append(label, value);
-      heatWrap.append(tile);
-    });
-    wrapper.append(heatWrap);
-    wrapper.append(buildDataTableEl(data.fields, data.rows));
-
-    const resumoLinhas = [`Total (7 dias): ${total}`, ...dias.map((d) => `${d.dia_semana}: ${d.total}`)];
-
-    lastGeralSecoes.push({
-      titulo: acao.label,
-      resumo: resumoLinhas,
-      tabela: data.rows && data.rows.length ? { fields: data.fields, rows: data.rows } : null,
-    });
-  }
-
-  function renderGeralCategorias(acao, data) {
-    const wrapper = geralBlockWrapper(acao.label);
-    const secoesPdf = [];
-
-    if (data.encerrados) {
-      wrapper.append(buildCategoriaTableEl("Encerrados", data.encerrados));
-      secoesPdf.push(...categoriaSecoesPdf(`${acao.label} — Encerrados`, data.encerrados));
-    }
-    if (data.reabertos) {
-      const div = document.createElement("div");
-      div.style.marginTop = "14px";
-      div.append(buildCategoriaTableEl("Reabertos", data.reabertos));
-      wrapper.append(div);
-      secoesPdf.push(...categoriaSecoesPdf(`${acao.label} — Reabertos`, data.reabertos));
-    }
-
-    lastGeralSecoes.push(...secoesPdf);
-  }
-
-  function renderGeralCriadosResolvidos(acao, data) {
-    const saldo = data.total_criados - data.total_resolvidos;
-    const wrapper = geralBlockWrapper(`${acao.label} — ${data.total_criados} criados / ${data.total_resolvidos} resolvidos`);
-
-    const resumoLinhas = [
-      `Criados no período: ${data.total_criados}`,
-      `Resolvidos no período (Encerrado/Resolvido): ${data.total_resolvidos}`,
-      `Saldo (criados − resolvidos): ${saldo}`,
-    ];
-    if (typeof data.percentual_dentro_prazo === "number") {
-      resumoLinhas.push(
-        `Dentro do prazo: ${data.resolvidos_dentro_prazo} (${data.percentual_dentro_prazo}%)`,
-        `Fora do prazo: ${data.resolvidos_fora_prazo} (${data.percentual_fora_prazo}%)`
-      );
-    }
-    const resumoEl = document.createElement("div");
-    resumoEl.className = "geral-block-resumo";
-    resumoLinhas.forEach((linha) => {
-      const p = document.createElement("div");
-      p.textContent = linha;
-      resumoEl.append(p);
-    });
-    wrapper.append(resumoEl);
-
-    const fields = ["Data", "Criados", "Resolvidos", "Seta"];
-    const dias = data.dias || [];
-    const rows = dias.map((d) => ({
-      Data: formatarDataBR(d.data),
-      Criados: d.criados,
-      Resolvidos: d.resolvidos,
-      Seta: setaTendencia(d.criados, d.resolvidos),
-    }));
-    wrapper.append(buildDataTableEl(fields, rows));
-
-    // O PDF (fonte Helvetica/WinAnsi) não tem os triângulos Unicode usados na
-    // tela — a seção enviada para /api/relatorio-geral-pdf usa a versão ASCII.
-    const rowsPdf = dias.map((d) => ({
-      Data: formatarDataBR(d.data),
-      Criados: d.criados,
-      Resolvidos: d.resolvidos,
-      Seta: setaTendencia(d.criados, d.resolvidos, true),
-    }));
-
-    lastGeralSecoes.push({
-      titulo: acao.label,
-      resumo: resumoLinhas,
-      tabela: rowsPdf.length ? { fields, rows: rowsPdf } : null,
-    });
-  }
-
-  function renderGeralCriticos(acao, data) {
-    const wrapper = geralBlockWrapper(`${acao.label} — ${data.percentual_criticos}% COTI`);
-
-    const resumoLinhas = [
-      `Total de chamados criados no período: ${data.total_criados}`,
-      `Total de COTI Abertos (WAS P0/P1/P2): ${data.total_criticos_abertos}`,
-      `Total real de COTI (IN P0/P1/P2 atualmente): ${data.total_criticos_atual}`,
-      `Pontuais (abertos − atual): ${data.total_pontuais} (${data.percentual_pontuais}%)`,
-      `Percentual de COTI sobre criados no período: ${data.percentual_criticos}%`,
-      `Chamados escalonados (Nível de Escalonamento): ${data.total_escalonados}`,
-      `Chamados abertos ainda (fora de Cancelado/Resolvido/Encerrado): ${data.total_escalonados_abertos}`,
-    ];
-    (data.por_nivel || []).forEach(({ nivel, total }) => resumoLinhas.push(`  ${nivel}: ${total}`));
-
-    const escalonamentoInformal = data.escalonamento_informal || [];
-    const somaPriorizados = escalonamentoInformal.reduce((s, r) => s + r.priorizados, 0);
-    const somaResolvidos = escalonamentoInformal.reduce((s, r) => s + r.resolvidos, 0);
-    resumoLinhas.push(
-      `Escalonamento informal — total priorizados: ${somaPriorizados}, total resolvidos: ${somaResolvidos}`
-    );
-
-    const resumoEl = document.createElement("div");
-    resumoEl.className = "geral-block-resumo";
-    resumoLinhas.forEach((linha) => {
-      const p = document.createElement("div");
-      p.textContent = linha;
-      resumoEl.append(p);
-    });
-    wrapper.append(resumoEl);
-
-    const informalFields = ["Responsável", "Priorizados", "Resolvidos"];
-    const informalRows = escalonamentoInformal.map((r) => ({
-      Responsável: r.responsavel,
-      Priorizados: r.priorizados,
-      Resolvidos: r.resolvidos,
-    }));
-    if (informalRows.length) {
-      informalRows.push({ Responsável: "Total", Priorizados: somaPriorizados, Resolvidos: somaResolvidos });
-      wrapper.append(buildDataTableEl(informalFields, informalRows));
-    }
-
-    lastGeralSecoes.push({
-      titulo: acao.label,
-      resumo: resumoLinhas,
-      tabela: informalRows.length ? { fields: informalFields, rows: informalRows } : null,
-    });
-  }
-
-  function renderGeralBloco(acao, data) {
-    if (acao.kind === "tabela") renderGeralTabela(acao, data);
-    else if (acao.kind === "semanal") renderGeralSemanal(acao, data);
-    else if (acao.kind === "categorias") renderGeralCategorias(acao, data);
-    else if (acao.kind === "criados-resolvidos") renderGeralCriadosResolvidos(acao, data);
-    else if (acao.kind === "criticos") renderGeralCriticos(acao, data);
-  }
-
-  $("btn-report-geral").addEventListener("click", () => {
-    const dialog = $("geral-dialog");
-    const abrindo = !dialog.classList.contains("open");
-    closeAllDialogs("geral-dialog");
-    if (abrindo) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      if (!$("geral-input-inicio").value) $("geral-input-inicio").value = hoje;
-      if (!$("geral-input-fim").value) $("geral-input-fim").value = hoje;
-    }
-    dialog.classList.toggle("open", abrindo);
-  });
-
-  $("btn-geral-cancelar").addEventListener("click", () => {
-    $("geral-dialog").classList.remove("open");
-  });
-
-  $("btn-geral-gerar").addEventListener("click", async () => {
-    const acoesSelecionadas = checkedValues($("geral-acoes-checkboxes"));
-    if (!acoesSelecionadas.length) {
-      setBanner("Selecione ao menos uma ação para o Relatório Geral.", "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (acoesSelecionadas.some((id) => ACOES_QUE_USAM_PROJETO.includes(id)) && !projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    const inicio = $("geral-input-inicio").value;
-    const fim = $("geral-input-fim").value;
-    if (acoesSelecionadas.some((id) => ACOES_QUE_EXIGEM_PERIODO.includes(id)) && (!inicio || !fim)) {
-      setBanner(
-        "Informe o período (obrigatório para Categorias de Encerramento, Criados x Resolvidos, Reabertos e Chamados Críticos).",
-        "error"
-      );
-      return;
-    }
-
-    const topN = Number($("geral-top-n").value);
-
-    $("geral-dialog").classList.remove("open");
-    hideAllResults();
-    $("geral-blocks").innerHTML = "";
-    lastGeralSecoes = [];
-    $("btn-geral-pdf").disabled = true;
-
-    setBusy(true);
-    setBanner("Gerando relatório geral...", "info");
-
-    try {
-      for (const acaoId of acoesSelecionadas) {
-        const acao = GERAL_ACOES.find((a) => a.id === acaoId);
-        setBanner(`Gerando relatório geral... (${acao.label})`, "info");
-
-        const body = { caixa: state.caixa };
-        if (ACOES_QUE_USAM_PROJETO.includes(acaoId)) {
-          body.projetos = projetos;
-        }
-        if (acaoId === "extracao-completa") {
-          body.inicio = inicio;
-          body.fim = fim;
-        }
-        if (acaoId === "categorias-encerramento") {
-          body.inicio = inicio;
-          body.fim = fim;
-          body.top_n = topN;
-          body.encerrados = true;
-          body.reabertos = true;
-        }
-        if (acaoId === "criados-resolvidos") {
-          body.inicio = inicio;
-          body.fim = fim;
-        }
-        if (acaoId === "reabertos") {
-          body.inicio = inicio;
-          body.fim = fim;
-        }
-        if (acaoId === "chamados-criticos") {
-          body.inicio = inicio;
-          body.fim = fim;
-        }
-
-        const resp = await apiCall(acao.endpoint, body);
-        const data = await resp.json();
-        if (!resp.ok) {
-          throw new Error(`${acao.label}: ${data.error || "erro ao gerar."}`);
-        }
-
-        renderGeralBloco(acao, data);
-      }
-
-      $("geral-date").textContent = dataVigente();
-      $("geral-results").classList.remove("hidden");
-      $("geral-results").scrollIntoView({ behavior: "smooth", block: "nearest" });
-      clearBanner();
-    } catch (e) {
-      setBanner(e.message || "Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  $("btn-geral-pdf").addEventListener("click", async () => {
-    if (!lastGeralSecoes.length) return;
-
-    setBusy(true);
-    setBanner("Gerando PDF do relatório geral...", "info");
-    try {
-      const resp = await fetch("/api/relatorio-geral-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titulo: "Relatório Geral", secoes: lastGeralSecoes }),
-        cache: "no-store",
-      });
-
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        setBanner(data.error || "Erro ao exportar PDF.", "error");
-        return;
-      }
-
-      const blob = await resp.blob();
-      const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), "relatorio_geral.pdf");
-      triggerDownload(blob, filename);
-      setBanner(`PDF gerado: ${filename}`, "success");
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  $("btn-report-copiar").addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(reportBox.value);
-      setBanner("Report copiado para a área de transferência.", "success");
-    } catch (e) {
-      reportBox.select();
-      document.execCommand("copy");
-    }
-  });
-
-  $("btn-report-limpar").addEventListener("click", () => {
-    reportBox.value = "";
-    $("btn-report-copiar").disabled = true;
-    $("btn-report-pdf").disabled = true;
-    $("btn-report-limpar").disabled = true;
-    clearBanner();
-  });
-
-  $("btn-report-pdf").addEventListener("click", async () => {
-    const texto = reportBox.value.trim();
-    if (!texto) return;
-
-    setBusy(true);
-    try {
-      const resp = await fetch("/api/exportar-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: texto }),
-        cache: "no-store",
-      });
-
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        setBanner(data.error || "Erro ao exportar PDF.", "error");
-        return;
-      }
-
-      const blob = await resp.blob();
-      const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), "relatorio.pdf");
-      triggerDownload(blob, filename);
-      setBanner(`PDF gerado: ${filename}`, "success");
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
 
   // ------------------------------------------------- dicionário de queries
   // Painel de referência, sempre disponível (independe de login) — não

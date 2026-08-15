@@ -36,27 +36,23 @@ body {
   color: var(--text);
 }
 
-header {
-  background: var(--header-bg);
-  color: var(--header-fg);
-  padding: 20px 28px;
-}
-
-header h1 {
-  margin: 0 0 4px;
-  font-size: 20px;
-}
-
-header p {
-  margin: 0;
-  color: var(--header-sub);
-  font-size: 13px;
-}
-
 main {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px 20px 60px;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Painéis fora do menu lateral (tela de login, Dicionário) continuam com
+   uma margem lateral — só o próprio menu (dentro de #app-view) vai até a
+   borda da tela. */
+#login-card,
+#app-view ~ .card {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+#app-view ~ .card {
+  margin-top: 16px;
 }
 
 .card {
@@ -405,6 +401,181 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+}
+
+/* Layout estilo CRM: menu lateral ocupa a altura inteira da tela (de cima
+   a baixo, colado na borda esquerda), fixo enquanto rola o conteúdo;
+   Caixa/Projetos/Ações ficam nele. Tudo que uma ação abre (diálogo de
+   opções + resultado) fica na área de conteúdo, ocupando o resto da
+   largura da tela. Empilha em telas estreitas (mobile) — ver o @media no
+   fim do arquivo. */
+.app-layout {
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 280px;
+  width: 280px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 20px 16px;
+  background: linear-gradient(165deg, #2c1457 0%, #1b0f3d 55%, #150a30 100%);
+  color: #ece7f7;
+}
+
+/* Conectado/Sair vira rodapé do menu — empurrado pro fim com margin-top:
+   auto (o .sidebar virou flex column só por causa disso). */
+.sidebar-footer {
+  margin-top: auto;
+  margin-bottom: 0;
+}
+
+.sidebar-brand {
+  padding: 0 4px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 16px;
+}
+
+.sidebar-brand strong {
+  display: block;
+  font-size: 16px;
+  color: #fff;
+}
+
+.sidebar-brand span {
+  display: block;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 2px;
+}
+
+.content-area {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px 60px;
+}
+
+/* Referência visual: grupos sem card/borda própria, flutuando direto no
+   degradê — só o rótulo do grupo (CAIXA/PROJETOS/AÇÕES) separa uma seção
+   da outra, sem caixa em volta. */
+.sidebar .card {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 22px;
+}
+
+.sidebar .section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 10px;
+}
+
+.sidebar .hint {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.sidebar .caixa-toggle {
+  background: rgba(255, 255, 255, 0.07);
+  width: 100%;
+}
+
+.sidebar .caixa-btn {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.sidebar .caixa-btn.active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  box-shadow: none;
+}
+
+.sidebar .radio-row label {
+  border-right-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Dentro do menu lateral, um item só cabe por linha (a coluna é estreita
+   demais pro auto-fit de .actions-grid abrir mais de uma) — e vira lista
+   de navegação (ícone + rótulo), não mais botões grandes coloridos. */
+.sidebar .actions-grid {
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: left;
+}
+
+.nav-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.nav-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+}
+
+.nav-label {
+  /* Rótulos em português são mais longos que o exemplo de referência (em
+     inglês) — deixa quebrar em 2 linhas em vez de truncar com reticências,
+     senão perde informação (ex.: "Categorias de Encerramento"). */
+  line-height: 1.3;
+}
+
+/* Reseta só o que o navegador aplica por padrão em <button> (fundo, borda,
+   fonte genérica) — font-size/weight/cor/uppercase continuam vindo de
+   .section-label (aplicada junto via segunda classe no HTML). */
+.acoes-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 8px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+#acoes-toggle-icon {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 /* result banner */
@@ -980,32 +1151,6 @@ button {
   background: var(--card-bg-elevated);
 }
 
-/* reports */
-.report-header {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.report-header .spacer {
-  flex: 1;
-}
-
-#report-box {
-  width: 100%;
-  min-height: 220px;
-  resize: vertical;
-  padding: 12px;
-  border: none;
-  border-radius: 6px;
-  background: var(--card-bg-elevated);
-  color: var(--text);
-  font-family: "Segoe UI", sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
-}
 
 .dialog-row {
   display: flex;
@@ -1124,36 +1269,6 @@ button {
   color: var(--muted);
 }
 
-/* Relatório Geral: blocos empilhados, um por ação marcada */
-.geral-block + .geral-block {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  margin-top: 20px;
-  padding-top: 20px;
-}
-
-.geral-block-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--accent-soft);
-  margin-bottom: 10px;
-}
-
-.geral-block-resumo {
-  font-size: 13px;
-  color: var(--text);
-  margin-bottom: 10px;
-  line-height: 1.6;
-}
-
-.geral-block-texto {
-  white-space: pre-wrap;
-  font-size: 13px;
-  line-height: 1.5;
-  background: var(--card-bg-elevated);
-  border-radius: 6px;
-  padding: 12px;
-}
-
 footer {
   text-align: center;
   color: var(--muted);
@@ -1225,4 +1340,27 @@ footer {
   display: inline;
   padding: 1px 5px;
   color: var(--text);
+}
+
+/* Tela estreita: menu lateral empilha acima do conteúdo em vez de coluna
+   fixa (260px fixo não sobra espaço decente pro conteúdo abaixo disso). */
+@media (max-width: 860px) {
+  .app-layout {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex: 1 1 auto;
+    position: static;
+    height: auto;
+    overflow-y: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--card-border);
+  }
+
+  .content-area {
+    padding: 20px;
+  }
 }

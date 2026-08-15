@@ -7,11 +7,6 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <header>
-    <h1>Extração de Chamados Jira</h1>
-    <p>Central de Incidentes · monitoramento de SLA</p>
-  </header>
-
   <main>
     <!-- ===== Tela de login (e-mail + token, nada é salvo) ===== -->
     <section id="login-card" class="card">
@@ -38,7 +33,66 @@
 
     <!-- ===== Tela principal (após conectar) ===== -->
     <section id="app-view" class="hidden">
-      <div class="card" id="status-bar">
+      <div class="app-layout">
+      <aside class="sidebar">
+      <div class="sidebar-brand">
+        <strong>Extração de Chamados Jira</strong>
+        <span>Central de Incidentes · monitoramento de SLA</span>
+      </div>
+
+      <div class="card">
+        <div class="section-label">CAIXA SOLUCIONADORA</div>
+        <div class="caixa-toggle" id="caixa-toggle">
+          <button type="button" class="caixa-btn active" data-caixa="solar">Solar</button>
+          <button type="button" class="caixa-btn" data-caixa="tv">Claro Tv</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom: 8px">PROJETOS</div>
+        <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
+      </div>
+
+      <div class="card">
+        <button class="section-label acoes-toggle" id="btn-acoes-toggle" type="button">
+          <span>AÇÕES</span>
+          <span id="acoes-toggle-icon">▾</span>
+        </button>
+        <div class="actions-grid collapse open" id="acoes-grid">
+          <button id="btn-extracao-completa" class="nav-item" type="button">
+            <span class="nav-icon">📋</span><span class="nav-label">Extração completa</span>
+          </button>
+          <button id="btn-a-violar" class="nav-item" type="button">
+            <span class="nav-icon">⏰</span><span class="nav-label">A violar</span>
+          </button>
+          <button id="btn-violados" class="nav-item" type="button">
+            <span class="nav-icon">🔴</span><span class="nav-label">Violados</span>
+          </button>
+          <button id="btn-categorias-encerramento" class="nav-item" type="button">
+            <span class="nav-icon">🏷️</span><span class="nav-label">Categorias de Encerramento</span>
+          </button>
+          <button id="btn-criados-resolvidos" class="nav-item" type="button">
+            <span class="nav-icon">📈</span><span class="nav-label">Criados x Resolvidos</span>
+          </button>
+          <button id="btn-reabertos" class="nav-item" type="button">
+            <span class="nav-icon">🔄</span><span class="nav-label">Reabertos</span>
+          </button>
+          <button id="btn-criticos" class="nav-item" type="button">
+            <span class="nav-icon">🚨</span><span class="nav-label">Chamados Críticos</span>
+          </button>
+          <button id="btn-analistas-encerramento" class="nav-item" type="button">
+            <span class="nav-icon">👤</span><span class="nav-label">Analistas de Encerramento</span>
+          </button>
+          <button id="btn-report-diario" class="nav-item" type="button">
+            <span class="nav-icon">📝</span><span class="nav-label">Report Diário</span>
+          </button>
+          <button id="btn-report-vini" class="nav-item hidden" type="button">
+            <span class="nav-icon">🎯</span><span class="nav-label">Report Vini</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card sidebar-footer" id="status-bar">
         <div>
           <span class="dot">●</span>
           <strong id="status-text">Conectado</strong>
@@ -46,39 +100,9 @@
         </div>
         <button id="btn-logout" class="btn-secondary" type="button">Sair</button>
       </div>
+      </aside>
 
-      <div class="card">
-        <div class="section-label">CAIXA SOLUCIONADORA</div>
-        <div class="caixa-toggle" id="caixa-toggle">
-          <button type="button" class="caixa-btn active" data-caixa="solar">Mops Solar</button>
-          <button type="button" class="caixa-btn" data-caixa="tv">Mops Tv do Futuro</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="section-label" style="margin-bottom: 8px">PROJETOS</div>
-        <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
-        <div class="hint" style="margin-top: 8px">
-          Vale para A violar, Violados, Extração completa, Categorias de Encerramento, Criados x Resolvidos,
-          Reabertos, Chamados Críticos, Analistas de Encerramento, Report Diário e Report Vini.
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="section-label">AÇÕES</div>
-        <div class="actions-grid">
-          <button id="btn-extracao-completa" class="btn-primary" type="button">📋 Extração completa</button>
-          <button id="btn-a-violar" class="btn-primary" type="button">⏰ A violar</button>
-          <button id="btn-violados" class="btn-primary" type="button">🔴 Violados</button>
-          <button id="btn-categorias-encerramento" class="btn-primary" type="button">🏷️ Categorias de Encerramento</button>
-          <button id="btn-criados-resolvidos" class="btn-primary" type="button">📈 Criados x Resolvidos</button>
-          <button id="btn-reabertos" class="btn-primary" type="button">🔄 Reabertos</button>
-          <button id="btn-criticos" class="btn-primary" type="button">🚨 Chamados Críticos</button>
-          <button id="btn-analistas-encerramento" class="btn-primary" type="button">👤 Analistas de Encerramento</button>
-          <button id="btn-report-diario" class="btn-primary" type="button">📝 Report Diário</button>
-          <button id="btn-report-vini" class="btn-primary hidden" type="button">🎯 Report Vini</button>
-        </div>
-
+      <div class="content-area">
         <div id="result-banner"></div>
 
         <!-- A violar: escolher Hoje / Amanhã / Plano semanal -->
@@ -277,9 +301,7 @@
                independente do de lá — cada painel guarda a própria escolha),
                já com a coluna "categoria_status" checada em cada linha.
                Exige Funcionalidade selecionada (não deixa exportar o
-               projeto "Gestão de Problemas" inteiro sem filtro nenhum).
-               Prefixo "ofgeral" (não "geral") pra não colidir com os IDs do
-               Relatório Geral, que já usa esse prefixo. -->
+               projeto "Gestão de Problemas" inteiro sem filtro nenhum). -->
           <div id="ofgeral-panel" class="collapse" style="margin-top: 10px">
             <div class="field" style="max-width: 420px; margin-bottom: 0">
               <label for="ofgeral-funcionalidade">Funcionalidade Ofensores</label>
@@ -565,7 +587,6 @@
             <div id="analista-calendario"></div>
           </div>
         </div>
-      </div>
 
       <!-- ===== Tela de resultados: KPIs + tabela da última extração ===== -->
       <section id="results-card" class="card hidden">
@@ -677,94 +698,9 @@
           <div id="sem-chamados-lista" class="tag-list"></div>
         </div>
       </section>
+      </div><!-- /content-area -->
+      </div><!-- /app-layout -->
 
-      <!-- ===== Relatório Geral: escolha em checkbox quais ações incluir, tudo junto ===== -->
-      <div class="card">
-        <div class="report-header">
-          <div class="section-label" style="margin: 0">RELATÓRIO GERAL</div>
-          <button id="btn-report-geral" class="btn-primary" type="button">🗂️ Relatório Geral</button>
-        </div>
-        <div class="hint" style="margin: 0 0 4px">
-          Marque as ações que quer incluir: roda cada uma com os filtros padrão (todas as caixas/status/projetos
-          marcados) e junta tudo num só lugar, com exportação em PDF.
-        </div>
-
-        <div id="geral-dialog" class="collapse">
-          <div class="option-group">
-            <div class="section-label" style="margin-bottom: 8px">AÇÕES A INCLUIR</div>
-            <div class="radio-row" id="geral-acoes-checkboxes" style="margin-bottom: 0; flex-wrap: wrap"></div>
-          </div>
-
-          <div class="option-group">
-            <div class="section-label" style="margin-bottom: 8px">
-              PERÍODO (opcional na extração completa; obrigatório para categorias de encerramento, criados x
-              resolvidos, reabertos e chamados críticos)
-            </div>
-            <div class="dialog-row" style="margin-bottom: 0">
-              <div class="field">
-                <label for="geral-input-inicio">Data início</label>
-                <input id="geral-input-inicio" type="date" />
-              </div>
-              <div class="field">
-                <label for="geral-input-fim">Data fim</label>
-                <input id="geral-input-fim" type="date" />
-              </div>
-              <div class="field">
-                <label for="geral-top-n">Top categorias</label>
-                <select id="geral-top-n">
-                  <option value="3">3</option>
-                  <option value="5">5</option>
-                  <option value="10" selected>10</option>
-                  <option value="20">20</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div class="dialog-row" style="margin-top: 14px">
-            <button id="btn-geral-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-geral-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-      </div>
-
-      <section id="geral-results" class="card hidden">
-        <div class="results-header">
-          <div class="section-label" id="geral-results-title" style="margin: 0">RESULTADO — RELATÓRIO GERAL</div>
-          <span class="date-badge" id="geral-date"></span>
-          <span class="spacer"></span>
-          <button id="btn-geral-pdf" class="btn-secondary" type="button" disabled>📄 Exportar PDF</button>
-        </div>
-        <div id="geral-blocks"></div>
-      </section>
-
-      <div class="card">
-        <div class="report-header">
-          <div class="section-label" style="margin: 0">REPORTS</div>
-          <button id="btn-report-consolidado" class="btn-primary" type="button">📊 Relatório Consolidado</button>
-          <span class="spacer"></span>
-          <button id="btn-report-copiar" class="btn-secondary" type="button" disabled>Copiar</button>
-          <button id="btn-report-pdf" class="btn-secondary" type="button" disabled>📄 Exportar PDF</button>
-          <button id="btn-report-limpar" class="btn-secondary" type="button" disabled>Limpar</button>
-        </div>
-
-        <div id="consolidado-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="input-inicio">Data início</label>
-              <input id="input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="input-fim">Data fim</label>
-              <input id="input-fim" type="date" />
-            </div>
-            <button id="btn-consolidado-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-consolidado-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <textarea id="report-box" readonly placeholder="Os reports gerados aparecem aqui..."></textarea>
-      </div>
     </section>
 
     <!-- ===== Dicionário: o que cada botão busca no Jira ===== -->
@@ -820,14 +756,14 @@
             <p><strong>Criados:</strong> <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND created no período</code>.</p>
             <p><strong>Resolvidos:</strong> mesma caixa/projetos, mas <code>status IN ("Resolvido", "Encerrado") AND resolutiondate no período</code>.</p>
             <p>Cada chamado entra no dia (data local, sem hora) do respectivo campo — a tabela mostra a comparação dia a dia dentro do período informado, além dos totais e do saldo (criados − resolvidos). A coluna "Seta" sobe (▲) quando o dia resolveu mais do que criou e desce (▼) quando resolveu menos.</p>
-            <p>Também mostra, entre os resolvidos (Resolvido + Encerrado), o percentual dentro do prazo x fora do prazo de SLA "Tempo de Resolução" — mesmo campo/lógica do Relatório Consolidado. Chamados sem esse campo preenchido não entram em nenhuma das duas contagens.</p>
+            <p>Também mostra, entre os resolvidos (Resolvido + Encerrado), o percentual dentro do prazo x fora do prazo de SLA "Tempo de Resolução". Chamados sem esse campo preenchido não entram em nenhuma das duas contagens.</p>
             <p><strong>Chamados encerrados por grupo</strong> (N1/N2/PROD, lado a lado com o donut acima): dos resolvidos, quantos são de cada Grupo Solucionador, mais a média diária (total do grupo dividido pelo número de dias do período selecionado) e o <strong>TMA</strong> aproximado (16h de expediente ÷ média diária, em horas por chamado) — é uma estimativa a partir do volume, não o tempo real que o chamado passa "Em atendimento" (isso exigiria o changelog de status, chamado por chamado, e ficaria bem mais lento).</p>
           </dd>
 
           <dt>🔄 Reabertos</dt>
           <dd>
             <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND status WAS "Reaberto" AND created no período</code>
-            <p>Mesma convenção usada em "Categorias de Encerramento" e no Relatório Consolidado: considera o <code>created</code> do chamado, não a data em que ele foi reaberto — um chamado reaberto que já foi resolvido de novo continua contando aqui.</p>
+            <p>Mesma convenção usada em "Categorias de Encerramento": considera o <code>created</code> do chamado, não a data em que ele foi reaberto — um chamado reaberto que já foi resolvido de novo continua contando aqui.</p>
             <p>Também mostra o percentual de reabertura: <code>total de reabertos ÷ total de chamados criados no mesmo período (mesma caixa/projetos)</code>, sem o filtro de "status WAS Reaberto".</p>
           </dd>
 
@@ -858,17 +794,7 @@
 
           <dt>🎯 Report Vini</dt>
           <dd>
-            <p>Específico da caixa <strong>Mops Tv do Futuro</strong> — o botão só aparece nela (some em Mops Solar) e a rota recusa a chamada se a caixa não for Tv do Futuro. Diferente do Report Diário, usa <strong>Data início/fim</strong> escolhidas (não é preso a "hoje") e consolida num resultado só o que hoje fica espalhado em 3 ações: <strong>Criados x Resolvidos</strong> (Criados/Resolvidos/Saldo, donut Dentro/Fora do prazo, cards por grupo com média diária e TMA — mesma lógica da ação "Criados x Resolvidos"), <strong>Reabertos</strong> (total do período + % sobre os criados) e <strong>Categorias de Encerramento</strong> (top 5, já separado em Claro Tv +/Claro Streaming Box pela tag no nome — mesma lógica da ação "Categorias de Encerramento" pra essa caixa). Uma única chamada ao servidor, então pode demorar num período grande (a resolução de nome de cada categoria distinta no Jira Assets é o gargalo, não a busca de chamados em si). O botão <strong>📄 Exportar PDF</strong> monta um PDF com essas mesmas informações (Resumo do período, Chamados Encerrados por Grupo, Reabertos, Top 5 Categorias) a partir do resultado já em tela — reaproveita a mesma rota <code>/api/relatorio-geral-pdf</code> do Relatório Geral, não refaz nenhuma busca no Jira.</p>
-          </dd>
-
-          <dt>📊 Relatório Consolidado</dt>
-          <dd>
-            <p>Para o período informado, sempre nos 3/2 Grupos Solucionador da caixa: total de <code>created</code> e de <code>resolutiondate</code> no período; dentro desses, quantos têm status atual Resolvido/Encerrado com o SLA dentro do prazo ou violado; quantos passaram por <code>status WAS "Reaberto"</code>; top 3 analistas por chamados encerrados (Central de Incidentes + Abertura de Chamados); chamados com "Nível de Escalonamento" ou "Tipo Incidente MOPS" preenchidos; chamados que já foram P0/P1/P2 (<code>priority WAS IN (P0,P1,P2)</code>); e a mesma contagem por "Categoria de Encerramento" das duas ações acima.</p>
-          </dd>
-
-          <dt>🗂️ Relatório Geral</dt>
-          <dd>
-            <p>Não é uma busca própria: roda, uma a uma, as ações marcadas no checkbox (com os filtros padrão — todas as caixas/status/projetos marcados, mesmo período compartilhado) e junta cada resultado num bloco, na mesma tela. O PDF exportado combina todos os blocos gerados.</p>
+            <p>Específico da caixa <strong>Mops Tv do Futuro</strong> — o botão só aparece nela (some em Mops Solar) e a rota recusa a chamada se a caixa não for Tv do Futuro. Diferente do Report Diário, usa <strong>Data início/fim</strong> escolhidas (não é preso a "hoje") e consolida num resultado só o que hoje fica espalhado em 3 ações: <strong>Criados x Resolvidos</strong> (Criados/Resolvidos/Saldo, donut Dentro/Fora do prazo, cards por grupo com média diária e TMA — mesma lógica da ação "Criados x Resolvidos"), <strong>Reabertos</strong> (total do período + % sobre os criados) e <strong>Categorias de Encerramento</strong> (top 5, já separado em Claro Tv +/Claro Streaming Box pela tag no nome — mesma lógica da ação "Categorias de Encerramento" pra essa caixa). Uma única chamada ao servidor, então pode demorar num período grande (a resolução de nome de cada categoria distinta no Jira Assets é o gargalo, não a busca de chamados em si). O botão <strong>📄 Exportar PDF</strong> monta um PDF com essas mesmas informações (Resumo do período, Chamados Encerrados por Grupo, Reabertos, Top 5 Categorias) a partir do resultado já em tela — reaproveita a mesma rota de PDF combinado usada em outras exportações, não refaz nenhuma busca no Jira.</p>
           </dd>
         </dl>
       </div>

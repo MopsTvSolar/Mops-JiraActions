@@ -34,10 +34,8 @@ from jira_extractor import (  # noqa: E402
     JiraExtractorError,
     PROJETO_INC,
     PROJETO_PDST,
-    build_consolidated_report,
     enriquecer_todos_com_categoria_status,
     export_general_report_pdf,
-    export_report_pdf,
     extract_fornecedor,
     fetch_categoria_encerrados,
     fetch_categoria_reabertos,
@@ -861,31 +859,6 @@ def report_diario():
     return _respond(rows, "resolvidos_hoje", body, extra=extra or None)
 
 
-@app.route("/api/relatorio-consolidado", methods=["POST"])
-def relatorio_consolidado():
-    body = request.get_json(silent=True) or {}
-    caixa_id = _resolve_caixa(body)
-    config = _config_from_request(body)
-    inicio, fim = _parse_periodo(body)
-
-    try:
-        categoria_field_id = _resolve_categoria_encerramento_field_id(config)
-    except Exception:
-        # Best-effort, igual à resolução do Grupo Solucionador: sem esse
-        # campo o relatório sai sem a seção de categoria, não quebra.
-        app.logger.exception("Falha ao resolver o campo Categoria de Encerramento")
-        categoria_field_id = None
-
-    texto = build_consolidated_report(
-        config,
-        inicio,
-        fim,
-        grupos=CAIXAS[caixa_id]["grupos_consolidado"],
-        categoria_encerramento_field_id=categoria_field_id,
-    )
-    return jsonify({"text": texto})
-
-
 def _parse_periodo(body):
     try:
         inicio = datetime.strptime(body.get("inicio", ""), "%Y-%m-%d").date()
@@ -1172,39 +1145,20 @@ def chamados_criticos():
     return jsonify(resultado)
 
 
-@app.route("/api/exportar-pdf", methods=["POST"])
-def exportar_pdf():
-    body = request.get_json(silent=True) or {}
-    texto = (body.get("text") or "").strip()
-    if not texto:
-        raise JiraExtractorError("Nada para exportar.")
-
-    buf = io.BytesIO()
-    export_report_pdf(texto, buf, titulo="Relatório")
-    buf.seek(0)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return send_file(
-        buf, mimetype="application/pdf", as_attachment=True, download_name=f"relatorio_{timestamp}.pdf"
-    )
-
-
 @app.route("/api/relatorio-geral-pdf", methods=["POST"])
 def relatorio_geral_pdf():
-    """Monta o PDF combinado do Relatório Geral a partir das seções já
-    calculadas no navegador (cada uma veio de uma chamada anterior a uma das
-    rotas /api/* acima) — não refaz nenhuma busca no Jira, só formata o que
-    já foi buscado, mesmo padrão de /api/exportar-pdf."""
+    """Monta um PDF combinado a partir de "secoes" já calculadas no
+    navegador — não refaz nenhuma busca no Jira, só formata o que já foi
+    buscado. Usada pelo Report Vini (única consumidora hoje)."""
     body = request.get_json(silent=True) or {}
     secoes = body.get("secoes") or []
     if not secoes:
         raise JiraExtractorError("Nada para exportar.")
 
-    titulo = (body.get("titulo") or "Relatório Geral").strip() or "Relatório Geral"
-    # "arquivo" (opcional): outros consumidores dessa mesma rota (ex.: Report
-    # Vini) usam um nome de base diferente pro download — sem isso, todo
-    # mundo cairia em "relatorio_geral_...", mesmo não sendo esse relatório.
-    arquivo_base = (body.get("arquivo") or "relatorio_geral").strip() or "relatorio_geral"
+    titulo = (body.get("titulo") or "Relatório").strip() or "Relatório"
+    # "arquivo" (opcional): outros futuros consumidores dessa rota podem
+    # usar um nome de base diferente pro download.
+    arquivo_base = (body.get("arquivo") or "relatorio").strip() or "relatorio"
 
     buf = io.BytesIO()
     export_general_report_pdf(secoes, buf, titulo=titulo)
