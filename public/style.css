@@ -331,6 +331,18 @@ button {
   max-height: 6000px;
 }
 
+/* categorias de encerramento: o painel "ofensor-panel" (Busca Ofensor) é um
+   .collapse ANINHADO dentro desse — os dois precisam de mais espaço que o
+   padrão, senão a tabela paginada da Busca Ofensor (até 20 linhas +
+   botões de página) fica cortada por baixo. */
+#categorias-dialog.open {
+  max-height: 3000px;
+}
+
+#ofensor-panel.open {
+  max-height: 2500px;
+}
+
 .btn-block {
   width: 100%;
 }
@@ -921,7 +933,7 @@ button {
   border-collapse: collapse;
   width: 100%;
   font-size: 13px;
-  white-space: nowrap;
+  table-layout: fixed;
 }
 
 #results-table th,
@@ -931,6 +943,9 @@ button {
   text-align: left;
   padding: 8px 12px;
   border-bottom: 1px solid var(--card-border);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 #results-table th,
@@ -942,6 +957,22 @@ button {
   letter-spacing: 0.02em;
   position: sticky;
   top: 0;
+}
+
+/* Categorias de Encerramento (top N): 3 colunas fixas — Categoria (nome
+   longo) precisa de bem mais espaço que Quantidade/% (números curtos).
+   Só essa tabela usa esse layout — outras .data-table têm colunas
+   diferentes (ex.: Busca Ofensor tem "Resumo" na 2ª coluna, não na 1ª). */
+.data-table--categorias th:first-child,
+.data-table--categorias td:first-child {
+  width: 74%;
+}
+
+.data-table--categorias th:nth-child(2),
+.data-table--categorias td:nth-child(2),
+.data-table--categorias th:nth-child(3),
+.data-table--categorias td:nth-child(3) {
+  width: 13%;
 }
 
 #results-table tbody tr:hover,

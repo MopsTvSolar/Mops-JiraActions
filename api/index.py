@@ -35,6 +35,7 @@ from jira_extractor import (  # noqa: E402
     PROJETO_INC,
     PROJETO_PDST,
     build_consolidated_report,
+    enriquecer_todos_com_categoria_status,
     export_general_report_pdf,
     export_report_pdf,
     extract_fornecedor,
@@ -42,12 +43,15 @@ from jira_extractor import (  # noqa: E402
     fetch_categoria_reabertos,
     fetch_chamados_a_violar,
     fetch_chamados_criticos,
+    fetch_chamados_funcionalidade_ofensor,
     fetch_chamados_reabertos,
     fetch_chamados_violados,
+    fetch_contagem_atrelados_lote,
     fetch_previstos_violar_por_dia,
     fetch_criados_x_resolvidos,
     fetch_detalhe_analista,
     fetch_resolvidos_hoje,
+    fetch_status_categoria_lote,
     fetch_total_criados_periodo,
     fetch_issues,
     flatten_issue,
@@ -925,6 +929,38 @@ def _categorias_payload(counts, total_chamados, top_n):
     }
 
 
+# Categoria de Encerramento de Mops Tv do Futuro traz uma tag no fim do
+# nome indicando a plataforma: "... [CLARO TV + APP | ...]" (app) ou
+# "... [CLARO TV + | ...]" / "CLARO TV + - ..." (box, sem "APP") —
+# confirmado inspecionando nomes reais resolvidos via Jira Assets. Mops
+# Solar não tem essa convenção, então só separa quando a caixa é TV.
+def _bucket_categoria_tv(categoria):
+    texto = (categoria or "").upper()
+    if "CLARO TV + APP" in texto:
+        return "app"
+    if "CLARO TV +" in texto:
+        return "box"
+    return "outros"
+
+
+def _dividir_counts_tv(counts):
+    baldes = {"app": Counter(), "box": Counter(), "outros": Counter()}
+    for categoria, qtd in counts.items():
+        baldes[_bucket_categoria_tv(categoria)][categoria] = qtd
+    return baldes
+
+
+def _categorias_payload_tv(counts, total_chamados, top_n):
+    baldes = _dividir_counts_tv(counts)
+    payload = {
+        "app": _categorias_payload(baldes["app"], total_chamados, top_n),
+        "box": _categorias_payload(baldes["box"], total_chamados, top_n),
+    }
+    if baldes["outros"]:
+        payload["outros"] = _categorias_payload(baldes["outros"], total_chamados, top_n)
+    return payload
+
+
 @app.route("/api/categorias-encerramento", methods=["POST"])
 def categorias_encerramento():
     body = request.get_json(silent=True) or {}
@@ -950,17 +986,76 @@ def categorias_encerramento():
 
     grupos = CAIXAS[caixa_id]["grupos"]
     projetos = _projetos_selecionados(body)
+    montar_payload = _categorias_payload_tv if caixa_id == CAIXA_TV else _categorias_payload
     payload = {}
 
     if incluir_encerrados:
         counts, total = fetch_categoria_encerrados(config, grupos, inicio, fim, categoria_field_id, projetos=projetos)
-        payload["encerrados"] = _categorias_payload(counts, total, top_n)
+        payload["encerrados"] = montar_payload(counts, total, top_n)
 
     if incluir_reabertos:
         counts, total = fetch_categoria_reabertos(config, grupos, inicio, fim, categoria_field_id, projetos=projetos)
-        payload["reabertos"] = _categorias_payload(counts, total, top_n)
+        payload["reabertos"] = montar_payload(counts, total, top_n)
 
     return jsonify(payload)
+
+
+@app.route("/api/chamados-ofensor", methods=["POST"])
+def chamados_ofensor():
+    """"Busca Ofensor": chamados de "Gestão de Problemas" cuja
+    "Funcionalidade Ofensores" é a opção escolhida no dropdown, opcionalmente
+    refinado por "Nome" (summary) ou "ALM" — um dos dois, nunca os dois. Não
+    traz "Categoria Ativa?" — isso é verificado depois, aos poucos, em
+    /api/categoria-status-lote (ver comentário lá)."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+    funcionalidade = (body.get("funcionalidade") or "").strip()
+    if not funcionalidade:
+        raise JiraExtractorError("Selecione uma Funcionalidade Ofensores.")
+    campo_busca = (body.get("campo_busca") or "").strip() or None
+    termo = (body.get("termo") or "").strip() or None
+    chamados = fetch_chamados_funcionalidade_ofensor(config, funcionalidade, campo_busca=campo_busca, termo=termo)
+    return jsonify({"chamados": chamados})
+
+
+@app.route("/api/chamados-geral", methods=["POST"])
+def chamados_geral():
+    """"Extração Geral": baixa um Excel com os chamados da Funcionalidade
+    Ofensores escolhida (exige Funcionalidade — não deixa exportar o
+    projeto "Gestão de Problemas" inteiro sem filtro), opcionalmente
+    refinado por "Nome" (summary) ou "ALM". Diferente da Busca Ofensor, não
+    mostra nada em tela — só o arquivo pronto no final, então checa
+    "Categoria Ativa?" de TODOS os chamados antes de responder (não em
+    lotes visíveis; ver enriquecer_todos_com_categoria_status), o que pode
+    levar minutos numa Funcionalidade grande (ex.: "PME" tem 424)."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+    funcionalidade = (body.get("funcionalidade") or "").strip()
+    if not funcionalidade:
+        raise JiraExtractorError("Selecione uma Funcionalidade Ofensores.")
+    campo_busca = (body.get("campo_busca") or "").strip() or None
+    termo = (body.get("termo") or "").strip() or None
+    chamados = fetch_chamados_funcionalidade_ofensor(config, funcionalidade, campo_busca=campo_busca, termo=termo)
+    chamados = enriquecer_todos_com_categoria_status(config, chamados)
+    return _send_rows(chamados, "extracao_geral_gestao_problemas", "excel")
+
+
+@app.route("/api/categoria-status-lote", methods=["POST"])
+def categoria_status_lote():
+    """"Busca Ofensor": checa, de um LOTE pequeno de chamados por vez (não
+    da lista inteira), o Status (Ativo/Inativo) da Categoria de
+    Encerramento e a quantidade de chamados encerrados atrelados a essa
+    mesma categoria (projeto inteiro, sem o filtro de Funcionalidade da
+    busca atual) — o frontend chama isso repetidamente, lote a lote,
+    enquanto carrega a tabela aos poucos e filtra por Ativo/Inativo."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+    nomes = body.get("nomes") or []
+    if not isinstance(nomes, list):
+        raise JiraExtractorError('"nomes" precisa ser uma lista.')
+    status = fetch_status_categoria_lote(config, nomes)
+    atrelados = fetch_contagem_atrelados_lote(config, nomes)
+    return jsonify({"status": status, "atrelados": atrelados})
 
 
 @app.route("/api/criados-resolvidos", methods=["POST"])
@@ -981,6 +1076,59 @@ def criados_resolvidos():
         config, CAIXAS[caixa_id]["grupos"], inicio, fim, projetos=projetos, grupo_field_id=grupo_field_id
     )
     return jsonify(resultado)
+
+
+@app.route("/api/report-vini", methods=["POST"])
+def report_vini():
+    """"Report Vini" — específico da caixa Mops Tv do Futuro: consolida num
+    resultado só o que hoje é visto espalhado em 3 ações (Criados x
+    Resolvidos com TMA/SLA, Reabertos, Categorias de Encerramento) pro
+    período escolhido (Data início/fim, igual às outras ações de período —
+    não é "hoje" como o Report Diário normal)."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    if caixa_id != CAIXA_TV:
+        raise JiraExtractorError('"Report Vini" é uma ação específica da caixa "Mops Tv do Futuro".')
+
+    config = _config_from_request(body)
+    inicio, fim = _parse_periodo(body)
+    if not inicio or not fim:
+        raise JiraExtractorError("Informe as duas datas (início e fim).")
+    projetos = _projetos_selecionados(body)
+    grupos = CAIXAS[caixa_id]["grupos"]
+
+    grupo_field_id = None
+    try:
+        grupo_field_id = _resolve_grupo_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
+
+    criados_resolvidos = fetch_criados_x_resolvidos(
+        config, grupos, inicio, fim, projetos=projetos, grupo_field_id=grupo_field_id
+    )
+
+    config_reabertos = dict(config, jql=_build_base_jql(caixa_id, projetos))
+    reabertos_rows = fetch_chamados_reabertos(config_reabertos, inicio, fim, incluir_fornecedor=False)
+    total_criados = criados_resolvidos["total_criados"]
+    reabertos = {
+        "total": len(reabertos_rows),
+        "total_criados_periodo": total_criados,
+        "percentual": round(len(reabertos_rows) / total_criados * 100, 1) if total_criados else 0.0,
+    }
+
+    categoria_field_id = _resolve_categoria_encerramento_field_id(config)
+    if not categoria_field_id:
+        raise JiraExtractorError('Campo "Categoria de Encerramento" não encontrado no Jira.')
+    counts, total_categorizavel = fetch_categoria_encerrados(config, grupos, inicio, fim, categoria_field_id, projetos=projetos)
+    categorias_encerrados = _categorias_payload_tv(counts, total_categorizavel, 5)
+
+    return jsonify(
+        {
+            "criados_resolvidos": criados_resolvidos,
+            "reabertos": reabertos,
+            "categorias_encerrados": categorias_encerrados,
+        }
+    )
 
 
 @app.route("/api/chamados-criticos", methods=["POST"])
@@ -1053,6 +1201,10 @@ def relatorio_geral_pdf():
         raise JiraExtractorError("Nada para exportar.")
 
     titulo = (body.get("titulo") or "Relatório Geral").strip() or "Relatório Geral"
+    # "arquivo" (opcional): outros consumidores dessa mesma rota (ex.: Report
+    # Vini) usam um nome de base diferente pro download — sem isso, todo
+    # mundo cairia em "relatorio_geral_...", mesmo não sendo esse relatório.
+    arquivo_base = (body.get("arquivo") or "relatorio_geral").strip() or "relatorio_geral"
 
     buf = io.BytesIO()
     export_general_report_pdf(secoes, buf, titulo=titulo)
@@ -1060,7 +1212,7 @@ def relatorio_geral_pdf():
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return send_file(
-        buf, mimetype="application/pdf", as_attachment=True, download_name=f"relatorio_geral_{timestamp}.pdf"
+        buf, mimetype="application/pdf", as_attachment=True, download_name=f"{arquivo_base}_{timestamp}.pdf"
     )
 
 
@@ -1092,4 +1244,8 @@ if __name__ == "__main__":
         token = os.getenv("JIRA_API_TOKEN", "")
         return jsonify({"email": email or None, "token": token or None})
 
-    app.run(debug=True, port=5000)
+    # threaded=True: a Extração Geral sem filtro pode levar minutos
+    # respondendo (checa "Categoria Ativa?" de milhares de chamados antes
+    # de montar o Excel) — sem isso, o servidor de dev fica bloqueado pra
+    # qualquer outra requisição enquanto isso roda.
+    app.run(debug=True, port=5000, threaded=True)

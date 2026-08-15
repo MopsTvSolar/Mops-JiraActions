@@ -31,6 +31,7 @@
     $("btn-criticos"),
     $("btn-analistas-encerramento"),
     $("btn-report-geral"),
+    $("btn-report-vini"),
   ];
 
   // Grupos ("caixas") de cada caixa solucionadora — espelha CAIXAS em
@@ -121,6 +122,7 @@
     "criticos-dialog",
     "analistas-dialog",
     "geral-dialog",
+    "report-vini-dialog",
   ];
 
   function closeAllDialogs(exceptId) {
@@ -142,6 +144,7 @@
     $("report-diario-hero").classList.add("hidden");
     $("heatmap-block").classList.add("hidden");
     $("geral-results").classList.add("hidden");
+    $("report-vini-results").classList.add("hidden");
     hideHoverPopover();
   }
 
@@ -200,6 +203,7 @@
       $("btn-violados-gerar"),
       $("btn-criticos-gerar"),
       $("btn-geral-gerar"),
+      $("btn-vini-gerar"),
     ].forEach((btn) => (btn.disabled = busy));
     if (!busy) {
       $("btn-geral-pdf").disabled = lastGeralSecoes.length === 0;
@@ -258,6 +262,7 @@
     });
     return resp;
   }
+
 
   function triggerDownload(blob, filename) {
     const url = URL.createObjectURL(blob);
@@ -341,6 +346,7 @@
     loginCard.classList.remove("hidden");
     carregarJqlAtual();
     atualizarBotaoCriticos();
+    atualizarBotaoReportVini();
     buildGeralCheckboxes();
   });
 
@@ -385,9 +391,17 @@
     $("btn-analistas-encerramento").classList.toggle("hidden", state.caixa !== "solar");
   }
 
+  // "Report Vini" é o espelho de Chamados Críticos/Analistas, mas pro outro
+  // lado: só faz sentido em Mops Tv do Futuro (usa a tag Claro Tv +/Claro
+  // Streaming Box de Categorias de Encerramento, que só existe nessa caixa).
+  function atualizarBotaoReportVini() {
+    $("btn-report-vini").classList.toggle("hidden", state.caixa !== "tv");
+  }
+
   carregarJqlAtual();
   atualizarBotaoCriticos();
   atualizarBotaoAnalistas();
+  atualizarBotaoReportVini();
 
   document.querySelectorAll(".caixa-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -413,6 +427,7 @@
       carregarJqlAtual();
       atualizarBotaoCriticos();
       atualizarBotaoAnalistas();
+      atualizarBotaoReportVini();
       buildGeralCheckboxes();
     });
   });
@@ -1321,51 +1336,346 @@
     $("categorias-dialog").classList.remove("open");
   });
 
-  function renderCategoriaTable(prefixo, secao) {
+  // Busca Ofensor e Extração Geral compartilham o mesmo molde: tabela
+  // paginada, checkboxes Ativo/Inativo, "Categoria Ativa?" checada em
+  // lotes pequenos enquanto carrega (a API do Jira Assets é uma chamada
+  // por chamado — pra uma Funcionalidade grande, tipo "PME" com 424, ou
+  // pro projeto inteiro na Extração Geral, com mais de 7 mil, verificar
+  // tudo de uma vez trava a tela). criarBuscaPaginadaChamados(prefixo)
+  // monta esse comportamento uma vez só, reaproveitado pelas duas telas —
+  // cada uma só entra com a chamada de API específica (por Funcionalidade
+  // ou pelo projeto inteiro).
+  const CHAMADOS_LOTE_TAMANHO = 25;
+  const CHAMADOS_PAGINA_TAMANHO = 20;
+
+  function criarBuscaPaginadaChamados(prefixo) {
+    // buscaId invalida lotes de uma busca anterior ainda em voo quando o
+    // usuário dispara uma busca nova no meio do carregamento — mesma
+    // lógica da race condition já corrigida em Analistas de Encerramento
+    // (buscarDetalheAnalista terminando depois de "Fechar").
+    let buscaId = 0;
+    let chamadosBrutos = [];
+    let indiceProximoLote = 0;
+    let statusCache = {};
+    let atreladosCache = {};
+    let chamadosFiltrados = [];
+    let paginaAtual = 0;
+
+    function filtroPassa(categoriaStatus) {
+      if (categoriaStatus === "Ativo") return $(`${prefixo}-check-ativo`).checked;
+      if (categoriaStatus === "Inativo") return $(`${prefixo}-check-inativo`).checked;
+      return false;
+    }
+
+    function recomputarFiltrados() {
+      const processados = chamadosBrutos.slice(0, indiceProximoLote);
+      chamadosFiltrados = processados.filter((c) => filtroPassa(c.categoria_status));
+    }
+
+    function renderPaginaAtual() {
+      const wrap = $(`${prefixo}-chamados-wrap`);
+      const tbody = document.querySelector(`#${prefixo}-chamados-table tbody`);
+      tbody.innerHTML = "";
+
+      const inicio = paginaAtual * CHAMADOS_PAGINA_TAMANHO;
+      const pagina = chamadosFiltrados.slice(inicio, inicio + CHAMADOS_PAGINA_TAMANHO);
+
+      pagina.forEach((chamado) => {
+        const tr = document.createElement("tr");
+        [
+          chamado.key,
+          chamado.summary,
+          chamado.status,
+          chamado.created ? chamado.created.slice(0, 10).split("-").reverse().join("/") : "",
+          chamado.assignee,
+          chamado.categoria_status || "—",
+          typeof chamado.chamados_atrelados === "number" ? chamado.chamados_atrelados : "—",
+        ].forEach((valor) => {
+          const td = document.createElement("td");
+          td.textContent = escapeText(valor);
+          tr.append(td);
+        });
+        tbody.append(tr);
+      });
+      wrap.classList.toggle("hidden", chamadosFiltrados.length === 0);
+
+      const totalPaginas = Math.max(1, Math.ceil(chamadosFiltrados.length / CHAMADOS_PAGINA_TAMANHO));
+      $(`${prefixo}-pagina-label`).textContent =
+        `Página ${paginaAtual + 1} de ${totalPaginas} (${chamadosFiltrados.length} no filtro)`;
+      $(`${prefixo}-pagina-anterior`).disabled = paginaAtual === 0;
+      $(`${prefixo}-pagina-proxima`).disabled = inicio + CHAMADOS_PAGINA_TAMANHO >= chamadosFiltrados.length;
+      $(`${prefixo}-paginacao`).classList.toggle("hidden", chamadosFiltrados.length === 0);
+    }
+
+    function atualizarProgresso(concluido) {
+      const el = $(`${prefixo}-progresso`);
+      const totalBruto = chamadosBrutos.length;
+      if (!totalBruto) {
+        el.classList.add("hidden");
+        return;
+      }
+      el.classList.remove("hidden");
+      el.textContent = concluido
+        ? `Categoria verificada em ${totalBruto} chamado${totalBruto === 1 ? "" : "s"} — ${chamadosFiltrados.length} no filtro atual.`
+        : `Verificando categorias... ${indiceProximoLote} de ${totalBruto} chamados (${chamadosFiltrados.length} no filtro até agora).`;
+    }
+
+    async function processarProximoLote(id) {
+      if (id !== buscaId) return;
+      if (indiceProximoLote >= chamadosBrutos.length) {
+        atualizarProgresso(true);
+        return;
+      }
+
+      const lote = chamadosBrutos.slice(indiceProximoLote, indiceProximoLote + CHAMADOS_LOTE_TAMANHO);
+      const nomesParaBuscar = [...new Set(lote.map((c) => c.summary).filter((n) => n && !(n in statusCache)))];
+
+      if (nomesParaBuscar.length) {
+        try {
+          const resp = await apiCall("/api/categoria-status-lote", { nomes: nomesParaBuscar });
+          if (id !== buscaId) return;
+          const data = await resp.json();
+          if (resp.ok) {
+            Object.assign(statusCache, data.status);
+            Object.assign(atreladosCache, data.atrelados);
+          }
+        } catch (e) {
+          if (id !== buscaId) return;
+        }
+      }
+
+      if (id !== buscaId) return;
+
+      lote.forEach((chamado) => {
+        chamado.categoria_status = Object.prototype.hasOwnProperty.call(statusCache, chamado.summary)
+          ? statusCache[chamado.summary]
+          : null;
+        chamado.chamados_atrelados = Object.prototype.hasOwnProperty.call(atreladosCache, chamado.summary)
+          ? atreladosCache[chamado.summary]
+          : null;
+      });
+      indiceProximoLote += lote.length;
+
+      recomputarFiltrados();
+      renderPaginaAtual();
+      atualizarProgresso(false);
+
+      processarProximoLote(id);
+    }
+
+    function reiniciarFiltroEExibir() {
+      paginaAtual = 0;
+      recomputarFiltrados();
+      renderPaginaAtual();
+    }
+
+    $(`${prefixo}-check-ativo`).addEventListener("change", reiniciarFiltroEExibir);
+    $(`${prefixo}-check-inativo`).addEventListener("change", reiniciarFiltroEExibir);
+
+    $(`${prefixo}-pagina-anterior`).addEventListener("click", () => {
+      if (paginaAtual > 0) {
+        paginaAtual -= 1;
+        renderPaginaAtual();
+      }
+    });
+    $(`${prefixo}-pagina-proxima`).addEventListener("click", () => {
+      const inicio = (paginaAtual + 1) * CHAMADOS_PAGINA_TAMANHO;
+      if (inicio < chamadosFiltrados.length) {
+        paginaAtual += 1;
+        renderPaginaAtual();
+      }
+    });
+
+    // "carregar" faz a validação + chamada de API específica de cada tela
+    // e devolve { resp, data, mensagemTotal(total) } — ou null se decidiu
+    // abortar (ex.: nenhuma Funcionalidade escolhida), já deixando a
+    // mensagem certa no status.
+    async function buscar(carregar) {
+      buscaId += 1;
+      const id = buscaId;
+
+      chamadosBrutos = [];
+      indiceProximoLote = 0;
+      statusCache = {};
+      atreladosCache = {};
+      chamadosFiltrados = [];
+      paginaAtual = 0;
+      $(`${prefixo}-progresso`).classList.add("hidden");
+      $(`${prefixo}-paginacao`).classList.add("hidden");
+      $(`${prefixo}-filtro-status`).classList.add("hidden");
+      $(`${prefixo}-chamados-wrap`).classList.add("hidden");
+
+      const resultado = await carregar();
+      if (id !== buscaId) return;
+      if (!resultado) return;
+
+      const { resp, data, mensagemTotal } = resultado;
+      const statusEl = $(`${prefixo}-status`);
+      if (!resp.ok) {
+        statusEl.textContent = data.error || "Erro ao buscar chamados.";
+        return;
+      }
+      const total = data.chamados.length;
+      statusEl.textContent = mensagemTotal(total);
+
+      chamadosBrutos = data.chamados;
+      if (total) {
+        $(`${prefixo}-filtro-status`).classList.remove("hidden");
+        processarProximoLote(id);
+      }
+    }
+
+    return { buscar };
+  }
+
+  // Busca Ofensor: não usa Data início/fim nem os checkboxes da ação
+  // principal. Escolher uma opção no dropdown "Funcionalidade Ofensores"
+  // (mesmo campo/opções nativas do Jira, customfield_26645) já dispara a
+  // busca nos chamados de "Gestão de Problemas" (base de chamados normal,
+  // não o catálogo do Jira Assets) filtrando por esse campo.
+  $("btn-ofensor").addEventListener("click", () => {
+    const painel = $("ofensor-panel");
+    const abrindo = !painel.classList.contains("open");
+    painel.classList.toggle("open", abrindo);
+    if (abrindo) {
+      $("ofensor-funcionalidade").focus();
+    }
+  });
+
+  const buscaOfensor = criarBuscaPaginadaChamados("ofensor");
+
+  function ofensorCampoBuscaSelecionado() {
+    return document.querySelector('input[name="ofensor-campo-busca"]:checked').value;
+  }
+
+  function dispararBuscaOfensor() {
+    const funcionalidade = $("ofensor-funcionalidade").value;
+    const campoBusca = ofensorCampoBuscaSelecionado();
+    const termo = $("ofensor-termo-busca").value.trim();
+
+    buscaOfensor.buscar(async () => {
+      if (!funcionalidade) {
+        $("ofensor-status").textContent = "Selecione uma Funcionalidade Ofensores pra buscar.";
+        $("ofensor-filtro-extra").classList.add("hidden");
+        return null;
+      }
+      $("ofensor-filtro-extra").classList.remove("hidden");
+      const rotulo = termo ? `${funcionalidade} + ${campoBusca === "alm" ? "ALM" : "Nome"} "${termo}"` : funcionalidade;
+      $("ofensor-status").textContent = `Buscando chamados de "${rotulo}" em Gestão de Problemas...`;
+      try {
+        const resp = await apiCall("/api/chamados-ofensor", { funcionalidade, campo_busca: campoBusca, termo });
+        const data = await resp.json();
+        return {
+          resp,
+          data,
+          mensagemTotal: (total) =>
+            total
+              ? `${total} chamado${total === 1 ? "" : "s"} de "${rotulo}" em Gestão de Problemas.`
+              : `Nenhum chamado de "${rotulo}" em Gestão de Problemas.`,
+        };
+      } catch (e) {
+        $("ofensor-status").textContent = "Não foi possível conectar ao servidor.";
+        return null;
+      }
+    });
+  }
+
+  $("ofensor-funcionalidade").addEventListener("change", () => {
+    $("ofensor-termo-busca").value = "";
+    dispararBuscaOfensor();
+  });
+
+  let ofensorTermoTimer = null;
+  $("ofensor-termo-busca").addEventListener("input", () => {
+    clearTimeout(ofensorTermoTimer);
+    ofensorTermoTimer = setTimeout(dispararBuscaOfensor, 300);
+  });
+
+  document.querySelectorAll('input[name="ofensor-campo-busca"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      if ($("ofensor-termo-busca").value.trim()) {
+        dispararBuscaOfensor();
+      }
+    });
+  });
+
+  // Extração Geral: NÃO mostra tabela em tela — baixa direto um Excel com
+  // os chamados da Funcionalidade Ofensores escolhida (exige Funcionalidade,
+  // não deixa exportar "Gestão de Problemas" inteiro sem filtro nenhum),
+  // cada linha já com "Categoria Ativa?" checada. Só dispara quando o
+  // usuário clica em "Gerar Excel" (nunca sozinho ao trocar a Funcionalidade
+  // ou ao abrir o painel) — e como a checagem roda inteira antes de
+  // responder, pode demorar bastante numa Funcionalidade grande.
+  $("btn-ofgeral").addEventListener("click", () => {
+    const painel = $("ofgeral-panel");
+    const abrindo = !painel.classList.contains("open");
+    painel.classList.toggle("open", abrindo);
+    if (abrindo) {
+      $("ofgeral-funcionalidade").focus();
+    }
+  });
+
+  function ofgeralCampoBuscaSelecionado() {
+    return document.querySelector('input[name="ofgeral-campo-busca"]:checked').value;
+  }
+
+  $("btn-ofgeral-buscar").addEventListener("click", async () => {
+    const funcionalidade = $("ofgeral-funcionalidade").value;
+    const campoBusca = ofgeralCampoBuscaSelecionado();
+    const termo = $("ofgeral-termo-busca").value.trim();
+    const statusEl = $("ofgeral-status");
+
+    if (!funcionalidade) {
+      statusEl.textContent = "Selecione uma Funcionalidade Ofensores pra gerar o Excel.";
+      return;
+    }
+
+    const rotulo = termo ? `${funcionalidade} + ${campoBusca === "alm" ? "ALM" : "Nome"} "${termo}"` : funcionalidade;
+    const botao = $("btn-ofgeral-buscar");
+
+    statusEl.textContent = `Gerando Excel de "${rotulo}" em Gestão de Problemas...`;
+    botao.disabled = true;
+
+    try {
+      const resp = await apiCall("/api/chamados-geral", { funcionalidade, campo_busca: campoBusca, termo });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        statusEl.textContent = data.error || "Erro ao gerar o Excel.";
+        return;
+      }
+
+      const contentType = resp.headers.get("Content-Type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await resp.json();
+        statusEl.textContent = data.message || "Nenhum chamado encontrado.";
+        return;
+      }
+
+      const blob = await resp.blob();
+      const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), "extracao_geral_gestao_problemas.xlsx");
+      triggerDownload(blob, filename);
+      statusEl.textContent = `Excel gerado: ${filename}`;
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+    } finally {
+      botao.disabled = false;
+    }
+  });
+
+  // "secao" pode vir no formato "chato" (Mops Solar: {categorias,
+  // total_chamados, total_categorizados}) ou dividido por APP/BOX (Mops Tv
+  // do Futuro: {app, box, outros?}) — buildCategoriaTableEl trata os dois
+  // (é a mesma função usada pelo Relatório Geral).
+  function renderCategoriaTable(prefixo, secao, titulo) {
     const bloco = $(`categorias-${prefixo}-block`);
-    const tabela = $(`cat-${prefixo}-table`);
-    const thead = tabela.querySelector("thead");
-    const tbody = tabela.querySelector("tbody");
-    thead.innerHTML = "";
-    tbody.innerHTML = "";
+    bloco.innerHTML = "";
 
     if (!secao) {
       bloco.classList.add("hidden");
       return;
     }
 
-    $(`cat-${prefixo}-total`).textContent = secao.total_chamados;
-    $(`cat-${prefixo}-categorizados`).textContent = secao.total_categorizados;
-
-    const trHead = document.createElement("tr");
-    ["Categoria", "Quantidade", "%"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    if (!secao.categorias.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 3;
-      td.textContent = "Nenhum chamado categorizado no período.";
-      tr.append(td);
-      tbody.append(tr);
-    } else {
-      secao.categorias.forEach(({ categoria, quantidade, percentual }) => {
-        const tr = document.createElement("tr");
-        const tdCategoria = document.createElement("td");
-        tdCategoria.textContent = categoria;
-        const tdQuantidade = document.createElement("td");
-        tdQuantidade.textContent = quantidade;
-        const tdPercentual = document.createElement("td");
-        tdPercentual.textContent = `${percentual}%`;
-        tr.append(tdCategoria, tdQuantidade, tdPercentual);
-        tbody.append(tr);
-      });
-    }
-
+    bloco.append(buildCategoriaTableEl(titulo, secao));
     bloco.classList.remove("hidden");
   }
 
@@ -1410,8 +1720,8 @@
         setBanner(data.error || "Erro ao buscar categorias de encerramento.", "error");
         return;
       }
-      renderCategoriaTable("encerrados", data.encerrados);
-      renderCategoriaTable("reabertos", data.reabertos);
+      renderCategoriaTable("encerrados", data.encerrados, "Encerrados");
+      renderCategoriaTable("reabertos", data.reabertos, "Reabertos");
       $("categorias-date").textContent = dataVigente();
       $("categorias-results").classList.remove("hidden");
       clearBanner();
@@ -1921,6 +2231,195 @@
       setBanner("Não foi possível conectar ao servidor.", "error");
     } finally {
       setBusy(false);
+    }
+  });
+
+  // ---------------------------------------------------------- report vini
+  $("btn-report-vini").addEventListener("click", () => {
+    const dialog = $("report-vini-dialog");
+    const abrindo = !dialog.classList.contains("open");
+    closeAllDialogs("report-vini-dialog");
+    dialog.classList.toggle("open", abrindo);
+  });
+
+  $("btn-vini-cancelar").addEventListener("click", () => {
+    $("report-vini-dialog").classList.remove("open");
+  });
+
+  // Consolida no mesmo resultado o que hoje fica espalhado em 3 ações
+  // (Criados x Resolvidos, Reabertos, Categorias de Encerramento) — as duas
+  // primeiras reaproveitam os mesmos builders de card/donut já usados na
+  // ação "Criados x Resolvidos"; a terceira reaproveita buildCategoriaTableEl
+  // (mesmo formato dividido Claro Tv +/Claro Streaming Box de lá).
+  // Guardado pro "Exportar PDF" reaproveitar sem refazer a busca — mesmo
+  // dado já renderizado em tela.
+  let lastViniData = null;
+  let lastViniInicio = null;
+  let lastViniFim = null;
+
+  function renderReportVini(data, inicio, fim) {
+    lastViniData = data;
+    lastViniInicio = inicio;
+    lastViniFim = fim;
+
+    const cr = data.criados_resolvidos;
+    const saldo = cr.total_criados - cr.total_resolvidos;
+
+    const cardsEl = $("vini-cr-summary-cards");
+    cardsEl.innerHTML = "";
+    cardsEl.append(summaryCard(cr.total_criados, "Criados no período", "tone-accent"));
+    cardsEl.append(summaryCard(cr.total_resolvidos, "Resolvidos (Encerrado/Resolvido)", "tone-warning"));
+    cardsEl.append(summaryCard(saldo, "Saldo (criados − resolvidos)", saldo > 0 ? "tone-danger" : ""));
+
+    const donutEl = $("vini-cr-prazo-donut");
+    donutEl.innerHTML = "";
+    if (typeof cr.percentual_dentro_prazo === "number") {
+      donutEl.append(buildPrazoDonutEl(cr.resolvidos_dentro_prazo, cr.resolvidos_fora_prazo, cr.percentual_dentro_prazo));
+      donutEl.classList.remove("hidden");
+    } else {
+      donutEl.classList.add("hidden");
+    }
+
+    const porGrupoBlock = $("vini-cr-por-grupo-block");
+    const porGrupoCardsEl = $("vini-cr-por-grupo-cards");
+    porGrupoCardsEl.innerHTML = "";
+    if (cr.por_grupo && cr.por_grupo.length) {
+      cr.por_grupo.forEach(({ grupo, total, media_diaria, tma_horas }) => {
+        porGrupoCardsEl.append(criadosResolvidosGrupoCard(grupo, total, media_diaria, tma_horas));
+      });
+      porGrupoBlock.classList.remove("hidden");
+    } else {
+      porGrupoBlock.classList.add("hidden");
+    }
+
+    const reabertosEl = $("vini-reabertos-cards");
+    reabertosEl.innerHTML = "";
+    reabertosEl.append(summaryCard(data.reabertos.total, "Total de chamados", "tone-danger"));
+    reabertosEl.append(
+      summaryCard(`${data.reabertos.percentual}%`, `dos ${data.reabertos.total_criados_periodo} criados no período`, "tone-accent")
+    );
+
+    const categoriasBlock = $("vini-categorias-block");
+    categoriasBlock.innerHTML = "";
+    categoriasBlock.append(buildCategoriaTableEl("Encerrados", data.categorias_encerrados));
+
+    $("vini-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
+    $("report-vini-results").classList.remove("hidden");
+  }
+
+  $("btn-vini-gerar").addEventListener("click", async () => {
+    const inicio = $("vini-input-inicio").value;
+    const fim = $("vini-input-fim").value;
+    if (!inicio || !fim) {
+      setBanner("Informe as duas datas.", "error");
+      return;
+    }
+
+    const projetos = projetosSelecionados();
+    if (!projetos.length) {
+      setBanner("Selecione ao menos um projeto.", "error");
+      return;
+    }
+
+    $("report-vini-dialog").classList.remove("open");
+    setBusy(true);
+    setBanner("Gerando Report Vini... pode demorar num período grande (checa a categoria de cada chamado encerrado).", "info");
+    hideAllResults();
+    try {
+      const resp = await apiCall("/api/report-vini", { inicio, fim, caixa: state.caixa, projetos });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setBanner(data.error || "Erro ao gerar o Report Vini.", "error");
+        return;
+      }
+      renderReportVini(data, inicio, fim);
+      clearBanner();
+    } catch (e) {
+      setBanner("Não foi possível conectar ao servidor.", "error");
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  // Monta as "seções" no mesmo formato aceito por /api/relatorio-geral-pdf
+  // (já usado pelo Relatório Geral) a partir do resultado já em tela —
+  // mesma estrutura Resumo/Grupo/Reabertos/Categorias do PDF avulso gerado
+  // à mão antes desse botão existir.
+  // Monta as seções pro PDF com o mesmo visual da tela — cards coloridos
+  // (não texto corrido) e o donut de Dentro/Fora do prazo (ver
+  // _construir_cards_pdf/_construir_donut_pdf em jira_extractor.py).
+  function viniSecoesPdf(data, inicio, fim) {
+    const cr = data.criados_resolvidos;
+    const saldo = cr.total_criados - cr.total_resolvidos;
+    const periodo = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
+
+    const secaoCriadosResolvidos = {
+      titulo: `Criados x Resolvidos (TMA / SLA) — ${periodo}`,
+      cards: [
+        { valor: cr.total_criados, label: "Criados no período", tone: "accent" },
+        { valor: cr.total_resolvidos, label: "Resolvidos (Encerrado/Resolvido)", tone: "warning" },
+        { valor: saldo, label: "Saldo (criados − resolvidos)", tone: saldo > 0 ? "danger" : undefined },
+      ],
+    };
+    if (typeof cr.percentual_dentro_prazo === "number") {
+      secaoCriadosResolvidos.donut = {
+        dentro: cr.resolvidos_dentro_prazo,
+        fora: cr.resolvidos_fora_prazo,
+        percentual: cr.percentual_dentro_prazo,
+      };
+    }
+    const secoes = [secaoCriadosResolvidos];
+
+    if (cr.por_grupo && cr.por_grupo.length) {
+      secoes.push({
+        titulo: "Chamados Encerrados por Grupo Solucionador",
+        cards: cr.por_grupo.map(({ grupo, total, media_diaria, tma_horas }) => ({
+          valor: total,
+          label: `${GRUPO_LABEL_CURTO[grupo] || grupo}\nMédia: ${media_diaria}/dia${
+            typeof tma_horas === "number" ? `\nTMA: ${tma_horas}h` : ""
+          }`,
+        })),
+      });
+    }
+
+    secoes.push({
+      titulo: `Chamados Reabertos — ${periodo}`,
+      cards: [
+        { valor: data.reabertos.total, label: "Total de chamados", tone: "danger" },
+        { valor: `${data.reabertos.percentual}%`, label: `dos ${data.reabertos.total_criados_periodo} criados no período`, tone: "accent" },
+      ],
+    });
+
+    secoes.push(...categoriaSecoesPdf("Top 5 Categorias de Encerramento — Encerrados", data.categorias_encerrados));
+
+    return secoes;
+  }
+
+  $("btn-vini-pdf").addEventListener("click", async () => {
+    if (!lastViniData) return;
+    const botao = $("btn-vini-pdf");
+    botao.disabled = true;
+    setBanner("Gerando PDF...", "info");
+    try {
+      const secoes = viniSecoesPdf(lastViniData, lastViniInicio, lastViniFim);
+      const resp = await apiCall("/api/relatorio-geral-pdf", {
+        secoes,
+        titulo: "Mops Tv do Futuro — Report Vini",
+        arquivo: "report_vini",
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        setBanner(data.error || "Erro ao gerar o PDF.", "error");
+        return;
+      }
+      const blob = await resp.blob();
+      const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), "report_vini.pdf");
+      triggerDownload(blob, filename);
+      setBanner(`PDF gerado: ${filename}`, "success");
+    } catch (e) {
+      setBanner("Não foi possível conectar ao servidor.", "error");
+    } finally {
+      botao.disabled = false;
     }
   });
 
@@ -2475,53 +2974,100 @@
     return holder;
   }
 
+  // Mops Tv do Futuro separa "Categoria de Encerramento" em sub-blocos por
+  // "APP"/"BOX" (tag no fim do nome da categoria, resolvida no backend —
+  // ver _dividir_categorias_tv) em vez de uma lista só como Mops Solar;
+  // "secao" chega como {app, box, outros?} nesse caso, em vez do formato
+  // "chato" {categorias, total_chamados, total_categorizados}. Usado tanto
+  // pela ação "Categorias de Encerramento" quanto pelo Relatório Geral.
   function buildCategoriaTableEl(titulo, secao) {
-    const holder = document.createElement("div");
-    const h = document.createElement("div");
-    h.className = "top-assignees-title";
-    h.textContent = `${titulo} — ${secao.total_chamados} chamados (${secao.total_categorizados} categorizados)`;
-    holder.append(h);
+    if (secao.categorias) {
+      const holder = document.createElement("div");
+      const h = document.createElement("div");
+      h.className = "top-assignees-title";
+      h.textContent = `${titulo} — ${secao.total_chamados} chamados (${secao.total_categorizados} categorizados)`;
+      holder.append(h);
 
-    const wrap = document.createElement("div");
-    wrap.className = "table-wrap";
-    const table = document.createElement("table");
-    table.className = "data-table";
-    const thead = document.createElement("thead");
-    const tbody = document.createElement("tbody");
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      const table = document.createElement("table");
+      table.className = "data-table data-table--categorias";
+      const thead = document.createElement("thead");
+      const tbody = document.createElement("tbody");
 
-    const trHead = document.createElement("tr");
-    ["Categoria", "Quantidade", "%"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    if (!secao.categorias.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 3;
-      td.textContent = "Nenhum chamado categorizado no período.";
-      tr.append(td);
-      tbody.append(tr);
-    } else {
-      secao.categorias.forEach(({ categoria, quantidade, percentual }) => {
-        const tr = document.createElement("tr");
-        const tdCategoria = document.createElement("td");
-        tdCategoria.textContent = categoria;
-        const tdQuantidade = document.createElement("td");
-        tdQuantidade.textContent = quantidade;
-        const tdPercentual = document.createElement("td");
-        tdPercentual.textContent = `${percentual}%`;
-        tr.append(tdCategoria, tdQuantidade, tdPercentual);
-        tbody.append(tr);
+      const trHead = document.createElement("tr");
+      ["Categoria", "Quantidade", "%"].forEach((label) => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        trHead.append(th);
       });
+      thead.append(trHead);
+
+      if (!secao.categorias.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 3;
+        td.textContent = "Nenhum chamado categorizado no período.";
+        tr.append(td);
+        tbody.append(tr);
+      } else {
+        secao.categorias.forEach(({ categoria, quantidade, percentual }) => {
+          const tr = document.createElement("tr");
+          const tdCategoria = document.createElement("td");
+          tdCategoria.textContent = categoria;
+          const tdQuantidade = document.createElement("td");
+          tdQuantidade.textContent = quantidade;
+          const tdPercentual = document.createElement("td");
+          tdPercentual.textContent = `${percentual}%`;
+          tr.append(tdCategoria, tdQuantidade, tdPercentual);
+          tbody.append(tr);
+        });
+      }
+
+      table.append(thead, tbody);
+      wrap.append(table);
+      holder.append(wrap);
+      return holder;
     }
 
-    table.append(thead, tbody);
-    wrap.append(table);
-    holder.append(wrap);
+    // Formato dividido (Tv do Futuro): Claro Tv + / Claro Streaming Box /
+    // Outros (só se tiver algo)
+    const holder = document.createElement("div");
+    holder.append(buildCategoriaTableEl(`${titulo} — Claro Tv +`, secao.app));
+    const boxEl = buildCategoriaTableEl(`${titulo} — Claro Streaming Box`, secao.box);
+    boxEl.style.marginTop = "14px";
+    holder.append(boxEl);
+    if (secao.outros && secao.outros.categorias.length) {
+      const outrosEl = buildCategoriaTableEl(`${titulo} — Outros (sem tag identificada)`, secao.outros);
+      outrosEl.style.marginTop = "14px";
+      holder.append(outrosEl);
+    }
     return holder;
+  }
+
+  // Linhas "Categoria/Quantidade/%" pro PDF do Relatório Geral — recursivo
+  // pelo mesmo motivo do buildCategoriaTableEl acima (formato dividido de
+  // Mops Tv do Futuro).
+  function categoriaSecoesPdf(tituloBase, secao) {
+    if (secao.categorias) {
+      return [
+        {
+          titulo: tituloBase,
+          tabela: {
+            fields: ["Categoria", "Quantidade", "%"],
+            rows: secao.categorias.map((c) => ({ Categoria: c.categoria, Quantidade: c.quantidade, "%": c.percentual })),
+          },
+        },
+      ];
+    }
+    const partes = [
+      ...categoriaSecoesPdf(`${tituloBase} — Claro Tv +`, secao.app),
+      ...categoriaSecoesPdf(`${tituloBase} — Claro Streaming Box`, secao.box),
+    ];
+    if (secao.outros && secao.outros.categorias.length) {
+      partes.push(...categoriaSecoesPdf(`${tituloBase} — Outros`, secao.outros));
+    }
+    return partes;
   }
 
   function renderGeralTabela(acao, data) {
@@ -2598,34 +3144,14 @@
 
     if (data.encerrados) {
       wrapper.append(buildCategoriaTableEl("Encerrados", data.encerrados));
-      secoesPdf.push({
-        titulo: `${acao.label} — Encerrados`,
-        tabela: {
-          fields: ["Categoria", "Quantidade", "%"],
-          rows: data.encerrados.categorias.map((c) => ({
-            Categoria: c.categoria,
-            Quantidade: c.quantidade,
-            "%": c.percentual,
-          })),
-        },
-      });
+      secoesPdf.push(...categoriaSecoesPdf(`${acao.label} — Encerrados`, data.encerrados));
     }
     if (data.reabertos) {
       const div = document.createElement("div");
       div.style.marginTop = "14px";
       div.append(buildCategoriaTableEl("Reabertos", data.reabertos));
       wrapper.append(div);
-      secoesPdf.push({
-        titulo: `${acao.label} — Reabertos`,
-        tabela: {
-          fields: ["Categoria", "Quantidade", "%"],
-          rows: data.reabertos.categorias.map((c) => ({
-            Categoria: c.categoria,
-            Quantidade: c.quantidade,
-            "%": c.percentual,
-          })),
-        },
-      });
+      secoesPdf.push(...categoriaSecoesPdf(`${acao.label} — Reabertos`, data.reabertos));
     }
 
     lastGeralSecoes.push(...secoesPdf);

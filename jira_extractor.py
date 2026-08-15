@@ -15,7 +15,9 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -25,6 +27,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.graphics.shapes import Circle, Drawing, String, Wedge
 
 # Quando empacotado como executável "windowed" (sem console), sys.stderr é
 # None e um StreamHandler padrão quebraria no primeiro log. Nesse caso não
@@ -322,6 +325,47 @@ def _extract_categoria_values(config, field_value):
             )
             valores.append(object_id)
     return valores
+
+
+# Mesmo teto de paralelismo usado em fetch_status_categoria_lote (Busca
+# Ofensor) — reaproveitado aqui pelo mesmo motivo: cada objeto novo do Jira
+# Assets é uma chamada de rede de ~1s, e resolver em série pode levar
+# minutos num período com muitas categorias distintas (ex.: um mês inteiro
+# de Mops Tv do Futuro).
+_PRECACHE_CATEGORIA_WORKERS = 20
+
+
+def _precache_categoria_labels(config, issues, categoria_field_id):
+    """Resolve em paralelo o label de cada objeto do Jira Assets distinto
+    referenciado por "categoria_field_id" nesses "issues", populando
+    _asset_label_cache ANTES da contagem — sem isso, fetch_categoria_
+    encerrados/fetch_categoria_reabertos resolvem um objeto novo por vez,
+    em série, dentro do loop de contagem (só a repetição de uma categoria
+    já vista se beneficia do cache; a primeira ocorrência de cada uma
+    sempre pagava a chamada de rede sequencialmente)."""
+    refs_unicas = set()
+    for issue in issues:
+        field_value = issue.get("fields", {}).get(categoria_field_id)
+        refs = _extract_asset_refs(field_value)
+        if refs:
+            refs_unicas.update(refs)
+
+    pendentes = [ref for ref in refs_unicas if ref not in _asset_label_cache]
+    if not pendentes:
+        return
+
+    def _resolver(ref):
+        workspace_id, object_id = ref
+        try:
+            _resolve_asset_label(config, workspace_id, object_id)
+        except Exception as e:
+            log.warning(
+                "Falha ao pré-resolver objeto do Jira Assets (workspace=%s, object=%s): %s",
+                workspace_id, object_id, e,
+            )
+
+    with ThreadPoolExecutor(max_workers=_PRECACHE_CATEGORIA_WORKERS) as executor:
+        list(executor.map(_resolver, pendentes))
 
 
 def _extract_grupo_solucionador(field_value):
@@ -1135,6 +1179,259 @@ def _linhas_top_categorias(titulo, counts, limite=CATEGORIA_ENCERRAMENTO_TOP_N):
     return linhas
 
 
+# Jira Assets (catálogo de objetos) é uma API bem diferente da API normal de
+# chamados: mora em api.atlassian.com (não na URL do site) e pede um
+# "workspaceId" próprio, que não é o cloudId do site. Descoberto inspecionando
+# o valor bruto de um campo tipo objeto (schema cmdb-object-cftype) num
+# chamado real — o workspaceId já vem junto no JSON do campo. Fixo porque é
+# uma característica desta instância, não muda por requisição.
+ASSETS_WORKSPACE_ID = "76827f8b-4d96-46a6-abf2-f592d6b4b2d9"
+ASSETS_API_BASE = f"https://api.atlassian.com/jsm/assets/workspace/{ASSETS_WORKSPACE_ID}/v1"
+CATEGORIA_OBJECT_TYPE = "Categoria de encerramento"
+
+
+def _normalizar_termo_aql(termo):
+    """Remove acentos de um termo antes de montar "Name LIKE" — testado
+    direto na API: o Jira Assets é sensível a acento nesse filtro (não a
+    maiúsc./minúsc.), então "Catálogo" e "CATALOGO" dão resultados bem
+    diferentes (10 x 217 batendo com os mesmos Names, que são sempre sem
+    acento). Sem isso, buscar por um valor acentuado (como vem do dropdown
+    "Funcionalidade Ofensores") perderia quase todo mundo."""
+    return "".join(c for c in unicodedata.normalize("NFD", termo) if not unicodedata.combining(c))
+
+
+# ID do atributo "Status" no tipo de objeto "Categoria de encerramento" —
+# descoberto inspecionando objectTypeAttributes na resposta da AQL. Fixo
+# porque é característica desta instância (mesmo espírito de
+# ASSETS_WORKSPACE_ID), não vem no payload de cada objeto por nome. A API
+# devolve "objectTypeAttributeId" como STRING (ex.: "323", não 323) —
+# guardado aqui já como string pra bater direto na comparação.
+CATEGORIA_STATUS_ATTR_ID = "323"
+
+def _status_categoria(obj):
+    for attr in obj.get("attributes", []):
+        if attr.get("objectTypeAttributeId") == CATEGORIA_STATUS_ATTR_ID:
+            vals = attr.get("objectAttributeValues", [])
+            return vals[0].get("displayValue") if vals else None
+    return None
+
+
+def fetch_categoria_por_nome(config, nome):
+    """Busca a "Categoria de Encerramento" cujo "Name" é EXATAMENTE igual
+    ao texto informado — usada pela coluna "Categoria Ativa?" da Busca
+    Ofensor, passando o "Resumo"/summary do próprio chamado como parâmetro
+    (confirmado que o Name da Categoria de Encerramento e o summary do PRB
+    são o mesmo texto, char por char — mais confiável que tentar casar pelo
+    número do ALM, que às vezes referencia um número secundário no meio do
+    Name em vez do DFT que dá nome ao objeto). None quando não acha."""
+    nome_escapado = nome.replace('"', '\\"')
+    resp = requests.post(
+        f"{ASSETS_API_BASE}/object/aql",
+        auth=(config["email"], config["token"]),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        json={
+            "qlQuery": f'objectType = "{CATEGORIA_OBJECT_TYPE}" AND Name = "{nome_escapado}"',
+            "resultPerPage": 5,
+            "includeAttributes": True,
+        },
+        timeout=20,
+    )
+    if resp.status_code == 401:
+        raise JiraExtractorError("Falha de autenticação (401) na API do Jira Assets.")
+    resp.raise_for_status()
+    data = resp.json()
+
+    for obj in data.get("values", []):
+        if obj.get("label") == nome:
+            return {"name": nome, "status": _status_categoria(obj)}
+
+    return None
+
+
+# Campo nativo do Jira (select fixo, customfield_26645 — não é do Jira
+# Assets) usado como parâmetro de filtro na "Busca Ofensor": os chamados de
+# "Gestão de Problemas" cuja "Funcionalidade Ofensores" bate com a opção
+# escolhida no dropdown. Mesma base da JQL passada pelo usuário, trocando
+# "Sistemas Ofensores" (referência a objeto do Jira Assets) por esse campo.
+FUNCIONALIDADE_OFENSORES_CAMPO = "Funcionalidade Ofensores"
+PROJETO_GESTAO_PROBLEMAS = "Gestão de Problemas"
+
+# Campo nativo do Jira (texto livre, customfield_26643 — mesma família dos
+# outros campos "Ofensores") com o número do defeito/ALM do chamado. Não é
+# mais usado pra achar a Categoria de Encerramento (ver fetch_categoria_
+# por_nome, que casa pelo "Resumo"/summary inteiro em vez do ALM) — fica
+# só pra alimentar a busca "ALM" da Busca Ofensor.
+ALM_CAMPO = "ALM"
+ALM_CAMPO_ID = "customfield_26643"
+
+
+def _clausula_nome_ou_alm(campo_busca, termo):
+    """Monta o pedaço "AND ..." pro refino opcional por "Nome" (summary) OU
+    "ALM" — usado tanto pela Busca Ofensor por Funcionalidade quanto pela
+    Extração Geral. String vazia quando não há termo."""
+    termo = (termo or "").strip()
+    if not termo:
+        return ""
+    termo_escapado = termo.replace('"', '\\"')
+    if campo_busca == "alm":
+        return f' AND "{ALM_CAMPO}" ~ "{termo_escapado}*"'
+    return f' AND summary ~ "{termo_escapado}*"'
+
+
+def _montar_chamados_ofensor(issues):
+    resultado = []
+    for issue in issues:
+        fields = issue.get("fields", {})
+        resultado.append({
+            "key": issue.get("key"),
+            "summary": fields.get("summary"),
+            "status": _extract(fields.get("status")),
+            "created": fields.get("created"),
+            "assignee": _extract(fields.get("assignee")),
+            "alm": fields.get(ALM_CAMPO_ID),
+        })
+    return resultado
+
+
+def fetch_chamados_funcionalidade_ofensor(config, funcionalidade, campo_busca=None, termo=None):
+    """Busca os chamados do projeto "Gestão de Problemas" cuja
+    "Funcionalidade Ofensores" é a opção escolhida no dropdown (mesmas 32
+    opções fixas do campo nativo do Jira). Opcionalmente, refina o
+    resultado buscando por "Nome" (summary) OU "ALM" (campo_busca vale
+    "nome" ou "alm" — só um dos dois de cada vez, nunca os dois juntos)."""
+    funcionalidade_escapada = funcionalidade.replace('"', '\\"')
+    jql = (
+        f'project = "{PROJETO_GESTAO_PROBLEMAS}" AND "{FUNCIONALIDADE_OFENSORES_CAMPO}" = '
+        f'"{funcionalidade_escapada}"' + _clausula_nome_ou_alm(campo_busca, termo) + " ORDER BY created DESC"
+    )
+    issues = fetch_issues(config, jql, ["summary", "status", "created", "assignee", "reporter", ALM_CAMPO_ID])
+    return _montar_chamados_ofensor(issues)
+
+
+# Tamanho máximo de um lote de "Name"s verificados de uma vez em
+# fetch_status_categoria_lote — o frontend da Busca Ofensor manda os
+# chamados em lotes pequenos (carregamento gradual, ver app.js) em vez de
+# pedir tudo de uma vez; esse teto aqui é só uma trava de segurança extra
+# contra um lote grande demais vindo de qualquer chamador.
+LIMITE_LOTE_STATUS_CATEGORIA = 50
+
+
+# Cada chamada à API do Jira Assets leva ~1s (latência do serviço, não dá
+# pra encurtar) — em série, um lote de 25 levaria uns 25-30s. Como cada
+# nome do lote é uma consulta independente, roda em paralelo (poucas
+# threads, não é uma varredura sem limite) pra caber num tempo razoável.
+FETCH_STATUS_LOTE_WORKERS = 8
+
+
+def fetch_status_categoria_lote(config, nomes, max_workers=None):
+    """Devolve {nome: status} pro Status (Ativo/Inativo/None) da Categoria
+    de Encerramento cujo "Name" é exatamente igual a cada "nome" (Resumo/
+    summary de um chamado) — uma chamada à API do Jira Assets por nome
+    distinto da lista, em paralelo (max_workers threads, por padrão
+    FETCH_STATUS_LOTE_WORKERS). Usada pela Busca Ofensor pra checar a
+    Categoria Ativa? em lotes pequenos, carregando a tabela aos poucos, e
+    também (com mais paralelismo) pela Extração Geral pra montar o Excel
+    inteiro de uma vez.
+
+    "nomes" acima de LIMITE_LOTE_STATUS_CATEGORIA são silenciosamente
+    descartados — quem quiser processar uma lista maior precisa dividir em
+    pedaços antes de chamar (ver enriquecer_todos_com_categoria_status)."""
+    nomes_unicos = list(dict.fromkeys(n.strip() for n in nomes if n and n.strip()))[:LIMITE_LOTE_STATUS_CATEGORIA]
+    if not nomes_unicos:
+        return {}
+
+    def _buscar(nome):
+        categoria = fetch_categoria_por_nome(config, nome)
+        return nome, (categoria["status"] if categoria else None)
+
+    with ThreadPoolExecutor(max_workers=max_workers or FETCH_STATUS_LOTE_WORKERS) as executor:
+        pares = list(executor.map(_buscar, nomes_unicos))
+    return dict(pares)
+
+
+SEARCH_APPROX_COUNT_ENDPOINT = "/rest/api/3/search/approximate-count"
+
+
+def _contar_chamados(config, jql):
+    """Só a contagem de chamados que batem com "jql" (não baixa os
+    chamados) — mais leve que uma busca completa quando só o total
+    interessa."""
+    resp = requests.post(
+        f"{config['url']}{SEARCH_APPROX_COUNT_ENDPOINT}",
+        auth=(config["email"], config["token"]),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        json={"jql": jql},
+        timeout=20,
+    )
+    if resp.status_code == 401:
+        raise JiraExtractorError("Falha de autenticação (401). Verifique o e-mail e o API Token.")
+    resp.raise_for_status()
+    return resp.json().get("count", 0)
+
+
+def fetch_contagem_atrelados_lote(config, nomes, max_workers=None):
+    """Devolve {nome: quantidade} — pra cada "nome" (Resumo/summary de um
+    chamado), quantos chamados ENCERRADOS (Resolvido/Encerrado) em "Gestão
+    de Problemas" têm essa MESMA Categoria de Encerramento (o "Resumo"
+    idêntico, frase exata — não filtra por Funcionalidade Ofensores nem
+    pelos outros critérios da busca atual, é o total no projeto inteiro).
+
+    A busca de texto normal do Jira (summary ~ "...") não faz match de
+    frase exata em textos longos como os desses Resumos — testado direto
+    na API, "summary ~ "<frase longa>"" (mesmo com aspas) não encontra nem
+    o próprio chamado de origem. O truque é aspas duplas ESCAPADAS dentro
+    do valor (sintaxe de frase exata do Lucene, que é o motor por trás da
+    busca de texto do Jira): summary ~ "\\"<frase>\\"" — só assim funciona
+    pra frases longas.
+
+    Usado pela coluna "Qtd. atrelados" da Busca Ofensor, em paralelo
+    (max_workers threads, por padrão FETCH_STATUS_LOTE_WORKERS) — mesmo
+    padrão de fetch_status_categoria_lote."""
+    nomes_unicos = list(dict.fromkeys(n.strip() for n in nomes if n and n.strip()))[:LIMITE_LOTE_STATUS_CATEGORIA]
+    if not nomes_unicos:
+        return {}
+
+    def _contar(nome):
+        nome_escapado = nome.replace("\\", "\\\\").replace('"', '\\"')
+        jql = (
+            f'project = "{PROJETO_GESTAO_PROBLEMAS}" AND status IN ("Resolvido", "Encerrado") '
+            f'AND summary ~ "\\"{nome_escapado}\\""'
+        )
+        return nome, _contar_chamados(config, jql)
+
+    with ThreadPoolExecutor(max_workers=max_workers or FETCH_STATUS_LOTE_WORKERS) as executor:
+        pares = list(executor.map(_contar, nomes_unicos))
+    return dict(pares)
+
+
+# Extração Geral processa a lista inteira de uma vez (não é paginada visível
+# ao usuário — vira um Excel só, no fim) — usa mais threads em paralelo que
+# o padrão da Busca Ofensor pra não demorar tanto num projeto que passa de
+# 7 mil chamados.
+ENRIQUECER_TODOS_WORKERS = 20
+ENRIQUECER_TODOS_LOTE_TAMANHO = 100
+
+
+def enriquecer_todos_com_categoria_status(config, chamados):
+    """Preenche "categoria_status" e "chamados_atrelados" em TODOS os
+    chamados (não é a versão em lotes visíveis da Busca Ofensor) — usada
+    pela Extração Geral antes de montar o Excel. Um chamado sem "Resumo"/
+    summary fica com os dois em None."""
+    nomes_unicos = list(dict.fromkeys((c.get("summary") or "").strip() for c in chamados if (c.get("summary") or "").strip()))
+    status_map = {}
+    atrelados_map = {}
+    for i in range(0, len(nomes_unicos), ENRIQUECER_TODOS_LOTE_TAMANHO):
+        lote = nomes_unicos[i : i + ENRIQUECER_TODOS_LOTE_TAMANHO]
+        status_map.update(fetch_status_categoria_lote(config, lote, max_workers=ENRIQUECER_TODOS_WORKERS))
+        atrelados_map.update(fetch_contagem_atrelados_lote(config, lote, max_workers=ENRIQUECER_TODOS_WORKERS))
+
+    for chamado in chamados:
+        nome = (chamado.get("summary") or "").strip()
+        chamado["categoria_status"] = status_map.get(nome)
+        chamado["chamados_atrelados"] = atrelados_map.get(nome)
+    return chamados
+
+
 def fetch_categoria_encerrados(config, grupos, start_date, end_date, categoria_field_id, projetos=None):
     """Busca a contagem por 'Categoria de Encerramento' entre os chamados
     encerrados (resolutiondate) no período — mesma população de 'Total
@@ -1158,6 +1455,7 @@ def fetch_categoria_encerrados(config, grupos, start_date, end_date, categoria_f
         f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
     )
     issues = fetch_issues(config, jql, ["key", categoria_field_id])
+    _precache_categoria_labels(config, issues, categoria_field_id)
 
     counts = Counter()
     for issue in issues:
@@ -1179,6 +1477,7 @@ def fetch_categoria_reabertos(config, grupos, start_date, end_date, categoria_fi
 
     counts = Counter()
     total = 0
+    todos_issues = []
     for g in grupos:
         nome = g["nome"] if isinstance(g, dict) else g
         jql = (
@@ -1187,9 +1486,12 @@ def fetch_categoria_reabertos(config, grupos, start_date, end_date, categoria_fi
         )
         issues = fetch_issues(config, jql, ["key", categoria_field_id])
         total += len(issues)
-        for issue in issues:
-            valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
-            counts.update(valores)
+        todos_issues.extend(issues)
+
+    _precache_categoria_labels(config, todos_issues, categoria_field_id)
+    for issue in todos_issues:
+        valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
+        counts.update(valores)
     return counts, total
 
 
@@ -1649,6 +1951,109 @@ def _construir_tabela_pdf(fields, rows, largura_disponivel, max_rows=MAX_ROWS_PD
     return flowables
 
 
+# Mesmas cores dos ".summary-card"/tone-* da tela (tone-accent/warning/
+# danger), só que numa paleta clara — o PDF sempre foi fundo branco/texto
+# escuro (ver _PDF_HEADER_BG etc.), diferente do tema escuro roxo da tela;
+# aqui é só a mesma ideia semântica (qual cor por tom), não o hex exato.
+_PDF_CARD_TOM_HEX = {
+    "accent": "#2563eb",
+    "warning": "#d97706",
+    "danger": "#dc2626",
+    "success": "#16a34a",
+}
+_PDF_CARD_BG = colors.HexColor("#f1f5f9")
+
+_PDF_CARD_VALOR_STYLE = ParagraphStyle(
+    "CardValor", fontName="Helvetica-Bold", fontSize=17, leading=19, spaceAfter=2,
+)
+_PDF_CARD_LABEL_STYLE = ParagraphStyle(
+    "CardLabel", fontName="Helvetica", fontSize=8, leading=10, textColor=_PDF_MUTED,
+)
+
+
+def _construir_cards_pdf(cards, largura_disponivel):
+    """"cards": lista de {"valor", "label", "tone" (opcional)} — uma linha
+    de caixas coloridas (número grande + rótulo pequeno), mesmo padrão
+    visual dos ".summary-card" da tela. Usada pra reproduzir no PDF os
+    cards de Criados x Resolvidos/Reabertos/etc., em vez de virar só texto
+    corrido. "label" pode ter múltiplas linhas (separadas por "\\n") — vira
+    "<br/>", mesmo caso dos cards de grupo (nome + média + TMA empilhados)."""
+    if not cards:
+        return []
+    largura_card = largura_disponivel / len(cards)
+    linha = []
+    for card in cards:
+        cor = _PDF_CARD_TOM_HEX.get(card.get("tone"), "#0f172a")
+        valor_p = Paragraph(
+            f'<font color="{cor}">{_escapar_xml(str(card["valor"]))}</font>', _PDF_CARD_VALOR_STYLE
+        )
+        label_texto = _escapar_xml(str(card["label"])).replace("\n", "<br/>")
+        label_p = Paragraph(label_texto, _PDF_CARD_LABEL_STYLE)
+        linha.append([valor_p, label_p])
+    tabela = Table([linha], colWidths=[largura_card] * len(cards))
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _PDF_CARD_BG),
+        ("BOX", (0, 0), (-1, -1), 0.5, _PDF_RULE),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.white),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    return [tabela, Spacer(1, 8)]
+
+
+def _construir_donut_pdf(dentro, fora, percentual):
+    """Gráfico de rosca (Dentro/Fora do prazo), com legenda ao lado — mesma
+    informação do ".prazo-donut" da tela. reportlab não tem um "donut"
+    pronto; é um Wedge (fatia de pizza) normal com um Circle branco por
+    cima pra abrir o buraco do meio."""
+    tamanho = 110
+    d = Drawing(tamanho, tamanho)
+    cx = cy = tamanho / 2
+    r = tamanho / 2 - 4
+    total = dentro + fora
+
+    if total > 0:
+        ang_dentro = 360.0 * dentro / total
+        # 90° = 12h (convenção do reportlab: ângulo cresce sentido anti-
+        # horário a partir do eixo x positivo) — a fatia "dentro" ocupa de
+        # (90 - ang_dentro) até 90, "fora" ocupa o resto do círculo.
+        if dentro:
+            d.add(Wedge(cx, cy, r, 90 - ang_dentro, 90, fillColor=colors.HexColor("#16a34a"), strokeColor=colors.white, strokeWidth=1))
+        if fora:
+            d.add(Wedge(cx, cy, r, 90, 90 - ang_dentro + 360, fillColor=colors.HexColor("#dc2626"), strokeColor=colors.white, strokeWidth=1))
+    else:
+        d.add(Wedge(cx, cy, r, 0, 360, fillColor=_PDF_RULE, strokeColor=None))
+
+    d.add(Circle(cx, cy, r * 0.58, fillColor=colors.white, strokeColor=None))
+    d.add(String(cx, cy + 3, str(dentro), fontSize=15, fillColor=_PDF_TEXT, textAnchor="middle", fontName="Helvetica-Bold"))
+    d.add(String(cx, cy - 12, f"{percentual}%", fontSize=8, fillColor=_PDF_MUTED, textAnchor="middle"))
+
+    legenda = Table(
+        [
+            [Paragraph(f'<font color="#16a34a">●</font> Dentro do prazo ({dentro})', _PDF_TEXTO_STYLE)],
+            [Paragraph(f'<font color="#dc2626">●</font> Fora do prazo ({fora})', _PDF_TEXTO_STYLE)],
+        ],
+        colWidths=[140],
+    )
+    legenda.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+
+    linha = Table([[d, legenda]], colWidths=[tamanho + 10, 150])
+    linha.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return [linha, Spacer(1, 8)]
+
+
 class _PdfCanvasComCabecalho:
     """Desenha a faixa colorida do cabeçalho e o rodapé (data + nº de página)
     em toda página do PDF."""
@@ -1748,6 +2153,14 @@ def export_general_report_pdf(secoes, caminho, titulo="Relatório Geral", subtit
         titulo_bloco = _limpar_titulo(str(secao.get("titulo") or ""))
         conteudo.append(Paragraph(_escapar_xml(titulo_bloco), _PDF_TITULO_BLOCO_STYLE))
         conteudo.append(HRFlowable(width="100%", thickness=1, color=_PDF_ACCENT, spaceAfter=8))
+
+        cards = secao.get("cards")
+        if cards:
+            conteudo.extend(_construir_cards_pdf(cards, largura_disponivel))
+
+        donut = secao.get("donut")
+        if donut:
+            conteudo.extend(_construir_donut_pdf(donut["dentro"], donut["fora"], donut["percentual"]))
 
         resumo = secao.get("resumo")
         if resumo:

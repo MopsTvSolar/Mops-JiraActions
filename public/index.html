@@ -60,7 +60,7 @@
         <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
         <div class="hint" style="margin-top: 8px">
           Vale para A violar, Violados, Extração completa, Categorias de Encerramento, Criados x Resolvidos,
-          Reabertos, Chamados Críticos, Analistas de Encerramento e Report Diário.
+          Reabertos, Chamados Críticos, Analistas de Encerramento, Report Diário e Report Vini.
         </div>
       </div>
 
@@ -76,6 +76,7 @@
           <button id="btn-criticos" class="btn-primary" type="button">🚨 Chamados Críticos</button>
           <button id="btn-analistas-encerramento" class="btn-primary" type="button">👤 Analistas de Encerramento</button>
           <button id="btn-report-diario" class="btn-primary" type="button">📝 Report Diário</button>
+          <button id="btn-report-vini" class="btn-primary hidden" type="button">🎯 Report Vini</button>
         </div>
 
         <div id="result-banner"></div>
@@ -171,38 +172,178 @@
           </div>
           <div class="dialog-row" style="margin-top: 0">
             <button id="btn-categorias-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-ofensor" class="btn-secondary" type="button">🔎 Busca Ofensor</button>
+            <button id="btn-ofgeral" class="btn-secondary" type="button">📚 Extração Geral</button>
             <button id="btn-categorias-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+
+          <!-- Busca Ofensor: dropdown "Funcionalidade Ofensores" (mesmo
+               campo/opções nativas do Jira, customfield_26645) usado como
+               parâmetro de filtro na mesma base de JQL passada pelo
+               usuário — troca "Sistemas Ofensores" (referência a objeto do
+               Jira Assets) por esse campo de select fixo. Escolher uma
+               opção já dispara a busca em "Gestão de Problemas". -->
+          <div id="ofensor-panel" class="collapse" style="margin-top: 10px">
+            <div class="field" style="max-width: 420px; margin-bottom: 0">
+              <label for="ofensor-funcionalidade">Funcionalidade Ofensores</label>
+              <select id="ofensor-funcionalidade">
+                <option value="">Selecione...</option>
+                <option value="Assetização">Assetização</option>
+                <option value="Base Instalada">Base Instalada</option>
+                <option value="Cadastro">Cadastro</option>
+                <option value="Canais Críticos">Canais Críticos</option>
+                <option value="Catálogo">Catálogo</option>
+                <option value="CLM">CLM</option>
+                <option value="Comercial">Comercial</option>
+                <option value="CPQ">CPQ</option>
+                <option value="CRM Cross">CRM Cross</option>
+                <option value="Crédito">Crédito</option>
+                <option value="CTI">CTI</option>
+                <option value="Financeiro">Financeiro</option>
+                <option value="Geral">Geral</option>
+                <option value="KB">KB</option>
+                <option value="LGPD">LGPD</option>
+                <option value="Mudança de Endereço">Mudança de Endereço</option>
+                <option value="NBA NBO">NBA NBO</option>
+                <option value="Newstack">Newstack</option>
+                <option value="Opera">Opera</option>
+                <option value="Order Management">Order Management</option>
+                <option value="PME">PME</option>
+                <option value="PME Fixa">PME Fixa</option>
+                <option value="Portal Vendas">Portal Vendas</option>
+                <option value="Rentabilização Móvel">Rentabilização Móvel</option>
+                <option value="Retenção Móvel">Retenção Móvel</option>
+                <option value="RPA">RPA</option>
+                <option value="RPA - Canais Críticos">RPA - Canais Críticos</option>
+                <option value="RPA - NBA">RPA - NBA</option>
+                <option value="RPA - PME">RPA - PME</option>
+                <option value="Técnica">Técnica</option>
+                <option value="Viabilidade">Viabilidade</option>
+                <option value="Visão 360">Visão 360</option>
+              </select>
+            </div>
+
+            <!-- Só aparece depois de escolher a Funcionalidade — refina o
+                 resultado buscando por "Nome" (summary) OU "ALM"
+                 (customfield_26643), nunca os dois ao mesmo tempo. -->
+            <div id="ofensor-filtro-extra" class="hidden" style="margin-top: 10px">
+              <div class="radio-row" style="margin-bottom: 6px">
+                <label><input type="radio" name="ofensor-campo-busca" value="nome" checked /> Nome</label>
+                <label><input type="radio" name="ofensor-campo-busca" value="alm" /> ALM</label>
+              </div>
+              <div class="field" style="max-width: 420px; margin-bottom: 0">
+                <input id="ofensor-termo-busca" type="text" placeholder="Digite pra filtrar..." autocomplete="off" />
+              </div>
+            </div>
+
+            <!-- Filtra pelo Status da Categoria de Encerramento (checado
+                 aos poucos, lote a lote — ver ofensor-progresso). "Ativo"
+                 marcado por padrão, já que o pedido é ver só os PRBs
+                 ativos; "Inativo" fica disponível pra quem quiser ver o
+                 contrário. -->
+            <div id="ofensor-filtro-status" class="radio-row hidden" style="margin-top: 10px">
+              <label><input type="checkbox" id="ofensor-check-ativo" checked /> Ativo</label>
+              <label><input type="checkbox" id="ofensor-check-inativo" /> Inativo</label>
+            </div>
+
+            <div id="ofensor-status" class="hint" style="margin-top: 10px"></div>
+            <div id="ofensor-progresso" class="hint hidden" style="margin-top: 4px"></div>
+            <div id="ofensor-chamados-wrap" class="table-wrap hidden" style="margin-top: 10px">
+              <table class="data-table" id="ofensor-chamados-table">
+                <thead>
+                  <tr>
+                    <th>Chave</th>
+                    <th>Resumo</th>
+                    <th>Status</th>
+                    <th>Criado em</th>
+                    <th>Responsável</th>
+                    <th>Categoria Ativa?</th>
+                    <th>Qtd. Atrelados</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div id="ofensor-paginacao" class="dialog-row hidden" style="margin-top: 10px">
+                <button id="ofensor-pagina-anterior" class="btn-secondary" type="button">◀ Anterior</button>
+                <span id="ofensor-pagina-label" class="hint"></span>
+                <button id="ofensor-pagina-proxima" class="btn-secondary" type="button">Próxima ▶</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Extração Geral: NÃO mostra tabela em tela — baixa direto um
+               Excel com os chamados da Funcionalidade Ofensores escolhida
+               (mesmo campo/opções da Busca Ofensor, mas esse dropdown é
+               independente do de lá — cada painel guarda a própria escolha),
+               já com a coluna "categoria_status" checada em cada linha.
+               Exige Funcionalidade selecionada (não deixa exportar o
+               projeto "Gestão de Problemas" inteiro sem filtro nenhum).
+               Prefixo "ofgeral" (não "geral") pra não colidir com os IDs do
+               Relatório Geral, que já usa esse prefixo. -->
+          <div id="ofgeral-panel" class="collapse" style="margin-top: 10px">
+            <div class="field" style="max-width: 420px; margin-bottom: 0">
+              <label for="ofgeral-funcionalidade">Funcionalidade Ofensores</label>
+              <select id="ofgeral-funcionalidade">
+                <option value="">Selecione...</option>
+                <option value="Assetização">Assetização</option>
+                <option value="Base Instalada">Base Instalada</option>
+                <option value="Cadastro">Cadastro</option>
+                <option value="Canais Críticos">Canais Críticos</option>
+                <option value="Catálogo">Catálogo</option>
+                <option value="CLM">CLM</option>
+                <option value="Comercial">Comercial</option>
+                <option value="CPQ">CPQ</option>
+                <option value="CRM Cross">CRM Cross</option>
+                <option value="Crédito">Crédito</option>
+                <option value="CTI">CTI</option>
+                <option value="Financeiro">Financeiro</option>
+                <option value="Geral">Geral</option>
+                <option value="KB">KB</option>
+                <option value="LGPD">LGPD</option>
+                <option value="Mudança de Endereço">Mudança de Endereço</option>
+                <option value="NBA NBO">NBA NBO</option>
+                <option value="Newstack">Newstack</option>
+                <option value="Opera">Opera</option>
+                <option value="Order Management">Order Management</option>
+                <option value="PME">PME</option>
+                <option value="PME Fixa">PME Fixa</option>
+                <option value="Portal Vendas">Portal Vendas</option>
+                <option value="Rentabilização Móvel">Rentabilização Móvel</option>
+                <option value="Retenção Móvel">Retenção Móvel</option>
+                <option value="RPA">RPA</option>
+                <option value="RPA - Canais Críticos">RPA - Canais Críticos</option>
+                <option value="RPA - NBA">RPA - NBA</option>
+                <option value="RPA - PME">RPA - PME</option>
+                <option value="Técnica">Técnica</option>
+                <option value="Viabilidade">Viabilidade</option>
+                <option value="Visão 360">Visão 360</option>
+              </select>
+            </div>
+            <div class="radio-row" style="margin-top: 10px; margin-bottom: 6px">
+              <label><input type="radio" name="ofgeral-campo-busca" value="nome" checked /> Nome</label>
+              <label><input type="radio" name="ofgeral-campo-busca" value="alm" /> ALM</label>
+            </div>
+            <div class="dialog-row" style="margin-bottom: 0">
+              <div class="field" style="max-width: 420px; margin-bottom: 0">
+                <label for="ofgeral-termo-busca">Filtrar por (opcional)</label>
+                <input id="ofgeral-termo-busca" type="text" placeholder="Deixe em branco pra trazer todos da Funcionalidade..." autocomplete="off" />
+              </div>
+              <button id="btn-ofgeral-buscar" class="btn-primary" type="button">📥 Gerar Excel</button>
+            </div>
+            <div id="ofgeral-status" class="hint" style="margin-top: 10px"></div>
           </div>
         </div>
 
         <div id="categorias-results" class="hidden" style="margin-top: 14px">
           <span class="date-badge" id="categorias-date" style="margin-bottom: 10px"></span>
 
-          <div id="categorias-encerrados-block" class="hidden">
-            <div class="top-assignees-title">
-              Encerrados — <span id="cat-encerrados-total"></span> chamados
-              (<span id="cat-encerrados-categorizados"></span> categorizados)
-            </div>
-            <div class="table-wrap">
-              <table class="data-table" id="cat-encerrados-table">
-                <thead></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div id="categorias-reabertos-block" class="hidden" style="margin-top: 14px">
-            <div class="top-assignees-title">
-              Reabertos — <span id="cat-reabertos-total"></span> chamados
-              (<span id="cat-reabertos-categorizados"></span> categorizados)
-            </div>
-            <div class="table-wrap">
-              <table class="data-table" id="cat-reabertos-table">
-                <thead></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
+          <!-- Conteúdo montado inteiro via JS (renderCategoriaTable) — pra
+               Mops Solar é 1 título + 1 tabela; pra Mops Tv do Futuro vem
+               dividido em sub-blocos App/Box (ver buildCategoriaTableEl
+               em app.js), então não dá pra fixar título/tabela únicos
+               direto no HTML como antes. -->
+          <div id="categorias-encerrados-block" class="hidden"></div>
+          <div id="categorias-reabertos-block" class="hidden" style="margin-top: 14px"></div>
         </div>
 
         <!-- Criados x Resolvidos: expande aqui mesmo, sob o botão -->
@@ -314,6 +455,51 @@
               <tbody></tbody>
             </table>
           </div>
+        </div>
+
+        <!-- Report Vini: específico de Mops Tv do Futuro (botão some fora
+             dela) — consolida num resultado só o que hoje é visto espalhado
+             em 3 ações (Criados x Resolvidos com TMA/SLA, Reabertos,
+             Categorias de Encerramento), pro período escolhido. -->
+        <div id="report-vini-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="vini-input-inicio">Data início</label>
+              <input id="vini-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="vini-input-fim">Data fim</label>
+              <input id="vini-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-vini-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-vini-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div id="report-vini-results" class="hidden" style="margin-top: 14px">
+          <div class="results-header" style="margin-bottom: 10px">
+            <span class="date-badge" id="vini-date"></span>
+            <span class="spacer"></span>
+            <button id="btn-vini-pdf" class="btn-secondary" type="button">📄 Exportar PDF</button>
+          </div>
+
+          <div class="section-label" style="margin-bottom: 8px">CRIADOS X RESOLVIDOS (TMA / SLA)</div>
+          <div id="vini-cr-summary-cards" class="summary-cards"></div>
+          <div class="cr-donut-row">
+            <div id="vini-cr-prazo-donut" class="hidden"></div>
+            <div id="vini-cr-por-grupo-block" class="hidden">
+              <div class="section-label" style="margin-bottom: 8px">CHAMADOS ENCERRADOS POR GRUPO SOLUCIONADOR</div>
+              <div id="vini-cr-por-grupo-cards" class="summary-cards"></div>
+            </div>
+          </div>
+
+          <div class="section-label" style="margin: 14px 0 8px">REABERTOS</div>
+          <div id="vini-reabertos-cards" class="summary-cards"></div>
+
+          <div class="section-label" style="margin: 14px 0 8px">TOP 5 CATEGORIAS DE ENCERRAMENTO</div>
+          <div id="vini-categorias-block"></div>
         </div>
 
         <!-- Analistas de Encerramento: Data início, Data fim e Analista ficam
@@ -624,7 +810,9 @@
           <dd>
             <p><strong>Encerrados:</strong> <code>caixas selecionadas AND project IN (projetos marcados) AND resolutiondate no período</code> — conta por valor do campo "Categoria de Encerramento".</p>
             <p><strong>Reabertos:</strong> mesma ideia, mas <code>status WAS "Reaberto" AND created no período</code>, uma busca por caixa, somadas.</p>
-            <p>Em ambas, chamados sem o campo de categoria preenchido não entram na contagem. Mostra o top N escolhido (3/5/10/20).</p>
+            <p>Em ambas, chamados sem o campo de categoria preenchido não entram na contagem. Mostra o top N escolhido (3/5/10/20). Em <strong>Mops Tv do Futuro</strong>, o nome da categoria vem de um objeto do Jira Assets e traz uma tag no fim indicando a plataforma — <code>[CLARO TV + APP | ...]</code> ou <code>[CLARO TV + | ...]</code> — então essa caixa mostra o top N separado em <strong>Claro Tv +</strong> (tag "APP") e <strong>Claro Streaming Box</strong> (tag sem "APP"). Não existe um campo "Sistemas Ofensores" preenchido nos chamados de Central de Incidentes pra fazer essa separação de forma mais direta (só existe em Gestão de Problemas) — por isso usa a tag do nome mesmo. Categorias sem nenhuma das duas tags caem num terceiro grupo "Outros" (só quando existir alguma). Mops Solar não tem essa tag e continua com uma lista só.</p>
+            <p><strong>🔎 Busca Ofensor</strong> (dentro do mesmo painel): não usa Data início/fim nem os checkboxes acima. Escolher uma opção no dropdown <strong>Funcionalidade Ofensores</strong> (mesmas 32 opções do campo nativo do Jira <code>customfield_26645</code> — Assetização, Cadastro, Catálogo, Financeiro, etc.) já dispara a busca nos chamados do projeto <strong>"Gestão de Problemas"</strong>: <code>project = "Gestão de Problemas" AND "Funcionalidade Ofensores" = "&lt;opção escolhida&gt;" ORDER BY created DESC</code> (base de chamados normal, não o catálogo do Jira Assets). Depois de escolher a Funcionalidade, aparece um campo pra refinar buscando por <strong>Nome</strong> (o "Resumo"/summary do chamado) ou <strong>ALM</strong> (campo nativo <code>customfield_26643</code>, número do defeito) — um dos dois por vez, nunca os dois juntos; digitar dispara a busca de novo (<code>summary ~ "termo*"</code> ou <code>"ALM" ~ "termo*"</code>, conforme a opção marcada). A coluna <strong>Categoria Ativa?</strong> cruza o "Resumo"/summary de cada chamado com o "Name" do catálogo de Categoria de Encerramento do Jira Assets (confirmado que são o mesmo texto, char por char) e mostra o Status ("Ativo"/"Inativo") de lá. A coluna <strong>Qtd. Atrelados</strong> conta, no projeto "Gestão de Problemas" inteiro (sem o filtro de Funcionalidade/Nome/ALM da busca atual), quantos outros chamados <strong>encerrados</strong> (Resolvido/Encerrado) têm esse mesmo Resumo/Categoria de Encerramento — <code>summary ~ "\"&lt;frase exata&gt;\""</code> (frase exata entre aspas escapadas — a busca de texto comum do Jira não bate frases longas de outro jeito). Como as duas colunas são uma chamada à API por chamado cada, a checagem roda em lotes pequenos (25 por vez) enquanto a tabela carrega — os checkboxes <strong>Ativo</strong>/<strong>Inativo</strong> (Ativo marcado por padrão) filtram o que aparece na tabela conforme cada lote termina de ser checado, com paginação (20 por página) pra não travar a tela numa Funcionalidade grande (ex.: "PME" tem 424 chamados).</p>
+            <p><strong>📚 Extração Geral</strong> (dentro do mesmo painel, no lugar de onde era o Comparador): não mostra nada em tela — escolher uma <strong>Funcionalidade Ofensores</strong> (mesmo campo/opções da Busca Ofensor, mas dropdown independente do de lá) e clicar em "Gerar Excel" baixa direto uma planilha com todos os chamados daquela Funcionalidade em <code>project = "Gestão de Problemas"</code>, opcionalmente refinado por Nome ou ALM, cada linha já com a "Categoria Ativa?" e a "Qtd. Atrelados" checadas (Chave, Resumo, Status, Criado em, Responsável, ALM, categoria_status, chamados_atrelados). Não deixa exportar sem escolher uma Funcionalidade (evita puxar o projeto inteiro, mais de 7 mil chamados nesta instância, sem filtro nenhum). Diferente da Busca Ofensor, a checagem de categoria roda inteira ANTES de responder (não em lotes visíveis), então Funcionalidades grandes (ex.: "PME" tem 424) podem levar alguns minutos até o download começar — só a mensagem final de conclusão aparece, sem barra de progresso.</p>
           </dd>
 
           <dt>📈 Criados x Resolvidos</dt>
@@ -666,6 +854,11 @@
           <dd>
             <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND status = "Resolvido" AND resolutiondate no dia de hoje (00:00 às 23:59)</code>
             <p>Ação direta, sem diálogo — clicar já busca. Cards por grupo (N1/N2/PROD) com o ranking de "Top responsáveis" de cada um; mais dois contadores do dia: <strong>Reabertos hoje</strong> (<code>status WAS "Reaberto"</code>, mesma convenção de "created" no dia usada em Reabertos) e <strong>Violados hoje</strong> (mesma busca de Violados, filtrando pelo horário de estouro do SLA no dia); e a <strong>tabela de resolvidos</strong> do dia, linha a linha, com a seção "Sem chamados encerrados hoje" logo abaixo (caixa Mops Solar).</p>
+          </dd>
+
+          <dt>🎯 Report Vini</dt>
+          <dd>
+            <p>Específico da caixa <strong>Mops Tv do Futuro</strong> — o botão só aparece nela (some em Mops Solar) e a rota recusa a chamada se a caixa não for Tv do Futuro. Diferente do Report Diário, usa <strong>Data início/fim</strong> escolhidas (não é preso a "hoje") e consolida num resultado só o que hoje fica espalhado em 3 ações: <strong>Criados x Resolvidos</strong> (Criados/Resolvidos/Saldo, donut Dentro/Fora do prazo, cards por grupo com média diária e TMA — mesma lógica da ação "Criados x Resolvidos"), <strong>Reabertos</strong> (total do período + % sobre os criados) e <strong>Categorias de Encerramento</strong> (top 5, já separado em Claro Tv +/Claro Streaming Box pela tag no nome — mesma lógica da ação "Categorias de Encerramento" pra essa caixa). Uma única chamada ao servidor, então pode demorar num período grande (a resolução de nome de cada categoria distinta no Jira Assets é o gargalo, não a busca de chamados em si). O botão <strong>📄 Exportar PDF</strong> monta um PDF com essas mesmas informações (Resumo do período, Chamados Encerrados por Grupo, Reabertos, Top 5 Categorias) a partir do resultado já em tela — reaproveita a mesma rota <code>/api/relatorio-geral-pdf</code> do Relatório Geral, não refaz nenhuma busca no Jira.</p>
           </dd>
 
           <dt>📊 Relatório Consolidado</dt>
