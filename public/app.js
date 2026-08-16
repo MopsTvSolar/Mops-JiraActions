@@ -21,13 +21,14 @@
     $("btn-violar-amanha"),
     $("btn-violar-semanal"),
     $("btn-violados"),
-    $("btn-report-diario"),
     $("btn-categorias-encerramento"),
     $("btn-criados-resolvidos"),
     $("btn-reabertos"),
     $("btn-criticos"),
     $("btn-analistas-encerramento"),
+    $("btn-jornada"),
     $("btn-report-vini"),
+    $("btn-report-diario"),
   ];
 
   // Grupos ("caixas") de cada caixa solucionadora — espelha CAIXAS em
@@ -78,6 +79,89 @@
     "Cancelado",
   ];
 
+  // Valores do campo "Classificação" (JQL: "Classificação" = "..."), usados
+  // pelo dropdown de Análise de Jornada — a lista muda conforme a caixa
+  // solucionadora, mesmo campo/valor nas duas, só o conjunto de opções
+  // válidas é diferente (curadoria passada manualmente, não vem do Jira).
+  const CLASSIFICACAO_OPCOES = {
+    solar: [
+      "Ache aqui",
+      "Canais críticos",
+      "Comercial PF",
+      "CTI",
+      "Filtro VT",
+      "Financeiro",
+      "Indisponibilidade",
+      "Jornada CAP",
+      "Lentidão",
+      "LGPD",
+      "Mudança de endereço",
+      "PME fixa",
+      "PME móvel",
+      "Proactive monitoring",
+      "Rentabilização móvel",
+      "Rentabilização Residencial",
+      "Residencial/Multi para Móvel",
+      "Retenção móvel",
+      "Retenção Residencial",
+      "Suporte a Vendas - BackOffice Comercial",
+      "Técnica",
+      "Troca de plano n1",
+      "V360",
+    ],
+    tv: [
+      "Cadastro - Mídia social",
+      "Cadastro - Móvel",
+      "Cadastro - Netsms",
+      "Cadastro - Novo BSS",
+      "Cancelamento - Novo BSS",
+      "Compras - Mídia social",
+      "Compras - Móvel",
+      "Compras - Netsms",
+      "Compras - Novo BSS",
+      "Conectividade - Mídia social",
+      "Conectividade - Netsms",
+      "Conectividade - Novo BSS",
+      "Entrada - Mídia social",
+      "Entrada - Móvel",
+      "Entrada - Netsms",
+      "Entrada - Novo BSS",
+      "Financeiro - Mídia social",
+      "Financeiro - Móvel",
+      "Financeiro - Netsms",
+      "Financeiro - Novo BSS",
+      "Fraude",
+      "Informações da conta - Mídia social",
+      "Informações da conta - Móvel",
+      "Informações da conta - Netsms",
+      "Informações da conta - Novo BSS",
+      "Legenda - Mídia social",
+      "Legenda - Móvel",
+      "Legenda - Netsms",
+      "Legenda - Novo BSS",
+      "Lentidão",
+      "Lentidão - Mídia social",
+      "Lentidão - Móvel",
+      "Lentidão - Netsms",
+      "Lentidão - Novo BSS",
+      "Play - Mídia social",
+      "Play - Móvel",
+      "Play - Netsms",
+      "Play - Novo BSS",
+      "Programas regionais - Mídia social",
+      "Programas regionais - Móvel",
+      "Programas regionais - Netsms",
+      "Programas regionais - Novo BSS",
+      "Qualidade da imagem - Mídia social",
+      "Qualidade da imagem - Novo BSS",
+      "Relatórios e dados - Novo BSS",
+      "Segurança - Mídia social",
+      "Segurança - Móvel",
+      "Segurança - Netsms",
+      "Segurança - Novo BSS",
+    ],
+  };
+
   // "options" aceita string simples (valor = rótulo, ex.: STATUS_OPTIONS)
   // ou {value, label} quando o texto mostrado precisa ser diferente do
   // valor enviado ao servidor (ex.: PROJETOS_DISPONIVEIS, "INC" na tela
@@ -111,10 +195,6 @@
     return checkedValues($("projetos-checkboxes"));
   }
 
-  document.querySelectorAll("#projetos-checkboxes input").forEach((el) => {
-    el.addEventListener("change", () => carregarJqlAtual());
-  });
-
   // Só um painel de opções fica aberto por vez: ao clicar em qualquer botão
   // (abra ele um painel próprio ou dispare uma ação na hora), os outros que
   // estavam abertos retraem primeiro.
@@ -127,6 +207,7 @@
     "violados-dialog",
     "criticos-dialog",
     "analistas-dialog",
+    "jornada-dialog",
     "report-vini-dialog",
   ];
 
@@ -145,12 +226,38 @@
     $("criados-resolvidos-results").classList.add("hidden");
     $("criticos-results").classList.add("hidden");
     $("analista-detalhe").classList.add("hidden");
-    $("sem-chamados-block").classList.add("hidden");
-    $("report-diario-hero").classList.add("hidden");
     $("heatmap-block").classList.add("hidden");
     $("report-vini-results").classList.add("hidden");
+    $("report-diario-results").classList.add("hidden");
     hideHoverPopover();
   }
+
+  // Home (#home-view) só aparece quando nada está selecionado: nenhum
+  // diálogo de ação aberto e nenhum resultado visível. Em vez de espalhar
+  // essa checagem em cada handler, observa as classes dos próprios
+  // elementos e recalcula sozinho sempre que algum deles muda.
+  const RESULT_BLOCK_IDS = [
+    "results-card",
+    "categorias-results",
+    "criados-resolvidos-results",
+    "criticos-results",
+    "analista-detalhe",
+    "heatmap-block",
+    "report-vini-results",
+    "report-diario-results",
+  ];
+
+  function updateHomeVisibility() {
+    const algumDialogoAberto = ALL_DIALOG_IDS.some((id) => $(id).classList.contains("open"));
+    const algumResultadoVisivel = RESULT_BLOCK_IDS.some((id) => !$(id).classList.contains("hidden"));
+    $("home-view").classList.toggle("hidden", algumDialogoAberto || algumResultadoVisivel);
+  }
+
+  const homeVisibilityObserver = new MutationObserver(updateHomeVisibility);
+  [...ALL_DIALOG_IDS, ...RESULT_BLOCK_IDS].forEach((id) => {
+    homeVisibilityObserver.observe($(id), { attributes: true, attributeFilter: ["class"] });
+  });
+  updateHomeVisibility();
 
   // Ação/caixa/filtros da última extração exibida na tela — usado pelo botão
   // "Baixar arquivo" para refazer exatamente a mesma busca, já pedindo o
@@ -168,7 +275,7 @@
     "violar-semanal": "Plano semanal (próximos 7 dias)",
     violados: "Chamados violados",
     reabertos: "Chamados reabertos",
-    "report-diario": "Chamados resolvidos hoje",
+    jornada: "Análise de Jornada",
   };
 
   // Tom de cor do card de total, de acordo com o significado da ação
@@ -180,19 +287,33 @@
     "violar-semanal": "tone-warning",
     violados: "tone-danger",
     reabertos: "tone-warning",
-    "report-diario": "tone-accent",
+    jornada: "tone-accent",
   };
 
+  // Usa classList (não "className = ...") de propósito: setBusy() liga/
+  // desliga "is-loading" nesse mesmo elemento (o spinner do banner) de forma
+  // independente — reatribuir className aqui apagaria essa classe sempre
+  // que uma mensagem nova chegasse no meio de uma busca em andamento.
   function setBanner(message, kind) {
     resultBanner.textContent = message;
-    resultBanner.className = kind ? `show ${kind}` : "";
+    // Mesma mensagem no overlay centralizado — só fica visível enquanto
+    // setBusy(true) estiver ativo (ver #loading-overlay/setBusy).
+    $("loading-overlay-text").textContent = message;
+    resultBanner.classList.remove("info", "error", "success");
+    if (kind) resultBanner.classList.add(kind);
+    resultBanner.classList.toggle("show", Boolean(kind));
   }
 
   function clearBanner() {
-    resultBanner.className = "";
+    resultBanner.classList.remove("show", "info", "error", "success");
   }
 
+  // "is-loading" no banner (spinner via CSS, ver .is-loading::before) segue
+  // o mesmo início/fim de setBusy — não a mensagem do banner, que às vezes
+  // é "info" sem estar mais carregando (ex.: "nenhum resultado encontrado").
   function setBusy(busy) {
+    resultBanner.classList.toggle("is-loading", busy);
+    $("loading-overlay").classList.toggle("hidden", !busy);
     [
       ...otherActionButtons,
       $("btn-download"),
@@ -203,6 +324,7 @@
       $("btn-violados-gerar"),
       $("btn-criticos-gerar"),
       $("btn-vini-gerar"),
+      $("btn-jornada-gerar"),
     ].forEach((btn) => (btn.disabled = busy));
   }
 
@@ -231,7 +353,6 @@
   function rotuloDataResultado(action) {
     if (action === "violar-hoje") return `Dia de hoje (07:00 às 23:59) — ${dataVigente(0)}`;
     if (action === "violar-amanha") return `Amanhã (07:00 às 23:59) — ${dataVigente(1)}`;
-    if (action === "report-diario") return `Dia de hoje — ${dataVigente(0)}`;
     return dataVigente(0);
   }
 
@@ -289,6 +410,7 @@
 
     const btn = $("btn-connect");
     btn.disabled = true;
+    btn.classList.add("is-loading");
     btn.textContent = "Conectando...";
 
     try {
@@ -312,6 +434,7 @@
       loginError.style.display = "block";
     } finally {
       btn.disabled = false;
+      btn.classList.remove("is-loading");
       btn.textContent = "Conectar";
     }
   });
@@ -331,7 +454,6 @@
     clearBanner();
     appView.classList.add("hidden");
     loginCard.classList.remove("hidden");
-    carregarJqlAtual();
     atualizarBotaoCriticos();
     atualizarBotaoReportVini();
   });
@@ -344,26 +466,6 @@
   });
 
   // ------------------------------------------------------ caixa solucionadora
-  // Query geral (fixa no servidor) da caixa atual — só leitura, não é
-  // segredo, não precisa estar logado pra ver. Atualiza sozinha ao trocar
-  // de caixa no alternador.
-  async function carregarJqlAtual() {
-    const codeEl = $("jql-atual-code");
-    const labelEl = $("jql-atual-label");
-    try {
-      const resp = await apiCall("/api/jql-atual", { caixa: state.caixa, projetos: projetosSelecionados() });
-      const data = await resp.json();
-      if (!resp.ok) {
-        codeEl.textContent = data.error || "Não foi possível carregar a query.";
-        return;
-      }
-      labelEl.textContent = `QUERY GERAL — ${data.label.toUpperCase()}`;
-      codeEl.textContent = data.jql || "(nenhuma JQL configurada no servidor para esta caixa)";
-    } catch (e) {
-      codeEl.textContent = "Não foi possível conectar ao servidor.";
-    }
-  }
-
   // "Chamados Críticos" (COTI) é uma classificação específica da caixa Mops
   // Solar — não faz sentido pra Mops Tv do Futuro, então o botão some fora
   // dela.
@@ -384,7 +486,6 @@
     $("btn-report-vini").classList.toggle("hidden", state.caixa !== "tv");
   }
 
-  carregarJqlAtual();
   atualizarBotaoCriticos();
   atualizarBotaoAnalistas();
   atualizarBotaoReportVini();
@@ -403,7 +504,6 @@
       lastExtraBody = {};
       closeAllDialogs();
       clearBanner();
-      carregarJqlAtual();
       atualizarBotaoCriticos();
       atualizarBotaoAnalistas();
       atualizarBotaoReportVini();
@@ -419,6 +519,15 @@
     $("acoes-toggle-icon").textContent = abrindo ? "▾" : "▸";
   });
 
+  // Menu "REPORTS" (barra lateral) — mesmo padrão de expandir/recolher do
+  // menu "AÇÕES" acima.
+  $("btn-reports-toggle").addEventListener("click", () => {
+    const grid = $("reports-grid");
+    const abrindo = !grid.classList.contains("open");
+    grid.classList.toggle("open", abrindo);
+    $("reports-toggle-icon").textContent = abrindo ? "▾" : "▸";
+  });
+
   // ------------------------------------------------------------- ações
   const ACTION_ENDPOINTS = {
     "extracao-completa": "/api/extracao-completa",
@@ -427,7 +536,7 @@
     "violar-semanal": "/api/violar-semanal",
     violados: "/api/violados",
     reabertos: "/api/reabertos",
-    "report-diario": "/api/report-diario",
+    jornada: "/api/analise-jornada",
   };
 
   // --------------------------------------------------------------- violados
@@ -634,41 +743,6 @@
     runViolar("violar-amanha", ACTION_ENDPOINTS["violar-amanha"])
   );
 
-  // ------------------------------------------------------- report diário
-  // Ação direta, sem diálogo (sempre "hoje") — mesmo padrão "tabela" de
-  // Violados/Reabertos: o ranking "Top Analistas do dia" sai de graça do
-  // summary.top_assignees, calculado a partir das mesmas linhas da tabela.
-  $("btn-report-diario").addEventListener("click", async () => {
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    closeAllDialogs();
-    setBusy(true);
-    setBanner("Buscando chamados resolvidos hoje...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall(ACTION_ENDPOINTS["report-diario"], { caixa: state.caixa, projetos });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao buscar chamados resolvidos hoje.", "error");
-        return;
-      }
-
-      lastAction = "report-diario";
-      lastCaixa = state.caixa;
-      lastExtraBody = { projetos };
-      renderResults("report-diario", data);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
   // Tons do mapa de calor: só marca os dias com carga MAIOR em relação ao
   // pior dia da semana visível — o resto fica na cor neutra do card, sem
   // chamar atenção à toa (dia com 0 ou pouca coisa não precisa de destaque).
@@ -776,124 +850,13 @@
   // --------------------------------------------------------- resultados
   const MAX_ROWS_RENDERED = 500;
 
-  // Só no Report Diário (caixa Mops Solar): quem do roster fixo de
-  // Analistas de Encerramento não aparece como assignee de nenhuma linha —
-  // cálculo local em cima do que a busca principal já trouxe, sem pedir
-  // nada novo ao Jira. Fora daí (outra ação, ou caixa Tv do Futuro, onde o
-  // roster nem se aplica) o bloco fica escondido.
-  function renderSemChamadosEncerrados(action, rows) {
-    const bloco = $("sem-chamados-block");
-    if (action !== "report-diario" || state.caixa !== "solar") {
-      bloco.classList.add("hidden");
-      return;
-    }
-
-    const resolveramHoje = new Set(rows.map((r) => r.assignee).filter(Boolean));
-    const semChamados = ANALISTAS_ENCERRAMENTO_ROSTER.filter((nome) => !resolveramHoje.has(nome));
-
-    const lista = $("sem-chamados-lista");
-    lista.innerHTML = "";
-    if (!semChamados.length) {
-      bloco.classList.add("hidden");
-      return;
-    }
-    semChamados.forEach((nome) => {
-      const tag = document.createElement("span");
-      tag.className = "tag tag-nao";
-      tag.textContent = nome;
-      lista.append(tag);
-    });
-    bloco.classList.remove("hidden");
-  }
-
-  // Preenche uma tabela genérica (fora de #results-table) a partir das
-  // colunas já vindas prontas nas linhas — usado pelas 3 tabelas em collapse
-  // do card central do Report Diário. Mesmas colunas de quem gerou a linha
-  // (Reabertos/Violados/a tabela principal), sem reformatar nada.
-  function preencherTabelaGenerica(tableId, rows) {
-    const thead = document.querySelector(`#${tableId} thead`);
-    const tbody = document.querySelector(`#${tableId} tbody`);
-    thead.innerHTML = "";
-    tbody.innerHTML = "";
-
-    if (!rows || !rows.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.textContent = "Nenhum chamado.";
-      tr.append(td);
-      tbody.append(tr);
-      return;
-    }
-
-    const fields = Object.keys(rows[0]);
-    const trHead = document.createElement("tr");
-    fields.forEach((field) => {
-      const th = document.createElement("th");
-      th.textContent = field;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    rows.forEach((row) => {
-      const tr = document.createElement("tr");
-      fields.forEach((field) => {
-        const td = document.createElement("td");
-        td.textContent = escapeText(row[field]);
-        tr.append(td);
-      });
-      tbody.append(tr);
-    });
-  }
-
-  // Card central só do Report Diário: os 3 números do dia juntos (resolvidos
-  // / violados / reabertos), no início dos resultados. Com ele, o card
-  // "Total" da linha por grupo (N1/N2/PROD) logo abaixo fica redundante —
-  // renderSummary pula ele quando a action é "report-diario" (ver mais abaixo).
-  // Clicar em qualquer um dos 3 abre/fecha a tabela correspondente (mesmas
-  // colunas de quem gerou aquela linha) — os 3 painéis começam sempre
-  // fechados a cada nova busca.
-  function renderHeroReportDiario(data) {
-    const bloco = $("report-diario-hero");
-    const temTudo =
-      data.summary && typeof data.summary.total === "number" &&
-      typeof data.violados_hoje === "number" &&
-      typeof data.reabertos_hoje === "number";
-    if (!temTudo) {
-      bloco.classList.add("hidden");
-      return;
-    }
-    $("hero-resolvidos").textContent = data.summary.total;
-    $("hero-violados").textContent = data.violados_hoje;
-    $("hero-reabertos").textContent = data.reabertos_hoje;
-
-    preencherTabelaGenerica("hero-table-resolvidos", data.rows);
-    preencherTabelaGenerica("hero-table-violados", data.violados_hoje_rows);
-    preencherTabelaGenerica("hero-table-reabertos", data.reabertos_hoje_rows);
-    ["resolvidos", "violados", "reabertos"].forEach((chave) => {
-      $(`hero-collapse-${chave}`).classList.remove("open");
-    });
-
-    bloco.classList.remove("hidden");
-  }
-
-  document.querySelectorAll(".hero-clickable").forEach((el) => {
-    el.addEventListener("click", () => {
-      $(`hero-collapse-${el.dataset.hero}`).classList.toggle("open");
-    });
-  });
-
   function renderResults(action, data) {
     $("results-title").textContent = `RESULTADOS — ${ACTION_LABELS[action]}`;
     $("results-date").textContent = rotuloDataResultado(action);
     renderSummary(action, data.summary, data.por_grupo, data.por_turno);
-    if (action === "report-diario") {
-      renderHeroReportDiario(data);
-    } else {
-      $("report-diario-hero").classList.add("hidden");
-    }
     renderPorDiaViolados(data.por_dia, data.rows);
+    renderJornadaResumo(data);
     renderTable(data.fields, data.rows);
-    renderSemChamadosEncerrados(action, data.rows);
     resultsCard.classList.remove("hidden");
     resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -1085,6 +1048,193 @@
     block.classList.remove("hidden");
   }
 
+  // Tabela genérica de 2 colunas (rótulo + quantidade) a partir de uma
+  // lista [rotulo, total] — usada pelas duas tabelas de Análise de Jornada
+  // (Status e Top Analistas), que têm exatamente esse formato.
+  function preencherTabela2Col(tableId, colunas, linhas) {
+    const thead = document.querySelector(`#${tableId} thead`);
+    const tbody = document.querySelector(`#${tableId} tbody`);
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
+    if (!linhas || !linhas.length) return;
+
+    const trHead = document.createElement("tr");
+    colunas.forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      trHead.append(th);
+    });
+    thead.append(trHead);
+
+    linhas.forEach(([rotulo, total]) => {
+      const tr = document.createElement("tr");
+      const tdRotulo = document.createElement("td");
+      tdRotulo.textContent = rotulo;
+      const tdTotal = document.createElement("td");
+      tdTotal.textContent = total;
+      tr.append(tdRotulo, tdTotal);
+      tbody.append(tr);
+    });
+  }
+
+  function isoLocal(date) {
+    const ano = date.getFullYear();
+    const mes = String(date.getMonth() + 1).padStart(2, "0");
+    const dia = String(date.getDate()).padStart(2, "0");
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  // Um dia por data entre início/fim (mesmo padrão do "calendario" que o
+  // backend devolve pra Analistas — todo dia entra, com 0 pros sem chamado
+  // criado), a partir das linhas já buscadas (sem consulta extra ao Jira).
+  function diasCriadosPorPeriodo(rows, inicio, fim) {
+    if (!inicio || !fim) return [];
+    const porDia = new Map();
+    (rows || []).forEach((row) => {
+      if (!row.created) return;
+      const dia = row.created.slice(0, 10);
+      porDia.set(dia, (porDia.get(dia) || 0) + 1);
+    });
+
+    const [anoIni, mesIni, diaIni] = inicio.split("-").map(Number);
+    const [anoFim, mesFim, diaFim] = fim.split("-").map(Number);
+    const dataAtual = new Date(anoIni, mesIni - 1, diaIni);
+    const dataFim = new Date(anoFim, mesFim - 1, diaFim);
+
+    const dias = [];
+    while (dataAtual <= dataFim) {
+      const chave = isoLocal(dataAtual);
+      dias.push({ data: chave, criados: porDia.get(chave) || 0 });
+      dataAtual.setDate(dataAtual.getDate() + 1);
+    }
+    return dias;
+  }
+
+  const CALENDARIO_CAMPOS_CRIADOS = [{ campo: "criados", prefixo: "C", classe: "calendario-dia-criados" }];
+
+  // Gráfico de barras horizontal, sem biblioteca externa — largura de cada
+  // barra proporcional ao maior valor da lista. "dados" é [rótulo, total]
+  // (mesmo formato de por_status/top_assignees), já ordenado do maior pro
+  // menor; "limite" corta em quantas barras mostrar (evita um gráfico
+  // ilegível quando a Sub-Classificação tem muitos valores distintos).
+  function construirGraficoBarras(dados, limite = 10) {
+    const container = document.createElement("div");
+    container.className = "bar-chart";
+
+    const itens = dados.slice(0, limite);
+    const maxValor = Math.max(...itens.map(([, total]) => total), 1);
+
+    itens.forEach(([rotulo, total]) => {
+      const row = document.createElement("div");
+      row.className = "bar-chart-row";
+
+      const label = document.createElement("span");
+      label.className = "bar-chart-label";
+      label.textContent = rotulo;
+      label.title = rotulo;
+
+      const track = document.createElement("div");
+      track.className = "bar-chart-track";
+      const fill = document.createElement("div");
+      fill.className = "bar-chart-fill";
+      fill.style.width = `${(total / maxValor) * 100}%`;
+      track.append(fill);
+
+      const value = document.createElement("span");
+      value.className = "bar-chart-value";
+      value.textContent = total;
+
+      row.append(label, track, value);
+      container.append(row);
+    });
+
+    return container;
+  }
+
+  // Só aparece em Análise de Jornada: cards "Total de chamados"/"Chamados
+  // abertos" empilhados à esquerda + tabela por status e tabela de top
+  // analistas à direita, as três colunas alinhadas na mesma linha (mesmo
+  // grupo de dados que antes ia pro #summary-cards/#top-assignees
+  // genéricos — aqui esconde os dois e monta um layout próprio); e, no
+  // lugar da tabela de linhas (#results-table), um calendário de "Chamados
+  // criados" por dia — mesmo layout/componente do calendário de Analistas
+  // de Encerramento (construirCalendario), só com outro campo de contagem.
+  // "por_status" e "summary.top_assignees" vêm do backend como lista
+  // [rótulo, total] (Counter.most_common), já ordenadas do mais pro menos
+  // frequente. "data.inicio"/"data.fim" são injetados pelo handler do
+  // botão "Gerar" antes de chamar renderResults — o calendário precisa das
+  // duas pontas do período pra preencher todos os dias, não só os com
+  // chamado criado.
+  function renderJornadaResumo(data) {
+    const block = $("jornada-resumo-block");
+    const cardsEl = $("jornada-cards");
+    cardsEl.innerHTML = "";
+
+    const temDados = data.summary && typeof data.abertos === "number" && data.por_status;
+    preencherTabela2Col("jornada-status-table", ["Status", "Quantidade"], temDados ? data.por_status : null);
+    preencherTabela2Col(
+      "jornada-analistas-table",
+      ["Analista", "Quantidade"],
+      temDados ? data.summary.top_assignees : null
+    );
+
+    const calendarioBlock = $("jornada-calendario-block");
+    const calendarioEl = $("jornada-calendario");
+    const resultsTableWrap = $("results-table-wrap");
+    const subclassBlock = $("jornada-subclassificacao-block");
+
+    if (!temDados) {
+      block.classList.add("hidden");
+      calendarioBlock.classList.add("hidden");
+      subclassBlock.classList.add("hidden");
+      // #top-assignees e a tabela genérica não têm lógica própria de
+      // mostrar/esconder (só preenchem o innerHTML) — sem restaurar aqui,
+      // ficariam escondidos pra sempre nas ações seguintes.
+      $("top-assignees").classList.remove("hidden");
+      resultsTableWrap.classList.remove("hidden");
+      $("table-note").classList.remove("hidden");
+      return;
+    }
+
+    // Essa ação mostra os totais no layout próprio abaixo — o card genérico
+    // "Total de chamados" e o bloco "Top responsáveis" (ambos já
+    // preenchidos por renderSummary) ficam redundantes aqui.
+    $("summary-cards").classList.add("hidden");
+    $("top-assignees").classList.add("hidden");
+
+    cardsEl.append(summaryCard(data.summary.total, "Total de chamados", "tone-accent"));
+    cardsEl.append(summaryCard(data.abertos, "Chamados abertos", "tone-warning"));
+    if (typeof data.criticos === "number") {
+      cardsEl.append(summaryCard(data.criticos, "Chamados P0/P1/P2", "tone-danger"));
+    }
+
+    // Gráfico de Sub-Classificação, acima do calendário — só aparece se o
+    // campo foi encontrado no Jira e tem pelo menos um valor (best-effort,
+    // igual às outras seções por campo customizado).
+    const subclassEl = $("jornada-subclassificacao-chart");
+    subclassEl.innerHTML = "";
+    if (data.por_subclassificacao && data.por_subclassificacao.length) {
+      subclassEl.append(construirGraficoBarras(data.por_subclassificacao));
+      subclassBlock.classList.remove("hidden");
+    } else {
+      subclassBlock.classList.add("hidden");
+    }
+
+    // Calendário no lugar da tabela de linhas.
+    resultsTableWrap.classList.add("hidden");
+    $("table-note").classList.add("hidden");
+    calendarioEl.innerHTML = "";
+    const dias = diasCriadosPorPeriodo(data.rows, data.inicio, data.fim);
+    if (dias.length) {
+      calendarioEl.append(construirCalendario(dias, CALENDARIO_CAMPOS_CRIADOS));
+      calendarioBlock.classList.remove("hidden");
+    } else {
+      calendarioBlock.classList.add("hidden");
+    }
+
+    block.classList.remove("hidden");
+  }
+
   function summaryCard(value, label, tone, topAssignees) {
     const card = document.createElement("div");
     card.className = "summary-card" + (tone ? ` ${tone}` : "");
@@ -1135,12 +1285,8 @@
     const temTopPorGrupo = porGrupo && porGrupo.some((g) => g.top_assignees && g.top_assignees.length);
 
     if (porGrupo && porGrupo.length) {
-      // Total desce para a mesma linha dos cards por grupo, como primeiro
-      // card — exceto no Report Diário, que já mostra o total no card
-      // central "62 / 2 / 0" logo acima, então repeti-lo aqui seria redundante.
-      if (action !== "report-diario") {
-        porGrupoCardsEl.append(totalCard);
-      }
+      // Total desce para a mesma linha dos cards por grupo, como primeiro card.
+      porGrupoCardsEl.append(totalCard);
       porGrupo.forEach(({ grupo, total, top_assignees }) => {
         porGrupoCardsEl.append(summaryCard(total, GRUPO_LABEL_CURTO[grupo] || grupo, null, top_assignees));
       });
@@ -1354,6 +1500,7 @@
         return;
       }
       el.classList.remove("hidden");
+      el.classList.toggle("is-loading", !concluido);
       el.textContent = concluido
         ? `Categoria verificada em ${totalBruto} chamado${totalBruto === 1 ? "" : "s"} — ${chamadosFiltrados.length} no filtro atual.`
         : `Verificando categorias... ${indiceProximoLote} de ${totalBruto} chamados (${chamadosFiltrados.length} no filtro até agora).`;
@@ -1573,6 +1720,7 @@
     const botao = $("btn-ofgeral-buscar");
 
     statusEl.textContent = `Gerando Excel de "${rotulo}" em Gestão de Problemas...`;
+    statusEl.classList.add("is-loading");
     botao.disabled = true;
 
     try {
@@ -1597,6 +1745,7 @@
     } catch (e) {
       statusEl.textContent = "Não foi possível conectar ao servidor.";
     } finally {
+      statusEl.classList.remove("is-loading");
       botao.disabled = false;
     }
   });
@@ -1989,6 +2138,92 @@
     }
   });
 
+  // ------------------------------------------------------ análise de jornada
+  // Mesmo esquema de busca de Analistas de Encerramento (data início/fim +
+  // um parâmetro categórico), mas com um dropdown simples em vez de
+  // combobox de texto — e disponível nas duas caixas, não só Solar. A lista
+  // de opções do dropdown é reconstruída a cada abertura do painel, porque
+  // muda conforme a caixa selecionada (CLASSIFICACAO_OPCOES).
+  $("btn-jornada").addEventListener("click", () => {
+    const dialog = $("jornada-dialog");
+    const abrindo = !dialog.classList.contains("open");
+    closeAllDialogs("jornada-dialog");
+    if (abrindo) {
+      const hoje = new Date().toISOString().slice(0, 10);
+      if (!$("jornada-input-inicio").value) $("jornada-input-inicio").value = hoje;
+      if (!$("jornada-input-fim").value) $("jornada-input-fim").value = hoje;
+
+      const select = $("jornada-classificacao");
+      const valorAtual = select.value;
+      const opcoes = CLASSIFICACAO_OPCOES[state.caixa] || [];
+      select.innerHTML = '<option value="">Selecione...</option>';
+      opcoes.forEach((valor) => {
+        const option = document.createElement("option");
+        option.value = valor;
+        option.textContent = valor;
+        select.append(option);
+      });
+      if (opcoes.includes(valorAtual)) select.value = valorAtual;
+    }
+    dialog.classList.toggle("open", abrindo);
+  });
+
+  $("btn-jornada-cancelar").addEventListener("click", () => {
+    $("jornada-dialog").classList.remove("open");
+  });
+
+  $("btn-jornada-gerar").addEventListener("click", async () => {
+    const inicio = $("jornada-input-inicio").value;
+    const fim = $("jornada-input-fim").value;
+    if (!inicio || !fim) {
+      setBanner("Informe as duas datas.", "error");
+      return;
+    }
+
+    const classificacao = $("jornada-classificacao").value;
+    if (!classificacao) {
+      setBanner("Selecione uma Classificação.", "error");
+      return;
+    }
+
+    const projetos = projetosSelecionados();
+    if (!projetos.length) {
+      setBanner("Selecione ao menos um projeto.", "error");
+      return;
+    }
+
+    const extraBody = { inicio, fim, classificacao, projetos };
+
+    $("jornada-dialog").classList.remove("open");
+    setBusy(true);
+    setBanner("Buscando chamados no Jira...", "info");
+    hideAllResults();
+    try {
+      const resp = await apiCall("/api/analise-jornada", { caixa: state.caixa, ...extraBody });
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        setBanner(data.error || "Erro ao executar a ação.", "error");
+        return;
+      }
+
+      lastAction = "jornada";
+      lastCaixa = state.caixa;
+      lastExtraBody = extraBody;
+      // Usados por renderJornadaResumo pra preencher todos os dias do
+      // calendário (não só os com chamado criado).
+      data.inicio = inicio;
+      data.fim = fim;
+      renderResults("jornada", data);
+      $("results-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
+      clearBanner();
+    } catch (e) {
+      setBanner("Não foi possível conectar ao servidor.", "error");
+    } finally {
+      setBusy(false);
+    }
+  });
+
   // ---------------------------------------------------------------- críticos
   $("btn-criticos").addEventListener("click", () => {
     const dialog = $("criticos-dialog");
@@ -2357,6 +2592,56 @@
     }
   });
 
+  // ---------------------------------------------------- report diário
+  // Ação direta (sem diálogo, sempre "hoje") — consolida num resultado só o
+  // que hoje é visto espalhado em 3 ações (A violar, Violados, Reabertos,
+  // todas escopadas ao dia atual) mais o ranking de quem mais resolveu hoje
+  // ("Top analistas do dia", mesmo summaryCard com ranking embutido já
+  // usado nos cards "por grupo" de Criados x Resolvidos/A violar).
+  // Funciona nas duas caixas — não é restrito a Solar nem a Claro Tv.
+  function renderReportDiario(data) {
+    $("report-diario-date").textContent = formatarDataBR(data.data);
+
+    const cardsEl = $("report-diario-summary-cards");
+    cardsEl.innerHTML = "";
+    cardsEl.append(summaryCard(data.a_violar_hoje, "A violar no dia", "tone-warning"));
+    cardsEl.append(summaryCard(data.violados_hoje, "Violados no dia", "tone-danger"));
+    cardsEl.append(summaryCard(data.reabertos_hoje, "Reabertos", "tone-warning"));
+
+    const topEl = $("report-diario-top-cards");
+    topEl.innerHTML = "";
+    topEl.append(summaryCard(data.resolvidos_hoje, "Resolvidos hoje", "tone-accent", data.top_analistas));
+
+    $("report-diario-results").classList.remove("hidden");
+  }
+
+  $("btn-report-diario").addEventListener("click", async () => {
+    const projetos = projetosSelecionados();
+    if (!projetos.length) {
+      setBanner("Selecione ao menos um projeto.", "error");
+      return;
+    }
+
+    closeAllDialogs();
+    setBusy(true);
+    setBanner("Gerando Report Diário...", "info");
+    hideAllResults();
+    try {
+      const resp = await apiCall("/api/report-diario", { caixa: state.caixa, projetos });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setBanner(data.error || "Erro ao gerar o Report Diário.", "error");
+        return;
+      }
+      renderReportDiario(data);
+      clearBanner();
+    } catch (e) {
+      setBanner("Não foi possível conectar ao servidor.", "error");
+    } finally {
+      setBusy(false);
+    }
+  });
+
   // ---------------------------------------------------- analistas de encerramento
   // Time fixo (roster), não depende de período nem de nova busca no Jira —
   // fica disponível assim que o painel abre. Escolher um nome + o período em
@@ -2422,10 +2707,20 @@
   ];
   const CALENDARIO_DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
+  // Config padrão (Analistas de Encerramento): "E n" (encerrados/resolvidos)
+  // + "R n" (reabertos) dentro do quadrado do dia.
+  const CALENDARIO_CAMPOS_PADRAO = [
+    { campo: "encerrados_resolvidos", prefixo: "E", classe: "calendario-dia-encerrados" },
+    { campo: "reabertos", prefixo: "R", classe: "calendario-dia-reabertos" },
+  ];
+
   // Um mini-calendário por mês tocado pelo período — dias fora do período
   // (mas dentro do mesmo mês) aparecem esmaecidos; os "buracos" de
-  // alinhamento antes do dia 1 ficam totalmente em branco.
-  function construirCalendario(dias) {
+  // alinhamento antes do dia 1 ficam totalmente em branco. "camposInfo"
+  // controla quais contadores aparecem dentro de cada quadrado (label +
+  // classe de cor) — outros usos (Análise de Jornada) passam sua própria
+  // config em vez do padrão E/R de Analistas.
+  function construirCalendario(dias, camposInfo = CALENDARIO_CAMPOS_PADRAO) {
     const porMes = new Map();
     dias.forEach((dia) => {
       const chaveMes = dia.data.slice(0, 7);
@@ -2481,21 +2776,16 @@
           numero.textContent = dia;
           celula.append(numero);
 
-          if (info && (info.encerrados_resolvidos || info.reabertos)) {
+          const camposComValor = info ? camposInfo.filter((c) => info[c.campo]) : [];
+          if (camposComValor.length) {
             const infoEl = document.createElement("div");
             infoEl.className = "calendario-dia-info";
-            if (info.encerrados_resolvidos) {
+            camposComValor.forEach(({ campo, prefixo, classe }) => {
               const linha = document.createElement("span");
-              linha.className = "calendario-dia-encerrados";
-              linha.textContent = `E ${info.encerrados_resolvidos}`;
+              linha.className = classe;
+              linha.textContent = `${prefixo} ${info[campo]}`;
               infoEl.append(linha);
-            }
-            if (info.reabertos) {
-              const linha = document.createElement("span");
-              linha.className = "calendario-dia-reabertos";
-              linha.textContent = `R ${info.reabertos}`;
-              infoEl.append(linha);
-            }
+            });
             celula.append(infoEl);
           }
 
@@ -2872,12 +3162,16 @@
   }
 
 
-  // ------------------------------------------------- dicionário de queries
-  // Painel de referência, sempre disponível (independe de login) — não
-  // entra no grupo dos outros painéis (closeAllDialogs), fica fora da área
-  // logada e não compete com eles por espaço na tela.
-  $("btn-info-queries").addEventListener("click", () => {
-    $("info-queries").classList.toggle("open");
+  // Home (#home-view): cada item de "O que cada ação faz" é um acordeão
+  // próprio — clicar no botão abre só a query daquele item. Delegado no
+  // container pra não precisar de um listener por item.
+  $("home-view").addEventListener("click", (event) => {
+    const toggle = event.target.closest(".query-dict-toggle");
+    if (!toggle) return;
+    const collapse = toggle.closest("dt").nextElementSibling.querySelector(".collapse");
+    const abrindo = !collapse.classList.contains("open");
+    collapse.classList.toggle("open", abrindo);
+    toggle.setAttribute("aria-expanded", String(abrindo));
   });
 
   // ---------------------------------------------------- autologin (dev local)

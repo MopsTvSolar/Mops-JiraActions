@@ -40,6 +40,7 @@ from jira_extractor import (  # noqa: E402
     fetch_categoria_encerrados,
     fetch_categoria_reabertos,
     fetch_chamados_a_violar,
+    fetch_chamados_classificacao,
     fetch_chamados_criticos,
     fetch_chamados_funcionalidade_ofensor,
     fetch_chamados_reabertos,
@@ -48,9 +49,10 @@ from jira_extractor import (  # noqa: E402
     fetch_previstos_violar_por_dia,
     fetch_criados_x_resolvidos,
     fetch_detalhe_analista,
-    fetch_resolvidos_hoje,
+    fetch_resolvidos_hoje_assignees,
     fetch_status_categoria_lote,
     fetch_total_criados_periodo,
+    fetch_total_criticos_classificacao,
     fetch_issues,
     flatten_issue,
     load_fixed_config,
@@ -76,8 +78,8 @@ STATUS_OPTIONS = [
     "Cancelado",
 ]
 
-# Grupos Solucionador fixos (mesmos da GUI) — usados no Report Diário e no
-# detalhamento "por grupo" dos cards de "a violar hoje/amanhã".
+# Grupos Solucionador fixos (mesmos da GUI) — usados no detalhamento "por
+# grupo" dos cards de "a violar hoje/amanhã".
 GRUPOS_SOLUCIONADOR = [
     "CLBR-TI-OPS-OGS-SOLAR-SALESFORCE-N2",
     "CLBR-TI-OPS-OGS SOLAR SALESFORCE",
@@ -95,7 +97,7 @@ GRUPOS_TV = [
 
 # Cada "caixa solucionadora" tem sua lista de grupos, usada tanto para
 # montar a JQL geral (grupo + projeto, ver _build_base_jql) quanto no
-# detalhamento "por grupo" e no Report Diário/Relatório Consolidado.
+# detalhamento "por grupo".
 CAIXAS = {
     CAIXA_SOLAR: {
         "label": "Mops Solar",
@@ -150,10 +152,7 @@ def _resolve_caixa(body):
     return caixa_id
 
 
-# Projetos que o usuário pode marcar/desmarcar no painel "PROJETOS" — vale
-# para A violar, Violados, Extração completa e Categorias de Encerramento.
-# Report Diário e Relatório Consolidado não usam isso (têm lógica própria,
-# com contagens específicas por projeto).
+# Projetos que o usuário pode marcar/desmarcar no painel "PROJETOS".
 PROJETOS_DISPONIVEIS = [PROJETO_INC, PROJETO_PDST]
 
 
@@ -319,6 +318,7 @@ GRUPO_FIELD_NAME = "Grupo Solucionador"
 CATEGORIA_ENCERRAMENTO_FIELD_NAME = "Categoria de Encerramento"
 NIVEL_ESCALONAMENTO_FIELD_NAME = "Nivel de Escalonamento"
 RESPONSAVEL_MOPS_FIELD_NAME = "Responsável pela Solicitação MOPS"
+SUBCLASSIFICACAO_FIELD_NAME = "Sub-Classificação"
 
 # ID de campos customizados resolvidos por nome (Grupo Solucionador,
 # Categoria de Encerramento etc.), um cache por (URL da instância, nome do
@@ -430,6 +430,10 @@ def _resolve_nivel_escalonamento_field_id(config):
 
 def _resolve_responsavel_mops_field_id(config):
     return _resolve_field_id(config, RESPONSAVEL_MOPS_FIELD_NAME)
+
+
+def _resolve_subclassificacao_field_id(config):
+    return _resolve_field_id(config, SUBCLASSIFICACAO_FIELD_NAME)
 
 
 def _por_grupo_a_violar(rows, grupos):
@@ -577,19 +581,6 @@ def connect():
     if resp.status_code == 401:
         return _error_response("E-mail ou API Token inválidos.", 401)
     return _error_response(f"Erro inesperado do Jira ({resp.status_code}).", 502)
-
-
-@app.route("/api/jql-atual", methods=["POST"])
-def jql_atual():
-    """Devolve a JQL geral (grupo + projeto, sem status/período pré-fixados)
-    da caixa selecionada — só leitura de config, não chama o Jira, não
-    precisa de e-mail/token (a JQL em si não é segredo)."""
-    body = request.get_json(silent=True) or {}
-    caixa_id = _resolve_caixa(body)
-    projetos = _projetos_selecionados(body)
-    return jsonify(
-        {"caixa": caixa_id, "label": CAIXAS[caixa_id]["label"], "jql": _build_base_jql(caixa_id, projetos)}
-    )
 
 
 @app.route("/api/extracao-completa", methods=["POST"])
@@ -807,56 +798,52 @@ def reabertos():
     return _respond(rows, "chamados_reabertos", body, extra=extra)
 
 
-@app.route("/api/report-diario", methods=["POST"])
-def report_diario():
-    """Chamados com status "Resolvido" no dia atual — mesmo padrão "tabela"
-    de Violados/Reabertos, então o ranking "Top Analistas do dia" já sai de
-    graça do summary.top_assignees calculado em _respond/_build_summary.
-    O detalhamento N1/N2/PROD segue o mesmo esquema best-effort de "A violar":
-    sem o campo Grupo Solucionador resolvido, a ação segue normal, só sem
-    essas colunas."""
+@app.route("/api/analise-jornada", methods=["POST"])
+def analise_jornada():
+    """Análise de Jornada: busca chamados (qualquer status) pelo campo
+    "Classificação" + período — mesmo esquema de Analistas de Encerramento
+    (data + um parâmetro categórico), mas disponível nas duas caixas (a
+    lista de valores mostrada na tela muda conforme a caixa; a busca em si
+    é a mesma JQL nas duas, só troca o valor de "Classificação" e os
+    grupos/projetos da caixa atual, via _build_base_jql)."""
     body = request.get_json(silent=True) or {}
     caixa_id = _resolve_caixa(body)
     projetos = _projetos_selecionados(body)
     config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+    inicio, fim = _parse_periodo(body)
 
-    grupo_field_id = None
+    classificacao = (body.get("classificacao") or "").strip()
+    if not classificacao:
+        raise JiraExtractorError("Selecione uma Classificação.")
+
     try:
-        grupo_field_id = _resolve_grupo_field_id(config)
+        subclassificacao_field_id = _resolve_subclassificacao_field_id(config)
     except Exception:
-        app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
-        grupo_field_id = None
+        # Best-effort, mesmo padrão de Categoria de Encerramento/Grupo
+        # Solucionador: sem o campo, a ação segue normal, só sem o gráfico
+        # de Sub-Classificação.
+        app.logger.exception("Falha ao resolver o campo Sub-Classificação")
+        subclassificacao_field_id = None
 
-    rows = fetch_resolvidos_hoje(config, grupo_field_id=grupo_field_id)
+    rows = fetch_chamados_classificacao(
+        config, classificacao, inicio, fim, incluir_fornecedor=True, subclassificacao_field_id=subclassificacao_field_id
+    )
 
-    extra = {}
-    if grupo_field_id:
-        try:
-            extra["por_grupo"] = _por_grupo_a_violar(rows, CAIXAS[caixa_id]["grupos"])
-        except Exception:
-            app.logger.exception("Falha ao agregar chamados por grupo")
-
+    extra = None
     if not _is_download(body):
-        # Só calcula pra exibição na tela (mesma economia já aplicada em
-        # Reabertos) — o download do arquivo de resolvidos não precisa desses
-        # contadores extras. As linhas completas (não só a contagem) vão
-        # junto, com as mesmas colunas das ações Reabertos/Violados — o card
-        # central usa isso pra abrir a tabela de cada um em collapse.
-        hoje = datetime.now(BRAZIL_TZ).date()
-        try:
-            reabertos_rows = fetch_chamados_reabertos(config, hoje, hoje, incluir_fornecedor=True)
-            extra["reabertos_hoje"] = len(reabertos_rows)
-            extra["reabertos_hoje_rows"] = reabertos_rows
-        except Exception:
-            app.logger.exception("Falha ao buscar reabertos hoje")
-        try:
-            violados_rows = fetch_chamados_violados(config, incluir_fornecedor=True, start_date=hoje, end_date=hoje)
-            extra["violados_hoje"] = len(violados_rows)
-            extra["violados_hoje_rows"] = violados_rows
-        except Exception:
-            app.logger.exception("Falha ao buscar violados hoje")
+        # Só calcula pra exibição na tela, mesma economia já aplicada nas
+        # outras ações. "Abertos" usa a mesma convenção de status "fechado"
+        # já usada em Chamados Críticos (Cancelado/Resolvido/Encerrado).
+        abertos = sum(1 for r in rows if r.get("status") not in ("Cancelado", "Resolvido", "Encerrado"))
+        por_status = Counter(r.get("status") for r in rows if r.get("status")).most_common()
+        criticos = fetch_total_criticos_classificacao(config, classificacao, inicio, fim)
+        extra = {"abertos": abertos, "por_status": por_status, "criticos": criticos}
+        if subclassificacao_field_id:
+            extra["por_subclassificacao"] = Counter(
+                r.get("sub_classificacao") for r in rows if r.get("sub_classificacao")
+            ).most_common()
 
-    return _respond(rows, "resolvidos_hoje", body, extra=extra or None)
+    return _respond(rows, "chamados_jornada", body, extra=extra)
 
 
 def _parse_periodo(body):
@@ -1056,8 +1043,7 @@ def report_vini():
     """"Report Vini" — específico da caixa Mops Tv do Futuro: consolida num
     resultado só o que hoje é visto espalhado em 3 ações (Criados x
     Resolvidos com TMA/SLA, Reabertos, Categorias de Encerramento) pro
-    período escolhido (Data início/fim, igual às outras ações de período —
-    não é "hoje" como o Report Diário normal)."""
+    período escolhido (Data início/fim)."""
     body = request.get_json(silent=True) or {}
     caixa_id = _resolve_caixa(body)
     if caixa_id != CAIXA_TV:
@@ -1100,6 +1086,40 @@ def report_vini():
             "criados_resolvidos": criados_resolvidos,
             "reabertos": reabertos,
             "categorias_encerrados": categorias_encerrados,
+        }
+    )
+
+
+@app.route("/api/report-diario", methods=["POST"])
+def report_diario():
+    """Report Diário consolidado: junta, numa chamada só, os mesmos números
+    que já existem espalhados noutras ações — tudo escopado a "hoje" — "A
+    violar" (fetch_chamados_a_violar, days_ahead=0), "Violados"
+    (fetch_chamados_violados do dia), "Reabertos" (fetch_chamados_reabertos
+    do dia) e "Top analista do dia" (quem mais resolveu hoje). Funciona nas
+    duas caixas: cada busca já usa os grupos/projetos/JQL da caixa
+    selecionada, sem nenhuma regra extra específica de caixa aqui."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    projetos = _projetos_selecionados(body)
+    config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+    hoje = datetime.now(BRAZIL_TZ).date()
+
+    a_violar_hoje = len(fetch_chamados_a_violar(config, days_ahead=0))
+    violados_hoje = len(fetch_chamados_violados(config, start_date=hoje, end_date=hoje))
+    reabertos_hoje = len(fetch_chamados_reabertos(config, hoje, hoje))
+
+    assignees = fetch_resolvidos_hoje_assignees(config)
+    top_analistas = Counter(a for a in assignees if a).most_common(TOP_ASSIGNEES_LIMIT)
+
+    return jsonify(
+        {
+            "data": hoje.strftime("%Y-%m-%d"),
+            "a_violar_hoje": a_violar_hoje,
+            "violados_hoje": violados_hoje,
+            "reabertos_hoje": reabertos_hoje,
+            "resolvidos_hoje": len(assignees),
+            "top_analistas": top_analistas,
         }
     )
 

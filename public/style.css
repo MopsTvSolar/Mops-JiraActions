@@ -232,6 +232,54 @@ main {
   color: var(--warning);
 }
 
+.calendario-dia-criados {
+  color: #ff1dce;
+}
+
+/* Gráfico de barras horizontal (Sub-Classificação em Análise de Jornada) —
+   sem biblioteca externa, largura da barra proporcional ao maior valor. */
+.bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bar-chart-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+}
+
+.bar-chart-label {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-chart-track {
+  background: var(--card-bg-elevated);
+  border-radius: 4px;
+  height: 12px;
+  overflow: hidden;
+}
+
+.bar-chart-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  min-width: 3px;
+}
+
+.bar-chart-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: right;
+}
+
 input[type="checkbox"] {
   accent-color: var(--accent);
 }
@@ -314,11 +362,6 @@ button {
   max-height: 700px;
   opacity: 1;
   padding-top: 16px;
-}
-
-/* dicionário de queries tem bem mais conteúdo que os outros painéis */
-#info-queries.open {
-  max-height: 3000px;
 }
 
 /* analistas de encerramento: painel único com dropdown + detalhe (cards,
@@ -415,14 +458,19 @@ button {
   min-height: 100vh;
 }
 
+/* position: fixed (não sticky) — o menu fica travado na tela inteira,
+   sem se mover quando o conteúdo cresce e o resto da página rola (ex.:
+   resultado de uma tabela grande). Só o próprio menu rola por dentro
+   (overflow-y) se o conteúdo dele (CAIXA/PROJETOS/AÇÕES/REPORTS) não
+   couber na altura da tela. .content-area compensa o espaço com
+   margin-left, já que um elemento fixed sai do fluxo do flex. */
 .sidebar {
   display: flex;
   flex-direction: column;
-  flex: 0 0 280px;
   width: 280px;
-  position: sticky;
+  position: fixed;
   top: 0;
-  align-self: flex-start;
+  left: 0;
   height: 100vh;
   overflow-y: auto;
   padding: 20px 16px;
@@ -459,6 +507,7 @@ button {
 .content-area {
   flex: 1;
   min-width: 0;
+  margin-left: 280px;
   padding: 20px 24px 60px;
 }
 
@@ -573,7 +622,8 @@ button {
   cursor: pointer;
 }
 
-#acoes-toggle-icon {
+#acoes-toggle-icon,
+#reports-toggle-icon {
   color: var(--muted);
   font-size: 11px;
 }
@@ -588,7 +638,9 @@ button {
 }
 
 #result-banner.show {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 #result-banner.info {
@@ -604,6 +656,74 @@ button {
 #result-banner.success {
   background: rgba(74, 222, 128, 0.14);
   color: var(--success);
+}
+
+/* spinner genérico de "carregando" — some ::before em qualquer elemento com
+   .is-loading (banner de resultado, botão Conectar, progresso da Busca
+   Ofensor). Usa currentColor pro traço giratório, então acompanha a cor do
+   texto de cada contexto sem precisar de uma regra por lugar. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.is-loading::before {
+  content: "";
+  display: inline-block;
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: currentColor;
+  animation: spin 0.7s linear infinite;
+}
+
+#result-banner.is-loading::before {
+  margin-right: 0;
+}
+
+/* Enquanto carrega, a mensagem aparece só no overlay centralizado (ver
+   #loading-overlay) — a faixa no topo do conteúdo fica em silêncio nesse
+   meio-tempo, sem duplicar a mesma mensagem em dois lugares. Some assim que
+   setBusy(false) tira "is-loading" — erro/sucesso continuam aparecendo
+   normalmente na faixa. */
+#result-banner.is-loading {
+  display: none;
+}
+
+/* overlay de carregamento — centralizado na tela inteira (não uma faixa no
+   topo), ligado a setBusy()/setBanner() em app.js. Fica acima de tudo
+   (inclusive o menu lateral fixed e o popover de hover). */
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 6, 20, 0.55);
+}
+
+#loading-overlay.hidden {
+  display: none;
+}
+
+.loading-overlay-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 16px 24px;
+  color: var(--accent-soft);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
 /* toggle de caixa solucionadora */
@@ -917,74 +1037,6 @@ button {
   background: var(--danger);
 }
 
-/* card central do Report Diário: os 3 números do dia juntos (resolvidos /
-   violados / reabertos), centralizado, cada número numa cor. */
-.hero-card {
-  background: var(--card-bg-elevated);
-  border: 1px solid var(--card-border);
-  border-radius: 10px;
-  padding: 20px;
-  text-align: center;
-}
-
-.hero-numbers {
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.hero-number.tone-accent {
-  color: var(--accent-soft);
-}
-
-.hero-number.tone-danger {
-  color: var(--danger);
-}
-
-.hero-number.tone-warning {
-  color: var(--warning);
-}
-
-.hero-sep {
-  color: var(--muted);
-  margin: 0 10px;
-  font-weight: 400;
-}
-
-.hero-labels {
-  display: flex;
-  justify-content: center;
-  gap: 22px;
-  margin-top: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.hero-labels .tone-accent {
-  color: var(--accent-soft);
-}
-
-.hero-labels .tone-danger {
-  color: var(--danger);
-}
-
-.hero-labels .tone-warning {
-  color: var(--warning);
-}
-
-/* número/rótulo do card central são clicáveis — abrem a tabela daquele
-   grupo em collapse, logo abaixo do card. */
-.hero-clickable {
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-}
-
-.hero-clickable:hover {
-  opacity: 0.75;
-}
-
 .summary-cards {
   display: grid;
   /* auto-fit (não auto-fill) colapsa as colunas vazias quando há menos
@@ -993,6 +1045,27 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
+}
+
+/* Análise de Jornada: cards (Total/Abertos) empilhados à esquerda + as
+   tabelas (Status, Top Analistas) dividindo igualmente o resto da largura,
+   todas alinhadas no topo (align-items: flex-start). */
+.jornada-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.jornada-cards {
+  flex: 0 0 200px;
+  grid-template-columns: 1fr;
+  margin-bottom: 0;
+}
+
+.jornada-table-wrap {
+  flex: 1;
+  min-width: 0;
 }
 
 .summary-card {
@@ -1276,23 +1349,6 @@ footer {
   padding: 20px;
 }
 
-/* link discreto que abre o dicionário de queries */
-.link-subtle {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--muted);
-  font-size: 12px;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  transition: color 0.15s ease, text-decoration-color 0.15s ease;
-}
-
-.link-subtle:hover {
-  color: var(--accent-soft);
-  text-decoration-color: currentColor;
-}
-
 .query-dict {
   margin: 14px 0 0;
   font-size: 13px;
@@ -1322,8 +1378,7 @@ footer {
   margin-top: 0;
 }
 
-.query-dict code,
-.jql-atual-block {
+.query-dict code {
   display: block;
   background: var(--card-bg-elevated);
   border-radius: 6px;
@@ -1340,6 +1395,55 @@ footer {
   display: inline;
   padding: 1px 5px;
   color: var(--text);
+}
+
+/* home: cada item vira um acordeão (clica pra ver a query) em vez de texto
+   sempre visível — mesma técnica .collapse usada nos diálogos de ação. */
+.query-dict--home dt {
+  margin-top: 4px;
+}
+
+.query-dict--home dt:first-child {
+  margin-top: 0;
+}
+
+.query-dict-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.query-dict-toggle:hover {
+  color: var(--accent-soft);
+}
+
+.query-dict-arrow {
+  flex-shrink: 0;
+  margin-left: 8px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.query-dict-toggle[aria-expanded="true"] .query-dict-arrow {
+  transform: rotate(90deg);
+}
+
+.query-dict--home dd {
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 4px;
+}
+
+.query-dict--home dd:last-child {
+  border-bottom: none;
 }
 
 /* Tela estreita: menu lateral empilha acima do conteúdo em vez de coluna
@@ -1361,6 +1465,20 @@ footer {
   }
 
   .content-area {
+    margin-left: 0;
     padding: 20px;
+  }
+
+  .jornada-layout {
+    flex-direction: column;
+  }
+
+  .jornada-cards {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .bar-chart-row {
+    grid-template-columns: 110px 1fr 36px;
   }
 }

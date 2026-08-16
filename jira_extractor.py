@@ -715,24 +715,97 @@ def fetch_chamados_reabertos(config, start_date, end_date, incluir_fornecedor=Fa
     return rows
 
 
-def fetch_resolvidos_hoje(config, grupo_field_id=None):
-    """Chamados com status "Resolvido" e resolutiondate no dia atual (fuso
-    BRAZIL_TZ), reaproveitando os filtros base (grupo/projeto) da JQL
-    configurada. Usado pela ação web "Report Diário" — o ranking de "Top
-    Analistas do dia" sai de graça a partir dessas linhas (mesmo
-    _build_summary/top_assignees que as outras ações "tabela" já usam, não
-    precisa de nenhuma consulta extra).
+# Nome do campo (não o ID) usado direto na JQL — mesmo padrão já usado em
+# FUNCIONALIDADE_OFENSORES_CAMPO: o Jira aceita "Nome do Campo" = "valor" sem
+# precisar resolver o ID quando o nome é único, então não precisa do
+# mecanismo de _resolve_field_id (esse é resolvido do lado da API web).
+CLASSIFICACAO_CAMPO = "Classificação"
 
-    "grupo_field_id" é opcional (mesmo padrão de fetch_chamados_a_violar):
-    quando informado, o valor do Grupo Solucionador é lido junto e incluído
-    em cada linha como "grupo_solucionador", pra dar o detalhamento N1/N2/PROD
-    sem precisar de uma busca extra por grupo.
 
-    Cada linha também traz "sla_estourou_em" (mesma coluna/mesmo cálculo da
-    ação Violados, via extract_sla_breach) — preenchido só quando o chamado
-    realmente violou o SLA em algum momento; vazio pros que foram resolvidos
-    dentro do prazo.
-    """
+def _jql_classificacao(config, classificacao, start_date, end_date):
+    """JQL base de Análise de Jornada: filtros da caixa (config["jql"]) +
+    Classificação + "created" no período — compartilhada por
+    fetch_chamados_classificacao e fetch_total_criticos_classificacao, pra
+    não duplicar a mesma montagem de query nas duas."""
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    classificacao_escapada = classificacao.replace("\\", "\\\\").replace('"', '\\"')
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    return (
+        f'({base_jql}) AND "{CLASSIFICACAO_CAMPO}" = "{classificacao_escapada}" '
+        f'AND created >= "{start_str}" AND created <= "{end_str}"'
+    )
+
+
+def fetch_total_criticos_classificacao(config, classificacao, start_date, end_date):
+    """Conta, dentro da mesma população de Análise de Jornada (caixa +
+    Classificação + período), quantos chamados já foram P0/P1/P2 em algum
+    momento (priority WAS IN (P0, P1, P2)) — mesma lógica de "Total de COTI
+    Abertos" em Chamados Críticos (fetch_chamados_criticos), só escopada à
+    Classificação escolhida em vez do período isolado."""
+    jql = _jql_classificacao(config, classificacao, start_date, end_date) + " AND priority WAS IN (P0, P1, P2)"
+    return len(fetch_issues(config, jql, ["key"]))
+
+
+def fetch_chamados_classificacao(
+    config, classificacao, start_date, end_date, incluir_fornecedor=False, subclassificacao_field_id=None
+):
+    """Busca chamados (qualquer status) com o campo "Classificação" igual ao
+    valor escolhido, com "created" dentro do período informado, reaproveitando
+    os filtros base (grupo/projeto) da JQL configurada — usado pela ação web
+    "Análise de Jornada".
+
+    "subclassificacao_field_id" (opcional, resolvido do lado da API web):
+    quando informado, cada linha ganha "sub_classificacao" (primeiro valor
+    do campo — cobre tanto Select List simples quanto referência a objeto do
+    Jira Assets, via _extract_categoria_values, mesmo mecanismo já usado em
+    Categoria de Encerramento/Nível de Escalonamento)."""
+    jql = _jql_classificacao(config, classificacao, start_date, end_date)
+
+    fields = ["summary", "status", "assignee", "reporter", "project", "issuetype", "created", "resolutiondate"]
+    if incluir_fornecedor:
+        fields = fields + FORNECEDOR_RESPONSAVEL_FIELDS
+    if subclassificacao_field_id:
+        fields = fields + [subclassificacao_field_id]
+
+    log.info("Buscando chamados por Classificação com JQL: %s", jql)
+    issues = fetch_issues(config, jql, fields)
+
+    rows = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        row = {
+            "key": issue.get("key"),
+            "summary": issue_fields.get("summary"),
+            "status": _extract(issue_fields.get("status"), "name"),
+            "assignee": _extract(issue_fields.get("assignee"), "displayName"),
+            "reporter": _extract(issue_fields.get("reporter"), "displayName"),
+            "project": _extract(issue_fields.get("project"), "key"),
+            "issuetype": _extract(issue_fields.get("issuetype"), "name"),
+            "created": issue_fields.get("created"),
+            "resolutiondate": issue_fields.get("resolutiondate"),
+        }
+        if incluir_fornecedor:
+            row["fornecedor_responsavel"] = extract_fornecedor(issue_fields)
+        if subclassificacao_field_id:
+            valores = _extract_categoria_values(config, issue_fields.get(subclassificacao_field_id))
+            row["sub_classificacao"] = valores[0] if valores else None
+        rows.append(row)
+
+    rows.sort(key=lambda r: r["key"])
+    return rows
+
+
+def fetch_resolvidos_hoje_assignees(config):
+    """Assignee de cada chamado com status "Resolvido" e resolutiondate no dia
+    atual (fuso BRAZIL_TZ), reaproveitando os filtros base (grupo/projeto) da
+    JQL configurada. Usado só pelo ranking "Top analista do dia" do Report
+    Diário consolidado — não busca nenhum outro campo, já que não existe
+    tabela de linhas pra mostrar, só a contagem por analista."""
     base_jql = config["jql"]
     if not base_jql:
         raise JiraExtractorError("Nenhuma JQL base definida.")
@@ -746,42 +819,8 @@ def fetch_resolvidos_hoje(config, grupo_field_id=None):
         f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
     )
 
-    fields = [
-        "summary",
-        "status",
-        "assignee",
-        "reporter",
-        "project",
-        "issuetype",
-        "resolutiondate",
-    ] + SLA_RESOLUTION_FIELDS
-    if grupo_field_id:
-        fields = fields + [grupo_field_id]
-
-    log.info("Buscando chamados resolvidos hoje com JQL: %s", jql)
-    issues = fetch_issues(config, jql, fields)
-
-    rows = []
-    for issue in issues:
-        issue_fields = issue.get("fields", {})
-        _sla_campo, breach_dt, breached = extract_sla_breach(issue_fields)
-        row = {
-            "key": issue.get("key"),
-            "summary": issue_fields.get("summary"),
-            "status": _extract(issue_fields.get("status"), "name"),
-            "assignee": _extract(issue_fields.get("assignee"), "displayName"),
-            "reporter": _extract(issue_fields.get("reporter"), "displayName"),
-            "project": _extract(issue_fields.get("project"), "key"),
-            "issuetype": _extract(issue_fields.get("issuetype"), "name"),
-            "resolutiondate": issue_fields.get("resolutiondate"),
-            "sla_estourou_em": breach_dt.strftime("%Y-%m-%d %H:%M:%S") if breach_dt and breached else None,
-        }
-        if grupo_field_id:
-            row["grupo_solucionador"] = _extract_grupo_solucionador(issue_fields.get(grupo_field_id))
-        rows.append(row)
-
-    rows.sort(key=lambda r: r["key"])
-    return rows
+    issues = fetch_issues(config, jql, ["assignee"])
+    return [_extract(issue.get("fields", {}).get("assignee"), "displayName") for issue in issues]
 
 
 def fetch_total_criados_periodo(config, start_date, end_date):
