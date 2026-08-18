@@ -722,33 +722,130 @@ def fetch_chamados_reabertos(config, start_date, end_date, incluir_fornecedor=Fa
 CLASSIFICACAO_CAMPO = "Classificação"
 
 
-def _jql_classificacao(config, classificacao, start_date, end_date):
-    """JQL base de Análise de Jornada: filtros da caixa (config["jql"]) +
-    Classificação + "created" no período — compartilhada por
-    fetch_chamados_classificacao e fetch_total_criticos_classificacao, pra
-    não duplicar a mesma montagem de query nas duas."""
+def _jql_caixa_classificacao(config, classificacao):
+    """JQL da caixa (config["jql"]) + igualdade de Classificação, quando
+    informada ("classificacao=None" = todas, modo "Geral") — sem filtro de
+    data, pra permitir tanto "created no período" (busca principal de
+    Análise de Jornada) quanto "resolutiondate no período" (Resolvidos) em
+    cima da mesma base, sem duplicar a montagem da parte comum."""
     base_jql = config["jql"]
     if not base_jql:
         raise JiraExtractorError("Nenhuma JQL base definida.")
 
     base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
-    classificacao_escapada = classificacao.replace("\\", "\\\\").replace('"', '\\"')
+    jql = f"({base_jql})"
+    if classificacao:
+        classificacao_escapada = classificacao.replace("\\", "\\\\").replace('"', '\\"')
+        jql += f' AND "{CLASSIFICACAO_CAMPO}" = "{classificacao_escapada}"'
+    return jql
+
+
+def _jql_jornada_base(config, start_date, end_date):
+    """JQL base de Análise de Jornada, sem filtro de Classificação: filtros
+    da caixa (config["jql"]) + "created" no período. Usada pelo modo "Geral"
+    (fetch_chamados_geral_classificacao)."""
     start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
     end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    return (
-        f'({base_jql}) AND "{CLASSIFICACAO_CAMPO}" = "{classificacao_escapada}" '
-        f'AND created >= "{start_str}" AND created <= "{end_str}"'
+    return f'{_jql_caixa_classificacao(config, None)} AND created >= "{start_str}" AND created <= "{end_str}"'
+
+
+def _jql_classificacao(config, classificacao, start_date, end_date):
+    """JQL base de Análise de Jornada (caixa + Classificação, ver
+    _jql_caixa_classificacao) + "created" no período — usada por
+    fetch_chamados_classificacao."""
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    return f'{_jql_caixa_classificacao(config, classificacao)} AND created >= "{start_str}" AND created <= "{end_str}"'
+
+
+def fetch_total_resolvidos_classificacao(config, classificacao, start_date, end_date):
+    """Conta, dentro da mesma população de caixa + Classificação (quando
+    informada) de Análise de Jornada, quantos chamados foram resolvidos no
+    período — status IN (Resolvido, Encerrado) AND resolutiondate no
+    período, mesma convenção já usada em "Resolvidos" na ação Criados x
+    Resolvidos (fetch_criados_x_resolvidos). Note que o filtro de data aqui
+    é sobre resolutiondate, não created — por isso não reaproveita
+    _jql_classificacao/_jql_jornada_base (que fixam "created"), só a base
+    sem data (_jql_caixa_classificacao)."""
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    jql = (
+        f'{_jql_caixa_classificacao(config, classificacao)} '
+        f'AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
     )
-
-
-def fetch_total_criticos_classificacao(config, classificacao, start_date, end_date):
-    """Conta, dentro da mesma população de Análise de Jornada (caixa +
-    Classificação + período), quantos chamados já foram P0/P1/P2 em algum
-    momento (priority WAS IN (P0, P1, P2)) — mesma lógica de "Total de COTI
-    Abertos" em Chamados Críticos (fetch_chamados_criticos), só escopada à
-    Classificação escolhida em vez do período isolado."""
-    jql = _jql_classificacao(config, classificacao, start_date, end_date) + " AND priority WAS IN (P0, P1, P2)"
     return len(fetch_issues(config, jql, ["key"]))
+
+
+def fetch_chamados_geral_classificacao(
+    config, start_date, end_date, classificacao_field_id, subclassificacao_field_id=None, incluir_fornecedor=False
+):
+    """Modo "Geral" de Análise de Jornada: busca TODOS os chamados do
+    período (sem filtrar por Classificação), lendo de volta o valor de
+    Classificação de cada um (precisa do ID do campo — no modo de valor
+    único isso não é necessário porque o próprio filtro já garante o
+    valor). Usado pra montar o ranking "quantos chamados por Classificação"
+    — cada linha ganha "classificacao" (e "sub_classificacao" quando
+    "subclassificacao_field_id" é informado), mesmo mecanismo de
+    _extract_categoria_values já usado em fetch_chamados_classificacao.
+
+    Pré-resolve em paralelo (_precache_categoria_labels) os labels de
+    Classificação/Sub-Classificação ANTES do loop de contagem — sem isso,
+    quando o campo é referência a objeto do Jira Assets (não um Select
+    List simples), cada valor NOVO custa uma chamada de rede em série
+    (~1s), podendo levar minutos num período com muitos valores distintos
+    (mesmo problema já resolvido em fetch_categoria_encerrados/
+    fetch_categoria_reabertos)."""
+    jql = _jql_jornada_base(config, start_date, end_date)
+
+    fields = [
+        "summary",
+        "status",
+        "assignee",
+        "reporter",
+        "project",
+        "issuetype",
+        "created",
+        "resolutiondate",
+        classificacao_field_id,
+    ]
+    if incluir_fornecedor:
+        fields = fields + FORNECEDOR_RESPONSAVEL_FIELDS
+    if subclassificacao_field_id:
+        fields = fields + [subclassificacao_field_id]
+
+    log.info("Buscando todos os chamados do período (modo Geral) com JQL: %s", jql)
+    issues = fetch_issues(config, jql, fields)
+
+    _precache_categoria_labels(config, issues, classificacao_field_id)
+    if subclassificacao_field_id:
+        _precache_categoria_labels(config, issues, subclassificacao_field_id)
+
+    rows = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        valores_classificacao = _extract_categoria_values(config, issue_fields.get(classificacao_field_id))
+        row = {
+            "key": issue.get("key"),
+            "summary": issue_fields.get("summary"),
+            "status": _extract(issue_fields.get("status"), "name"),
+            "assignee": _extract(issue_fields.get("assignee"), "displayName"),
+            "reporter": _extract(issue_fields.get("reporter"), "displayName"),
+            "project": _extract(issue_fields.get("project"), "key"),
+            "issuetype": _extract(issue_fields.get("issuetype"), "name"),
+            "created": issue_fields.get("created"),
+            "resolutiondate": issue_fields.get("resolutiondate"),
+            "classificacao": valores_classificacao[0] if valores_classificacao else None,
+        }
+        if incluir_fornecedor:
+            row["fornecedor_responsavel"] = extract_fornecedor(issue_fields)
+        if subclassificacao_field_id:
+            valores_sub = _extract_categoria_values(config, issue_fields.get(subclassificacao_field_id))
+            row["sub_classificacao"] = valores_sub[0] if valores_sub else None
+        rows.append(row)
+
+    rows.sort(key=lambda r: r["key"])
+    return rows
 
 
 def fetch_chamados_classificacao(
@@ -844,6 +941,108 @@ def fetch_total_criados_periodo(config, start_date, end_date):
 def _grupo_clause(grupos):
     grupos_str = ", ".join(f'"{g}"' for g in grupos)
     return f'"Grupo Solucionador[Group Picker (single group)]" IN ({grupos_str})'
+
+
+# Mesmos status considerados "fechados" pelo gadget de dashboard nativo do
+# Jira que esse widget replica (mais amplo que STATUS_FECHADOS_CLARINHA:
+# inclui também "Reprovado"/"Arquivado", que existem no fluxo de Central de
+# Incidentes mas não entram em nenhuma outra ação deste app).
+STATUS_FECHADOS_HOME_DASHBOARD = ["Resolvido", "Encerrado", "Cancelado", "Reprovado", "Arquivado"]
+
+
+def fetch_total_violados_abertos(config):
+    """Conta quantos chamados (grupo/projeto já embutidos em config["jql"])
+    estão violados (SLA "Tempo de Resolução" já estourou) E ainda em
+    aberto (status fora de STATUS_FECHADOS_HOME_DASHBOARD) — "quantidade
+    atual sem solução", usado no contador da home, acima de "A violar —
+    Próximos 7 dias". Diferente da ação Violados (fetch_chamados_violados,
+    que conta todo o histórico de violação, mesmo já resolvido depois), aqui
+    só entra quem ainda está aberto agora."""
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
+    jql = (
+        f'({base_jql}) AND ("Tempo de Resolução" < 0h OR "Tempo de resolução" < 0h) '
+        f"AND status NOT IN ({status_clause})"
+    )
+    return len(fetch_issues(config, jql, ["key"]))
+
+
+def fetch_violados_abertos_por_grupo(config, grupos, grupo_field_id):
+    """Como fetch_total_violados_abertos, mas detalhado por grupo da caixa
+    (N1/N2/PROD pra Solar, N1/N2 pra Claro Tv) — um card por grupo na home,
+    em vez de um total só por caixa. Precisa do ID do campo Grupo
+    Solucionador (resolvido best-effort do lado da API web) pra poder
+    agrupar; sem ele, use fetch_total_violados_abertos como alternativa."""
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
+    jql = (
+        f'({base_jql}) AND ("Tempo de Resolução" < 0h OR "Tempo de resolução" < 0h) '
+        f"AND status NOT IN ({status_clause})"
+    )
+    issues = fetch_issues(config, jql, [grupo_field_id])
+
+    contagem = Counter()
+    for issue in issues:
+        grupo = _extract_grupo_solucionador(issue.get("fields", {}).get(grupo_field_id))
+        if grupo in grupos:
+            contagem[grupo] += 1
+
+    return [{"grupo": grupo, "total": contagem.get(grupo, 0)} for grupo in grupos]
+
+
+def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id):
+    """Réplica de um gadget de dashboard nativo do Jira (Two Dimensional
+    Filter Statistics: Grupo Solucionador × mês de criação) — usado na home
+    da versão web. Entre os chamados atualmente ABERTOS (status fora de
+    STATUS_FECHADOS_HOME_DASHBOARD) dos grupos da caixa, só no projeto
+    Central de Incidentes, conta quantos foram criados em cada mês, por
+    grupo. Só entram meses com pelo menos 1 chamado em algum grupo (mesmo
+    comportamento do gadget original, que esconde colunas totalmente
+    vazias em vez de mostrar tudo zerado)."""
+    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
+    jql = (
+        f'{_grupo_clause(grupos)} AND project IN ("{PROJETO_INC}") '
+        f"AND status NOT IN ({status_clause})"
+    )
+    issues = fetch_issues(config, jql, ["created", grupo_field_id])
+
+    contagem = {grupo: Counter() for grupo in grupos}
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        grupo = _extract_grupo_solucionador(issue_fields.get(grupo_field_id))
+        if grupo not in contagem:
+            continue
+        mes = (issue_fields.get("created") or "")[:7]
+        if mes:
+            contagem[grupo][mes] += 1
+
+    meses = sorted({mes for c in contagem.values() for mes in c})
+
+    linhas = []
+    totais_por_mes = Counter()
+    total_geral = 0
+    for grupo in grupos:
+        por_mes = [contagem[grupo].get(mes, 0) for mes in meses]
+        total_grupo = sum(por_mes)
+        for mes, valor in zip(meses, por_mes):
+            totais_por_mes[mes] += valor
+        total_geral += total_grupo
+        linhas.append({"grupo": grupo, "por_mes": por_mes, "total": total_grupo})
+
+    return {
+        "meses": meses,
+        "linhas": linhas,
+        "totais_por_mes": [totais_por_mes[mes] for mes in meses],
+        "total_geral": total_geral,
+    }
 
 
 def fetch_detalhe_analista(
@@ -1637,6 +1836,74 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
         "dias": dias,
         "por_grupo": por_grupo,
     }
+
+
+def fetch_colaboradores_mes(config, grupos, start_date, end_date, projetos=None):
+    """Widget da home "Colaboradores": pra cada colaborador (assignee) com
+    ao menos um chamado resolvido ou reaberto no período, quantos ele
+    Resolveu (Resolvido/Encerrado, resolutiondate no período — mesma
+    população de fetch_criados_x_resolvidos), quantos desses Violaram o SLA
+    "Tempo de Resolução" (extract_sla_breach) e quantos ele Reabriu (status
+    WAS "Reaberto", created no período — mesma convenção de
+    fetch_chamados_reabertos). O percentual (usado no mini gráfico de
+    pizza) é dentro-do-prazo sobre os resolvidos: (resolvidos - violados) /
+    resolvidos, mesma lógica de fetch_criados_x_resolvidos, só que por
+    colaborador em vez de agregado. Ordenado por total resolvido, do maior
+    pro menor.
+    """
+    grupo_clause_all = _grupo_clause(grupos)
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
+    projeto_clause = f"project IN ({projetos_str})"
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+
+    resolvidos_jql = (
+        f'{grupo_clause_all} AND {projeto_clause} AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    resolvidos_issues = fetch_issues(config, resolvidos_jql, ["assignee"] + SLA_RESOLUTION_FIELDS)
+
+    reabertos_jql = (
+        f'{grupo_clause_all} AND {projeto_clause} AND status WAS "Reaberto" '
+        f'AND created >= "{start_str}" AND created <= "{end_str}"'
+    )
+    reabertos_issues = fetch_issues(config, reabertos_jql, ["assignee"])
+
+    resolvidos_counts = Counter()
+    violados_counts = Counter()
+    for issue in resolvidos_issues:
+        nome = _extract(issue.get("fields", {}).get("assignee"), "displayName")
+        if not nome:
+            continue
+        resolvidos_counts[nome] += 1
+        _campo, _breach_dt, breached = extract_sla_breach(issue.get("fields", {}))
+        if breached:
+            violados_counts[nome] += 1
+
+    reabertos_counts = Counter()
+    for issue in reabertos_issues:
+        nome = _extract(issue.get("fields", {}).get("assignee"), "displayName")
+        if nome:
+            reabertos_counts[nome] += 1
+
+    nomes = set(resolvidos_counts) | set(reabertos_counts)
+    linhas = []
+    for nome in nomes:
+        resolvidos = resolvidos_counts.get(nome, 0)
+        violados = violados_counts.get(nome, 0)
+        reabertos = reabertos_counts.get(nome, 0)
+        percentual_dentro_prazo = round((resolvidos - violados) / resolvidos * 100, 1) if resolvidos else 0.0
+        linhas.append(
+            {
+                "colaborador": nome,
+                "resolvidos": resolvidos,
+                "violados": violados,
+                "reabertos": reabertos,
+                "percentual_dentro_prazo": percentual_dentro_prazo,
+            }
+        )
+    linhas.sort(key=lambda l: l["resolvidos"], reverse=True)
+    return linhas
 
 
 def build_consolidated_report(config, start_date, end_date, grupos=None, categoria_encerramento_field_id=None):

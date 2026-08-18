@@ -79,6 +79,10 @@
     "Cancelado",
   ];
 
+  // Valor especial do dropdown de Classificação (Análise de Jornada) que
+  // significa "todas de uma vez" — espelha JORNADA_GERAL em api/index.py.
+  const JORNADA_GERAL = "__geral__";
+
   // Valores do campo "Classificação" (JQL: "Classificação" = "..."), usados
   // pelo dropdown de Análise de Jornada — a lista muda conforme a caixa
   // solucionadora, mesmo campo/valor nas duas, só o conjunto de opções
@@ -396,6 +400,27 @@
     return match ? match[1] : fallback;
   }
 
+  // Carrega os widgets da home UM DE CADA VEZ (não todos juntos) — disparar
+  // as 7 chamadas ao mesmo tempo no login soma dezenas de buscas
+  // concorrentes no Jira (cada widget já pagina internamente por caixa),
+  // arriscando rate limiting da API. Sequencial evita esse pico; o login
+  // em si não espera essa função (chamada sem await), só a home vai
+  // preenchendo aos poucos.
+  async function carregarHomeDashboardsGradual() {
+    const loaders = [
+      carregarHomeSlaMes,
+      carregarHomeGrupoCriacao,
+      carregarHomeColaboradoresMes,
+      carregarHomeClassificacaoFunil,
+      carregarHomeViolarSemanal,
+      carregarHomeViolados30Dias,
+      carregarHomeCotiMes,
+    ];
+    for (const loader of loaders) {
+      await loader();
+    }
+  }
+
   // ------------------------------------------------------------ conexão
   $("btn-connect").addEventListener("click", async () => {
     const email = $("input-email").value.trim();
@@ -429,6 +454,7 @@
       $("status-identity").textContent = `Conectado como ${data.displayName} (${email})`;
       loginCard.classList.add("hidden");
       appView.classList.remove("hidden");
+      carregarHomeDashboardsGradual();
     } catch (e) {
       loginError.textContent = "Não foi possível conectar ao servidor.";
       loginError.style.display = "block";
@@ -489,6 +515,641 @@
   atualizarBotaoCriticos();
   atualizarBotaoAnalistas();
   atualizarBotaoReportVini();
+
+  // ------------------------------------------------- dashboards da home
+  // Os dois widgets abaixo mostram Solar e Claro Tv sempre juntos (não
+  // dependem do alternador de caixa) — cada caixa usa seus próprios grupos
+  // (CAIXAS[caixa]["grupos"], já resolvidos do lado do servidor: 3 pra
+  // Solar, 2 pra Claro Tv sem "Prod"), então "respeitar as regras de cada
+  // caixa" já acontece sozinho, sem nenhum código condicional aqui.
+  const HOME_DASH_MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const HOME_DASH_CORES = ["#f87171", "#fbbf24", "#4ade80", "#7c3aed", "#38bdf8", "#f472b6"];
+  const HOME_CAIXA_LABEL = { solar: "Solar", tv: "Claro Tv" };
+
+  function formatarMesAno(mesIso) {
+    const [ano, mes] = mesIso.split("-").map(Number);
+    return `${HOME_DASH_MESES_ABREV[mes - 1]} ${ano}`;
+  }
+
+  function homeCardErro(container, mensagem) {
+    container.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = mensagem;
+    container.append(p);
+  }
+
+  // Monta um sub-bloco "rótulo da caixa + conteúdo" — mesmo cabeçalho nos
+  // dois widgets (Grupo Solucionador × Mês e A violar semanal).
+  function homeCaixaSubbloco(caixa, conteudoEl) {
+    const bloco = document.createElement("div");
+    bloco.className = "home-dashboard-subblock";
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "home-dashboard-subtitle";
+    subtitle.textContent = HOME_CAIXA_LABEL[caixa] || caixa;
+    bloco.append(subtitle, conteudoEl);
+    return bloco;
+  }
+
+  function construirTabelaGrupoCriacao(dados) {
+    const table = document.createElement("table");
+    table.className = "data-table home-dashboard-table";
+
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    const thGrupo = document.createElement("th");
+    thGrupo.textContent = "Grupo Solucionador";
+    trHead.append(thGrupo);
+    dados.meses.forEach((mes) => {
+      const th = document.createElement("th");
+      th.textContent = formatarMesAno(mes);
+      trHead.append(th);
+    });
+    const thTotal = document.createElement("th");
+    thTotal.textContent = "Total";
+    trHead.append(thTotal);
+    thead.append(trHead);
+    table.append(thead);
+
+    const tbody = document.createElement("tbody");
+    dados.linhas.forEach((linha, i) => {
+      const tr = document.createElement("tr");
+      const tdGrupo = document.createElement("td");
+      const dot = document.createElement("span");
+      dot.className = "home-dashboard-dot";
+      dot.style.background = HOME_DASH_CORES[i % HOME_DASH_CORES.length];
+      tdGrupo.append(dot, document.createTextNode(GRUPO_LABEL_CURTO[linha.grupo] || linha.grupo));
+      tr.append(tdGrupo);
+      linha.por_mes.forEach((valor) => {
+        const td = document.createElement("td");
+        td.textContent = valor || "-";
+        tr.append(td);
+      });
+      const tdTotal = document.createElement("td");
+      tdTotal.textContent = linha.total;
+      tr.append(tdTotal);
+      tbody.append(tr);
+    });
+
+    const trTotal = document.createElement("tr");
+    trTotal.className = "data-table-total-row";
+    const tdLabelTotal = document.createElement("td");
+    tdLabelTotal.textContent = "Total (issues)";
+    trTotal.append(tdLabelTotal);
+    dados.totais_por_mes.forEach((valor) => {
+      const td = document.createElement("td");
+      td.textContent = valor || "-";
+      trTotal.append(td);
+    });
+    const tdGrandTotal = document.createElement("td");
+    tdGrandTotal.textContent = dados.total_geral;
+    trTotal.append(tdGrandTotal);
+    tbody.append(trTotal);
+    table.append(tbody);
+
+    return table;
+  }
+
+  // Réplica de um gadget nativo do Jira (Grupo Solucionador × mês de
+  // criação, entre os chamados abertos) — um sub-bloco por caixa, carrega
+  // uma vez ao logar (não precisa recarregar ao trocar de caixa, já mostra
+  // as duas).
+  // "SLA — Mês atual": donut dentro/fora do prazo do começo do mês até
+  // hoje, reaproveitando o mesmo componente visual (buildPrazoDonutEl) já
+  // usado em Criados x Resolvidos/Report Vini. Um sub-bloco por caixa.
+  async function carregarHomeSlaMes() {
+    const container = $("home-sla-mes");
+    const reabertosEl = $("home-reabertos-mes");
+    homeCardErro(container, "Carregando...");
+    reabertosEl.innerHTML = "";
+
+    try {
+      const resp = await apiCall("/api/home-sla-mes", { projetos: projetosSelecionados() });
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      const row = document.createElement("div");
+      row.className = "home-sla-mes-row";
+      data.caixas.forEach(({ caixa, dentro_prazo: dentro, fora_prazo: fora, percentual_dentro_prazo: percentual }) => {
+        row.append(homeCaixaSubbloco(caixa, buildPrazoDonutEl(dentro, fora, percentual)));
+      });
+      container.append(row);
+
+      data.caixas.forEach(({ caixa, percentual_reabertura: percentualReabertura, total_criados_periodo: totalCriadosPeriodo }) => {
+        reabertosEl.append(
+          summaryCard(
+            `${percentualReabertura}% / ${totalCriadosPeriodo}`,
+            HOME_CAIXA_LABEL[caixa] || caixa,
+            "tone-warning"
+          )
+        );
+      });
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  async function carregarHomeGrupoCriacao() {
+    const container = $("home-grupo-criacao");
+    homeCardErro(container, "Carregando...");
+
+    try {
+      const resp = await apiCall("/api/home-grupo-criacao", {});
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      data.caixas.forEach(({ caixa, ...dados }) => {
+        const wrap = document.createElement("div");
+        wrap.className = "table-wrap";
+        wrap.append(construirTabelaGrupoCriacao(dados));
+        container.append(homeCaixaSubbloco(caixa, wrap));
+      });
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  // Mini gráfico de pizza (dentro do prazo x violado) pra célula de tabela
+  // — mesmas cores do donut grande (buildPrazoDonutEl), só que em
+  // conic-gradient (bem mais barato que SVG numa tabela com várias linhas).
+  function buildMiniPieEl(percentualDentro) {
+    const pct = Math.max(0, Math.min(100, percentualDentro));
+    const pie = document.createElement("span");
+    pie.className = "home-colab-pizza";
+    pie.style.setProperty("--pct", `${pct}%`);
+    pie.title = `${percentualDentro}% dentro do prazo`;
+    return pie;
+  }
+
+  // "Colaboradores": tabela por colaborador (Resolvidos/Violados/Reabertos +
+  // mini pizza de % dentro do prazo), do começo do mês até hoje.
+  function construirTabelaColaboradores(linhas) {
+    const table = document.createElement("table");
+    table.className = "data-table home-dashboard-table";
+
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    ["Colaborador", "Resolvidos", "Violados", "Reabertos", "%"].forEach((texto) => {
+      const th = document.createElement("th");
+      th.textContent = texto;
+      trHead.append(th);
+    });
+    thead.append(trHead);
+    table.append(thead);
+
+    const tbody = document.createElement("tbody");
+    if (!linhas.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 5;
+      td.className = "hint";
+      td.textContent = "Nenhum chamado resolvido ou reaberto no período.";
+      tr.append(td);
+      tbody.append(tr);
+    }
+    linhas.forEach(({ colaborador, resolvidos, violados, reabertos, percentual_dentro_prazo: percentual }) => {
+      const tr = document.createElement("tr");
+
+      const tdNome = document.createElement("td");
+      tdNome.textContent = colaborador;
+      tr.append(tdNome);
+
+      [resolvidos, violados, reabertos].forEach((valor) => {
+        const td = document.createElement("td");
+        td.textContent = valor;
+        tr.append(td);
+      });
+
+      const tdPct = document.createElement("td");
+      const pctWrap = document.createElement("div");
+      pctWrap.className = "home-colab-pct";
+      pctWrap.append(buildMiniPieEl(percentual), document.createTextNode(`${percentual}%`));
+      tdPct.append(pctWrap);
+      tr.append(tdPct);
+
+      tbody.append(tr);
+    });
+    table.append(tbody);
+
+    return table;
+  }
+
+  async function carregarHomeColaboradoresMes() {
+    const container = $("home-colaboradores-mes");
+    homeCardErro(container, "Carregando...");
+
+    try {
+      const resp = await apiCall("/api/home-colaboradores-mes", { projetos: projetosSelecionados() });
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      data.caixas.forEach(({ caixa, colaboradores }) => {
+        const wrap = document.createElement("div");
+        wrap.className = "table-wrap";
+        wrap.append(construirTabelaColaboradores(colaboradores));
+        container.append(homeCaixaSubbloco(caixa, wrap));
+      });
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  // Popover customizado (mesmo elemento flutuante compartilhado de
+  // getHoverPopover/hideHoverPopover) pra mostrar o top 5 de
+  // Sub-Classificação de uma barra do funil, no mousehover.
+  function showHomeFunilPopover(anchorEl, classificacao, porSub) {
+    const popover = getHoverPopover();
+    popover.innerHTML = "";
+
+    const titulo = document.createElement("div");
+    titulo.className = "hover-popover-title";
+    titulo.textContent = classificacao;
+    popover.append(titulo);
+
+    if (!porSub.length) {
+      const vazio = document.createElement("div");
+      vazio.className = "hint";
+      vazio.textContent = "Sem Sub-Classificação preenchida.";
+      popover.append(vazio);
+    } else {
+      porSub.forEach(({ sub_classificacao: sub, total }) => {
+        const linha = document.createElement("div");
+        linha.className = "home-funil-popover-row";
+        const nomeEl = document.createElement("span");
+        nomeEl.textContent = sub;
+        const totalEl = document.createElement("span");
+        totalEl.textContent = total;
+        linha.append(nomeEl, totalEl);
+        popover.append(linha);
+      });
+    }
+
+    popover.classList.remove("hidden");
+
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    let top = anchorRect.bottom + 6;
+    let left = anchorRect.left;
+    if (left + popoverRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - popoverRect.width - 8;
+    }
+    if (top + popoverRect.height > window.innerHeight - 8) {
+      top = anchorRect.top - popoverRect.height - 6;
+    }
+    popover.style.top = `${Math.max(8, top)}px`;
+    popover.style.left = `${Math.max(8, left)}px`;
+  }
+
+  // "Classificação — Funil": barras decrescentes alinhadas à esquerda (a
+  // mais frequente = 100% de largura), top 5 já vindo do backend
+  // (most_common(5), maior pro menor). Mousehover em cada barra mostra o
+  // top 5 de Sub-Classificação daquela Classificação (showHomeFunilPopover).
+  function construirFunilClassificacao(ranking) {
+    const wrap = document.createElement("div");
+    wrap.className = "home-funil";
+
+    if (!ranking.length) {
+      const vazio = document.createElement("span");
+      vazio.className = "hint";
+      vazio.textContent = "Nenhum chamado classificado no período.";
+      wrap.append(vazio);
+      return wrap;
+    }
+
+    const max = ranking[0].total;
+    ranking.forEach(({ classificacao, total, por_subclassificacao: porSub }, i) => {
+      const row = document.createElement("div");
+      row.className = "home-funil-row";
+
+      const bar = document.createElement("div");
+      bar.className = "home-funil-bar";
+      bar.style.width = `${max ? Math.max((total / max) * 100, 12) : 0}%`;
+      bar.style.background = HOME_DASH_CORES[i % HOME_DASH_CORES.length];
+
+      const label = document.createElement("span");
+      label.className = "home-funil-label";
+      label.textContent = classificacao;
+
+      const valor = document.createElement("span");
+      valor.className = "home-funil-valor";
+      valor.textContent = total;
+
+      bar.append(label, valor);
+      bar.addEventListener("mouseenter", () => {
+        cancelHoverPopoverHide();
+        showHomeFunilPopover(bar, classificacao, porSub || []);
+      });
+      bar.addEventListener("mouseleave", scheduleHoverPopoverHide);
+      row.append(bar);
+      wrap.append(row);
+    });
+
+    return wrap;
+  }
+
+  async function carregarHomeClassificacaoFunil() {
+    const container = $("home-classificacao-funil");
+    homeCardErro(container, "Carregando...");
+
+    try {
+      const resp = await apiCall("/api/home-classificacao-funil", { projetos: projetosSelecionados() });
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      data.caixas.forEach(({ caixa, ranking }) => {
+        container.append(homeCaixaSubbloco(caixa, construirFunilClassificacao(ranking)));
+      });
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  // "A violar" dos próximos 7 dias — uma linha por GRUPO (não por caixa):
+  // Solar sai em 3 linhas (N1/N2/Prod), Claro Tv em 2 (N1/N2, sem "Prod" —
+  // CAIXA_GRUPOS["tv"] não tem esse grupo). Cada linha usa o próprio pico
+  // da semana pra colorir (heatTone), já que os grupos têm volumes bem
+  // diferentes entre si.
+  function construirTilesGrupoViolar(dias, grupo) {
+    const valores = dias.map((dia) => {
+      const entrada = (dia.por_grupo || []).find((g) => g.grupo === grupo);
+      return { dia_semana: dia.dia_semana, total: entrada ? entrada.total : 0 };
+    });
+
+    const tiles = document.createElement("div");
+    tiles.className = "home-violar-tiles";
+
+    const max = valores.reduce((m, v) => Math.max(m, v.total), 0);
+    valores.forEach((v) => {
+      const tile = document.createElement("div");
+      const tom = heatTone(v.total, max);
+      tile.className = "home-violar-tile" + (tom ? ` ${tom}` : "");
+
+      const diaLabel = document.createElement("span");
+      diaLabel.className = "home-violar-tile-label";
+      diaLabel.textContent = v.dia_semana;
+
+      const valor = document.createElement("span");
+      valor.className = "home-violar-tile-value";
+      valor.textContent = v.total;
+
+      tile.append(diaLabel, valor);
+      tiles.append(tile);
+    });
+
+    return tiles;
+  }
+
+  function construirGruposViolar(caixa, dias) {
+    const container = document.createElement("div");
+    container.className = "home-violar-grupos";
+
+    (CAIXA_GRUPOS[caixa] || []).forEach((grupo) => {
+      const row = document.createElement("div");
+      row.className = "home-violar-group-row";
+
+      const label = document.createElement("span");
+      label.className = "home-violar-group-label";
+      label.textContent = GRUPO_LABEL_CURTO[grupo] || grupo;
+
+      row.append(label, construirTilesGrupoViolar(dias, grupo));
+      container.append(row);
+    });
+
+    return container;
+  }
+
+  async function carregarHomeViolarSemanal() {
+    const container = $("home-violar-semanal");
+    const abertosEl = $("home-violados-abertos");
+    homeCardErro(container, "Carregando...");
+    abertosEl.innerHTML = "";
+
+    try {
+      const resp = await apiCall("/api/home-violar-semanal", { projetos: projetosSelecionados() });
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      data.caixas.forEach(({ caixa, violados_abertos_por_grupo: porGrupo, dias }) => {
+        const cardsEl = document.createElement("div");
+        cardsEl.className = "summary-cards home-violados-abertos-cards";
+        // Card "Total" só faz sentido na frente de um detalhamento de
+        // verdade (2+ grupos) — no fallback sem Grupo Solucionador,
+        // "porGrupo" já vem como um único item "Total" (grupo: null), e
+        // repetir aqui na frente seria duplicado.
+        if ((porGrupo || []).length > 1) {
+          const totalCaixa = porGrupo.reduce((soma, g) => soma + g.total, 0);
+          cardsEl.append(summaryCard(totalCaixa, "Total", "tone-danger"));
+        }
+        (porGrupo || []).forEach(({ grupo, total }) => {
+          const label = grupo ? GRUPO_LABEL_CURTO[grupo] || grupo : "Total";
+          cardsEl.append(summaryCard(total, label, "tone-danger"));
+        });
+        abertosEl.append(homeCaixaSubbloco(caixa, cardsEl));
+
+        container.append(homeCaixaSubbloco(caixa, construirGruposViolar(caixa, dias)));
+      });
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  // Popover customizado (mesmo elemento flutuante compartilhado de
+  // getHoverPopover/hideHoverPopover, já usado em "Violados por dia") pra
+  // mostrar o detalhe de um dia da lista de 30 dias — aqui é só texto
+  // (resolvido/violado/previsto), sem lista de keys pra copiar.
+  function showHomeBar30Popover(anchorEl, dia) {
+    const popover = getHoverPopover();
+    popover.innerHTML = "";
+
+    const titulo = document.createElement("div");
+    titulo.className = "hover-popover-title";
+    titulo.textContent = formatarDataBR(dia.data);
+    popover.append(titulo);
+
+    const linhaResolvido = document.createElement("div");
+    linhaResolvido.className = "home-bar30-popover-row";
+    const dotResolvido = document.createElement("span");
+    dotResolvido.className = "home-bar30-legend-dot home-bar30-legend-dot--resolvido";
+    linhaResolvido.append(dotResolvido, document.createTextNode(`${dia.resolvido} resolvido${dia.resolvido === 1 ? "" : "s"} dentro do prazo`));
+    popover.append(linhaResolvido);
+
+    const linhaViolado = document.createElement("div");
+    linhaViolado.className = "home-bar30-popover-row";
+    const dotViolado = document.createElement("span");
+    dotViolado.className = "home-bar30-legend-dot home-bar30-legend-dot--violado";
+    linhaViolado.append(dotViolado, document.createTextNode(`${dia.violado} violado${dia.violado === 1 ? "" : "s"}`));
+    popover.append(linhaViolado);
+
+    const totalEl = document.createElement("div");
+    totalEl.className = "hint";
+    totalEl.style.marginTop = "6px";
+    totalEl.textContent = `Previsto no dia: ${dia.previsto}`;
+    popover.append(totalEl);
+
+    popover.classList.remove("hidden");
+
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    let top = anchorRect.bottom + 6;
+    let left = anchorRect.left;
+    if (left + popoverRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - popoverRect.width - 8;
+    }
+    if (top + popoverRect.height > window.innerHeight - 8) {
+      top = anchorRect.top - popoverRect.height - 6;
+    }
+    popover.style.top = `${Math.max(8, top)}px`;
+    popover.style.left = `${Math.max(8, left)}px`;
+  }
+
+  // "Violados — Últimos 30 dias": uma linha por dia (data + barra horizontal
+  // verde/vermelha), lista rolável — dias com previsto 0 não entram. Largura
+  // da barra proporcional ao maior "previsto pra violar" visível no período
+  // (não ao maior "violado" sozinho, senão um dia 100% verde ficaria do
+  // mesmo tamanho que um dia 100% vermelho). Passar o mouse na barra mostra
+  // o detalhe do dia num popover (mesmo componente de "Violados por dia").
+  function construirListaBarras30Dias(dias) {
+    // "dias" chega do servidor em ordem cronológica (mais antigo primeiro);
+    // a lista mostra o mais recente no topo.
+    const diasComPrevisto = dias.filter((d) => d.previsto > 0).reverse();
+
+    const lista = document.createElement("div");
+    lista.className = "home-bar30-list";
+
+    if (!diasComPrevisto.length) {
+      const vazio = document.createElement("p");
+      vazio.className = "hint";
+      vazio.textContent = "Nenhum chamado previsto pra violar no período.";
+      lista.append(vazio);
+      return lista;
+    }
+
+    const maxPrevisto = Math.max(...diasComPrevisto.map((d) => d.previsto));
+    diasComPrevisto.forEach((dia) => {
+      const row = document.createElement("div");
+      row.className = "home-bar30-row";
+
+      const dataEl = document.createElement("span");
+      dataEl.className = "home-bar30-row-date";
+      dataEl.textContent = formatarDataBR(dia.data).slice(0, 5);
+
+      const track = document.createElement("div");
+      track.className = "home-bar30-row-track";
+
+      const bar = document.createElement("div");
+      bar.className = "home-bar30-row-bar";
+      bar.style.width = `${(dia.previsto / maxPrevisto) * 100}%`;
+
+      const segResolvido = document.createElement("div");
+      segResolvido.className = "home-bar30-row-seg--resolvido";
+      segResolvido.style.width = `${(dia.resolvido / dia.previsto) * 100}%`;
+
+      const segViolado = document.createElement("div");
+      segViolado.className = "home-bar30-row-seg--violado";
+      segViolado.style.width = `${(dia.violado / dia.previsto) * 100}%`;
+
+      bar.append(segResolvido, segViolado);
+      track.append(bar);
+      track.addEventListener("mouseenter", () => {
+        cancelHoverPopoverHide();
+        showHomeBar30Popover(track, dia);
+      });
+      track.addEventListener("mouseleave", scheduleHoverPopoverHide);
+
+      const valorEl = document.createElement("span");
+      valorEl.className = "home-bar30-row-value";
+      valorEl.textContent = dia.previsto;
+
+      row.append(dataEl, track, valorEl);
+      lista.append(row);
+    });
+
+    return lista;
+  }
+
+  async function carregarHomeViolados30Dias() {
+    const container = $("home-violados-30dias");
+    homeCardErro(container, "Carregando...");
+
+    try {
+      const resp = await apiCall("/api/home-violados-30dias", { projetos: projetosSelecionados() });
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      data.caixas.forEach(({ caixa, dias }) => {
+        container.append(homeCaixaSubbloco(caixa, construirListaBarras30Dias(dias)));
+      });
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  // "Chamados Críticos (COTI) — Mês atual": mesmos 4 cards da ação
+  // "Chamados Críticos" (renderChamadosCriticos), do começo do mês até
+  // hoje. COTI é específico da caixa Solar — sem sub-bloco por caixa, só
+  // um bloco direto.
+  async function carregarHomeCotiMes() {
+    const container = $("home-coti-mes");
+    homeCardErro(container, "Carregando...");
+
+    try {
+      const resp = await apiCall("/api/home-coti-mes", { projetos: projetosSelecionados() });
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      container.append(
+        summaryCard(data.total_criticos_abertos, "Total de COTI Abertos (WAS P0/P1/P2)", "tone-accent")
+      );
+      container.append(
+        summaryCard(data.total_criticos_atual, "Total real de COTI (IN P0/P1/P2 atualmente)", "tone-danger")
+      );
+      container.append(
+        summaryCard(
+          `${data.total_pontuais} (${data.percentual_pontuais}%)`,
+          "Pontuais (abertos − atual)",
+          "tone-warning"
+        )
+      );
+      container.append(
+        summaryCard(
+          `${data.percentual_criticos}%`,
+          `COTI sobre ${data.total_criados} chamados criados no período`,
+          "tone-accent"
+        )
+      );
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
 
   document.querySelectorAll(".caixa-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1151,6 +1812,101 @@
     return container;
   }
 
+  // Sub-tabela de 2 colunas (Sub-Classificação | Quantidade) usada dentro
+  // da linha de detalhe de cada Classificação — mesma forma [rótulo, total]
+  // das outras tabelas simples do app.
+  function construirSubtabela(colunas, linhas) {
+    const table = document.createElement("table");
+    table.className = "data-table jornada-ranking-subtable";
+
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    colunas.forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      trHead.append(th);
+    });
+    thead.append(trHead);
+    table.append(thead);
+
+    const tbody = document.createElement("tbody");
+    linhas.forEach(([rotulo, total]) => {
+      const tr = document.createElement("tr");
+      const tdRotulo = document.createElement("td");
+      tdRotulo.textContent = rotulo;
+      const tdTotal = document.createElement("td");
+      tdTotal.textContent = total;
+      tr.append(tdRotulo, tdTotal);
+      tbody.append(tr);
+    });
+    table.append(tbody);
+
+    return table;
+  }
+
+  // Ranking por Classificação (Análise de Jornada, modo "Geral") — cada
+  // linha expande (clique) uma linha de detalhe com o ranking por
+  // Sub-Classificação daquela Classificação (já vem pronto do backend, sem
+  // busca nova nenhuma — ver ranking_classificacao/ por_subclassificacao).
+  function construirTabelaRankingClassificacao(ranking) {
+    const table = document.createElement("table");
+    table.className = "data-table";
+
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    ["Classificação", "Quantidade"].forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      trHead.append(th);
+    });
+    thead.append(trHead);
+    table.append(thead);
+
+    const tbody = document.createElement("tbody");
+    ranking.forEach(({ classificacao, total, por_subclassificacao: porSub }) => {
+      const trMain = document.createElement("tr");
+      trMain.className = "jornada-ranking-row";
+
+      const tdLabel = document.createElement("td");
+      const arrow = document.createElement("span");
+      arrow.className = "jornada-ranking-arrow";
+      arrow.textContent = "▸";
+      tdLabel.append(arrow, document.createTextNode(` ${classificacao}`));
+
+      const tdTotal = document.createElement("td");
+      tdTotal.textContent = total;
+
+      trMain.append(tdLabel, tdTotal);
+      tbody.append(trMain);
+
+      const trDetail = document.createElement("tr");
+      trDetail.className = "jornada-ranking-detail hidden";
+      const tdDetail = document.createElement("td");
+      tdDetail.colSpan = 2;
+
+      if (porSub && porSub.length) {
+        tdDetail.append(construirSubtabela(["Sub-Classificação", "Quantidade"], porSub));
+      } else {
+        const semDados = document.createElement("span");
+        semDados.className = "hint";
+        semDados.textContent = "Sem Sub-Classificação preenchida nesses chamados.";
+        tdDetail.append(semDados);
+      }
+
+      trDetail.append(tdDetail);
+      tbody.append(trDetail);
+
+      trMain.addEventListener("click", () => {
+        const abrindo = trDetail.classList.contains("hidden");
+        trDetail.classList.toggle("hidden", !abrindo);
+        trMain.classList.toggle("open", abrindo);
+      });
+    });
+    table.append(tbody);
+
+    return table;
+  }
+
   // Só aparece em Análise de Jornada: cards "Total de chamados"/"Chamados
   // abertos" empilhados à esquerda + tabela por status e tabela de top
   // analistas à direita, as três colunas alinhadas na mesma linha (mesmo
@@ -1170,7 +1926,7 @@
     const cardsEl = $("jornada-cards");
     cardsEl.innerHTML = "";
 
-    const temDados = data.summary && typeof data.abertos === "number" && data.por_status;
+    const temDados = data.summary && typeof data.criados === "number" && data.por_status;
     preencherTabela2Col("jornada-status-table", ["Status", "Quantidade"], temDados ? data.por_status : null);
     preencherTabela2Col(
       "jornada-analistas-table",
@@ -1182,11 +1938,13 @@
     const calendarioEl = $("jornada-calendario");
     const resultsTableWrap = $("results-table-wrap");
     const subclassBlock = $("jornada-subclassificacao-block");
+    const rankingBlock = $("jornada-ranking-block");
 
     if (!temDados) {
       block.classList.add("hidden");
       calendarioBlock.classList.add("hidden");
       subclassBlock.classList.add("hidden");
+      rankingBlock.classList.add("hidden");
       // #top-assignees e a tabela genérica não têm lógica própria de
       // mostrar/esconder (só preenchem o innerHTML) — sem restaurar aqui,
       // ficariam escondidos pra sempre nas ações seguintes.
@@ -1202,22 +1960,33 @@
     $("summary-cards").classList.add("hidden");
     $("top-assignees").classList.add("hidden");
 
-    cardsEl.append(summaryCard(data.summary.total, "Total de chamados", "tone-accent"));
-    cardsEl.append(summaryCard(data.abertos, "Chamados abertos", "tone-warning"));
-    if (typeof data.criticos === "number") {
-      cardsEl.append(summaryCard(data.criticos, "Chamados P0/P1/P2", "tone-danger"));
-    }
+    // Mesmos rótulos/tons já usados em Criados x Resolvidos (Report Vini) —
+    // "criados" é o total já buscado (a busca principal já é escopada a
+    // "created no período"); "resolvidos" vem de uma consulta à parte
+    // (status IN Resolvido/Encerrado AND resolutiondate no período).
+    cardsEl.append(summaryCard(data.criados, "Criados no período", "tone-accent"));
+    cardsEl.append(summaryCard(data.resolvidos, "Resolvidos (Encerrado/Resolvido)", "tone-warning"));
+    cardsEl.append(summaryCard(data.saldo, "Saldo (criados − resolvidos)", data.saldo > 0 ? "tone-danger" : ""));
 
-    // Gráfico de Sub-Classificação, acima do calendário — só aparece se o
-    // campo foi encontrado no Jira e tem pelo menos um valor (best-effort,
-    // igual às outras seções por campo customizado).
+    // Acima do calendário: no modo "Geral", o ranking por Classificação (com
+    // detalhamento por Sub-Classificação embutido, expansível por linha) —
+    // nos demais casos, o gráfico de barras achatado de Sub-Classificação
+    // de sempre. Só um dos dois aparece por vez.
     const subclassEl = $("jornada-subclassificacao-chart");
+    const rankingEl = $("jornada-ranking");
     subclassEl.innerHTML = "";
-    if (data.por_subclassificacao && data.por_subclassificacao.length) {
+    rankingEl.innerHTML = "";
+    if (data.ranking_classificacao && data.ranking_classificacao.length) {
+      rankingEl.append(construirTabelaRankingClassificacao(data.ranking_classificacao));
+      rankingBlock.classList.remove("hidden");
+      subclassBlock.classList.add("hidden");
+    } else if (data.por_subclassificacao && data.por_subclassificacao.length) {
       subclassEl.append(construirGraficoBarras(data.por_subclassificacao));
       subclassBlock.classList.remove("hidden");
+      rankingBlock.classList.add("hidden");
     } else {
       subclassBlock.classList.add("hidden");
+      rankingBlock.classList.add("hidden");
     }
 
     // Calendário no lugar da tabela de linhas.
@@ -2156,14 +2925,14 @@
       const select = $("jornada-classificacao");
       const valorAtual = select.value;
       const opcoes = CLASSIFICACAO_OPCOES[state.caixa] || [];
-      select.innerHTML = '<option value="">Selecione...</option>';
+      select.innerHTML = `<option value="">Selecione...</option><option value="${JORNADA_GERAL}">Geral (todas as classificações)</option>`;
       opcoes.forEach((valor) => {
         const option = document.createElement("option");
         option.value = valor;
         option.textContent = valor;
         select.append(option);
       });
-      if (opcoes.includes(valorAtual)) select.value = valorAtual;
+      if (valorAtual === JORNADA_GERAL || opcoes.includes(valorAtual)) select.value = valorAtual;
     }
     dialog.classList.toggle("open", abrindo);
   });

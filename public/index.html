@@ -127,12 +127,92 @@
             na hora, sem gravar nada em disco, banco ou log no servidor.
           </p>
 
+          <div class="section-label" style="margin-top: 20px; margin-bottom: 8px">DASHBOARDS</div>
+          <div class="home-dashboards">
+            <div class="home-dashboard-col">
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">SLA</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                </div>
+                <div id="home-sla-mes"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Grupo Solucionador × Mês de Criação</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Chamados abertos</span>
+                </div>
+                <div id="home-grupo-criacao"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Reabertos do mês</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                </div>
+                <div id="home-reabertos-mes" class="summary-cards home-reabertos-mes-cards"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Colaboradores</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                </div>
+                <div id="home-colaboradores-mes"></div>
+              </div>
+            </div>
+            <div class="home-dashboard-col" id="home-dashboard-col-right">
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Violados — Quantidade atual sem solução</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Atual</span>
+                </div>
+                <div id="home-violados-abertos"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">A violar</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Próximos 7 dias</span>
+                </div>
+                <div id="home-violar-semanal"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Violados</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Últimos 30 dias</span>
+                </div>
+                <div class="home-bar30-legend">
+                  <span class="home-bar30-legend-item">
+                    <span class="home-bar30-legend-dot home-bar30-legend-dot--resolvido"></span>Resolvido dentro do prazo
+                  </span>
+                  <span class="home-bar30-legend-item">
+                    <span class="home-bar30-legend-dot home-bar30-legend-dot--violado"></span>Violado
+                  </span>
+                </div>
+                <div id="home-violados-30dias"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Chamados Críticos (COTI)</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                </div>
+                <div id="home-coti-mes" class="summary-cards"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Classificação — Funil</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                </div>
+                <div id="home-classificacao-funil"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="section-label" style="margin-top: 20px; margin-bottom: 8px">CAIXA SOLUCIONADORA</div>
           <p class="hint">
             O alternador <strong>Solar</strong> / <strong>Claro Tv</strong>, no menu ao lado, define quais
             grupos solucionadores e qual JQL toda ação usa. Trocar de caixa limpa o resultado exibido na tela.
           </p>
 
+          <div id="home-dicionario" class="hidden">
           <div class="section-label" style="margin-top: 20px; margin-bottom: 8px">O QUE CADA AÇÃO FAZ</div>
           <p class="hint">Clique num item pra ver a query usada.</p>
           <dl class="query-dict query-dict--home">
@@ -247,10 +327,11 @@
               </button>
             </dt>
             <dd>
-              <p>Chamados por Classificação + período, com contador de abertos, P0/P1/P2 e tabela por status — disponível nas duas caixas (a lista de Classificação muda conforme a caixa).</p>
+              <p>Chamados por Classificação + período, com Criados x Resolvidos e tabela por status — disponível nas duas caixas (a lista de Classificação muda conforme a caixa).</p>
               <div class="collapse">
                 <code>"Classificação" = "&lt;valor escolhido&gt;" AND created no período</code>
-                <p><strong>Chamados P0/P1/P2:</strong> dentro da mesma base acima, <code>priority WAS IN (P0, P1, P2)</code> — já foi crítico em algum momento, mesma lógica de "COTI Abertos" em Chamados Críticos.</p>
+                <p><strong>Resolvidos:</strong> dentro da mesma base de caixa/Classificação acima, <code>status IN ("Resolvido", "Encerrado") AND resolutiondate no período</code> — mesma convenção de "Resolvidos" em Criados x Resolvidos (pode incluir chamados criados antes do período, mas resolvidos dentro dele).</p>
+                <p><strong>Geral</strong> (primeira opção do dropdown): busca todos os chamados do período sem filtrar por Classificação, lendo o valor de cada um de volta — no lugar do gráfico de Sub-Classificação, mostra um ranking por Classificação; clicar numa linha expande o detalhamento por Sub-Classificação daquela Classificação (já vem pronto do servidor, sem busca nova).</p>
               </div>
             </dd>
 
@@ -279,6 +360,7 @@
               </div>
             </dd>
           </dl>
+          </div>
 
           <p class="hint" style="margin-top: 20px">
             Escolha uma ação no menu ao lado pra começar.
@@ -894,10 +976,22 @@
 
         <!-- Só aparece em Análise de Jornada, se o campo "Sub-Classificação"
              for encontrado no Jira: gráfico de barras com as sub-classificações
-             mais frequentes entre os chamados encontrados. -->
+             mais frequentes entre os chamados encontrados. Some no modo
+             "Geral" — vira o ranking por Classificação logo abaixo. -->
         <div id="jornada-subclassificacao-block" class="hidden">
           <div class="section-label" style="margin-bottom: 8px">SUB-CLASSIFICAÇÃO</div>
           <div id="jornada-subclassificacao-chart"></div>
+        </div>
+
+        <!-- Só aparece em Análise de Jornada no modo "Geral": ranking de
+             quantos chamados por Classificação — clicar numa linha expande
+             o detalhamento por Sub-Classificação daquela Classificação. -->
+        <div id="jornada-ranking-block" class="hidden">
+          <div class="section-label" style="margin-bottom: 8px">RANKING POR CLASSIFICAÇÃO</div>
+          <p class="hint" style="margin-bottom: 8px">Clique numa linha para ver o detalhamento por Sub-Classificação.</p>
+          <div class="table-wrap">
+            <div id="jornada-ranking"></div>
+          </div>
         </div>
 
         <!-- Só aparece em Análise de Jornada, no lugar da tabela de linhas:

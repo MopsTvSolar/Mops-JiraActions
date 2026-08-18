@@ -280,6 +280,38 @@ main {
   text-align: right;
 }
 
+/* Ranking por Classificação (Análise de Jornada, modo "Geral") — linha
+   clicável que expande uma linha de detalhe logo abaixo, com uma
+   sub-tabela (mesma .data-table, aninhada) de Sub-Classificação. */
+.jornada-ranking-row {
+  cursor: pointer;
+}
+
+.jornada-ranking-row:hover {
+  background: var(--card-bg-elevated);
+}
+
+.jornada-ranking-arrow {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.jornada-ranking-row.open .jornada-ranking-arrow {
+  transform: rotate(90deg);
+}
+
+.jornada-ranking-detail td {
+  background: var(--bg);
+  padding: 12px 16px;
+}
+
+.jornada-ranking-subtable {
+  margin: 0;
+  max-width: 420px;
+}
+
 input[type="checkbox"] {
   accent-color: var(--accent);
 }
@@ -1259,6 +1291,7 @@ button {
   aspect-ratio: 1 / 1;
   border-radius: 12px;
   background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1446,6 +1479,402 @@ footer {
   border-bottom: none;
 }
 
+/* Dashboards da home — réplicas de gadgets nativos do Jira, um card por
+   coluna, lado a lado (empilha no mobile, ver @media no fim do arquivo). */
+.home-dashboards {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.home-dashboard-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.home-dashboard-card {
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.home-dashboard-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.home-dashboard-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.home-dashboard-title-row .home-dashboard-title {
+  margin-bottom: 0;
+}
+
+/* Tag de período em cada card da home: classifica se o card considera o
+   mês atual (--atual, cor de destaque) ou outro recorte de tempo/escopo
+   (--periodo, neutro) — visível direto no título, sem precisar abrir nada. */
+.home-dashboard-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  white-space: nowrap;
+}
+
+.home-dashboard-tag--atual {
+  color: var(--accent-soft);
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.15);
+}
+
+.home-dashboard-tag--periodo {
+  color: var(--muted);
+}
+
+/* Sub-bloco de uma caixa dentro de um card que mostra as duas de uma vez
+   (ex.: Grupo Solucionador × Mês) — rótulo pequeno acima da tabela/conteúdo
+   daquela caixa, espaço extra entre um bloco e o próximo. */
+.home-dashboard-subblock + .home-dashboard-subblock {
+  margin-top: 16px;
+}
+
+.home-dashboard-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+/* "SLA — Mês atual": os dois donuts (Solar/Claro Tv) lado a lado, sem a
+   legenda "Dentro/Fora do prazo" (o número no meio do donut já basta), os
+   dois alinhados na mesma linha (align-items: flex-start garante que os
+   dois comecem exatamente na mesma altura, mesmo que o subtítulo de um
+   quebre linha e o do outro não). Quebra linha inteira se não couber na
+   largura do card. */
+.home-sla-mes-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+/* Anula o margin-top de ".home-dashboard-subblock + .home-dashboard-subblock"
+   (pensado pra empilhamento vertical) — aqui os blocos estão lado a lado, e
+   esse margin-top estava empurrando o segundo (Claro Tv) pra baixo em vez
+   de servir de espaçamento horizontal (isso já é o "gap" acima). */
+.home-sla-mes-row .home-dashboard-subblock + .home-dashboard-subblock {
+  margin-top: 0;
+}
+
+.home-sla-mes-row .prazo-donut-legenda {
+  display: none;
+}
+
+/* Fonte/espaçamento mais compactos que .data-table padrão, pra ficar
+   parecido com a densidade de um gadget nativo do Jira. */
+.home-dashboard-table {
+  font-size: 11px;
+}
+
+.home-dashboard-table th,
+.home-dashboard-table td {
+  text-align: right;
+  white-space: nowrap;
+  padding: 5px 10px;
+}
+
+.home-dashboard-table th:first-child,
+.home-dashboard-table td:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.home-dashboard-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+/* "A violar — Próximos 7 dias" (home): um sub-bloco por caixa (rótulo +
+   7 quadradinhos), mesma linguagem visual do heat-tile de "Plano semanal",
+   só bem mais compacta — largura fixa (não esticada) pra caber o
+   detalhamento N1/N2/PROD sem ficar gigante. */
+.home-violar-semanal {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-violar-tiles {
+  display: grid;
+  grid-template-columns: repeat(7, 42px);
+  gap: 5px;
+  justify-content: start;
+}
+
+.home-violar-tile {
+  width: 42px;
+  aspect-ratio: 1 / 1;
+  border-radius: 7px;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px;
+  overflow: hidden;
+}
+
+.home-violar-tile-label {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.home-violar-tile-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+
+.home-violar-tile.tone-warning {
+  background: rgba(251, 191, 36, 0.22);
+}
+
+.home-violar-tile.tone-danger {
+  background: rgba(248, 113, 113, 0.3);
+}
+
+/* Uma linha por grupo (N1/N2/Prod) dentro do sub-bloco da caixa, em vez de
+   um detalhamento espremido dentro do quadrado — cada linha já é um grupo
+   só, então o número do quadrado fica evidente sem precisar de texto extra
+   dentro dele. */
+.home-violar-grupos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-violar-group-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-violar-group-label {
+  flex: 0 0 34px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* "Violados — Quantidade atual sem solução": caixinhas contornadas e
+   centralizadas na linha, em vez de esticadas (comportamento padrão de
+   .summary-cards) — escopado só aqui pra não afetar as outras telas que
+   usam .summary-cards/.summary-card. */
+.home-violados-abertos-cards {
+  justify-content: start;
+  grid-template-columns: repeat(auto-fit, minmax(70px, max-content));
+}
+
+.home-violados-abertos-cards .summary-card {
+  border: 1px solid var(--card-border);
+}
+
+/* "Reabertos do mês": caixinhas contornadas (Solar/TV lado a lado). */
+.home-reabertos-mes-cards .summary-card {
+  border: 1px solid var(--card-border);
+}
+
+/* "Colaboradores": mini pizza (dentro do prazo x violado) na coluna "%",
+   mesmas cores do donut grande de SLA. */
+.home-colab-pct {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-colab-pizza {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: conic-gradient(var(--success) var(--pct), var(--danger) 0);
+}
+
+/* "Classificação — Funil": barra decrescente por valor, a maior primeiro
+   (já vem ordenada do backend), centralizada — largura proporcional ao
+   maior total. */
+.home-funil {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-funil-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.home-funil-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 12%;
+  padding: 6px 12px;
+  border-radius: 4px;
+  color: #1a1a1a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.home-funil-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-funil-valor {
+  flex-shrink: 0;
+}
+
+.home-funil-popover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 4px;
+}
+
+/* "Violados — Últimos 30 dias" (home): uma linha por dia — data + barra
+   horizontal (verde = resolvido dentro do prazo, vermelho = violado) que
+   cresce da esquerda pra direita, proporcional ao maior "previsto pra
+   violar" do período visível. Lista rola verticalmente (altura travada,
+   pra não esticar a página) e horizontalmente se a largura mínima da linha
+   não couber no card. Dias com previsto 0 nem entram na lista. Um
+   sub-bloco por caixa (mesmo homeCaixaSubbloco dos outros dois widgets). */
+.home-bar30-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.home-bar30-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.home-bar30-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.home-bar30-legend-dot--resolvido {
+  background: var(--success);
+}
+
+.home-bar30-legend-dot--violado {
+  background: var(--danger);
+}
+
+.home-bar30-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.home-bar30-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.home-bar30-row-date {
+  flex: 0 0 38px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* .home-bar30-row-track é a "raia" inteira (largura fixa, flex:1) — dentro
+   dela, .home-bar30-row-bar é a barra do dia em si, com largura relativa ao
+   maior "previsto" do período (dia mais cheio = raia inteira). Sem esse
+   wrapper extra, "flex: 1" ganharia de qualquer width inline nos segmentos
+   (flex-basis 0% do flex:1 ignora width). */
+.home-bar30-row-track {
+  flex: 1;
+  height: 12px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  cursor: default;
+}
+
+.home-bar30-row-bar {
+  display: flex;
+  height: 100%;
+}
+
+.home-bar30-row-seg--resolvido {
+  background: var(--success);
+}
+
+.home-bar30-row-seg--violado {
+  background: var(--danger);
+}
+
+.home-bar30-row-value {
+  flex: 0 0 26px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.home-bar30-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 4px;
+}
+
 /* Tela estreita: menu lateral empilha acima do conteúdo em vez de coluna
    fixa (260px fixo não sobra espaço decente pro conteúdo abaixo disso). */
 @media (max-width: 860px) {
@@ -1480,5 +1909,9 @@ footer {
 
   .bar-chart-row {
     grid-template-columns: 110px 1fr 36px;
+  }
+
+  .home-dashboards {
+    flex-direction: column;
   }
 }

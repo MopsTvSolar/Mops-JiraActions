@@ -43,16 +43,21 @@ from jira_extractor import (  # noqa: E402
     fetch_chamados_classificacao,
     fetch_chamados_criticos,
     fetch_chamados_funcionalidade_ofensor,
+    fetch_chamados_geral_classificacao,
     fetch_chamados_reabertos,
     fetch_chamados_violados,
+    fetch_colaboradores_mes,
     fetch_contagem_atrelados_lote,
     fetch_previstos_violar_por_dia,
     fetch_criados_x_resolvidos,
     fetch_detalhe_analista,
+    fetch_grupo_criacao_mensal,
     fetch_resolvidos_hoje_assignees,
     fetch_status_categoria_lote,
     fetch_total_criados_periodo,
-    fetch_total_criticos_classificacao,
+    fetch_total_resolvidos_classificacao,
+    fetch_total_violados_abertos,
+    fetch_violados_abertos_por_grupo,
     fetch_issues,
     flatten_issue,
     load_fixed_config,
@@ -319,6 +324,7 @@ CATEGORIA_ENCERRAMENTO_FIELD_NAME = "Categoria de Encerramento"
 NIVEL_ESCALONAMENTO_FIELD_NAME = "Nivel de Escalonamento"
 RESPONSAVEL_MOPS_FIELD_NAME = "Responsável pela Solicitação MOPS"
 SUBCLASSIFICACAO_FIELD_NAME = "Sub-Classificação"
+CLASSIFICACAO_FIELD_NAME = "Classificação"
 
 # ID de campos customizados resolvidos por nome (Grupo Solucionador,
 # Categoria de Encerramento etc.), um cache por (URL da instância, nome do
@@ -346,18 +352,47 @@ def _resolve_field_id(config, field_name):
     campos = resp.json()
 
     alvo = field_name.strip().casefold()
+
+    def _clause_names_normalizadas(campo):
+        return {(c or "").strip().strip('"').casefold() for c in (campo.get("clauseNames") or [])}
+
+    # "clauseNames" é a lista que o PRÓPRIO parser de JQL usa pra resolver
+    # 'Nome do Campo' dentro de uma cláusula — mais confiável que "name"
+    # (só o rótulo de exibição) quando dois campos têm o mesmo rótulo, mas
+    # só um deles é o que a JQL realmente aceita nesse texto. Foi
+    # exatamente esse o bug com "Classificação" num Jira que tinha 2 campos
+    # com esse rótulo: um deles era o campo de ordenação Rank (valores tipo
+    # "0|ijnrjj:"), "name" batia nos dois, mas só o campo certo tinha
+    # "Classificação" em clauseNames.
+    por_clause = [f for f in campos if alvo in _clause_names_normalizadas(f)]
+    if por_clause:
+        escolhido = por_clause[0]
+        if len(por_clause) > 1:
+            app.logger.warning(
+                'Mais de um campo com "%s" em clauseNames no Jira (%s) — usando %s. '
+                "Se for o campo errado, me diga o ID correto.",
+                field_name,
+                [f["id"] for f in por_clause],
+                escolhido["id"],
+            )
+        field_id = escolhido["id"]
+        app.logger.info('Campo "%s" resolvido como %s (via clauseNames).', field_name, field_id)
+        _field_id_cache[cache_key] = field_id
+        return field_id
+
     encontrados = [f for f in campos if (f.get("name") or "").strip().casefold() == alvo]
     if encontrados:
+        escolhido = encontrados[0]
         if len(encontrados) > 1:
             app.logger.warning(
-                'Mais de um campo chamado "%s" no Jira (%s) — usando o primeiro: %s. '
+                'Mais de um campo chamado "%s" no Jira (%s), nenhum batendo por clauseNames — usando %s. '
                 "Se for o campo errado, me diga o ID correto.",
                 field_name,
                 [f["id"] for f in encontrados],
-                encontrados[0]["id"],
+                escolhido["id"],
             )
-        field_id = encontrados[0]["id"]
-        app.logger.info('Campo "%s" resolvido como %s.', field_name, field_id)
+        field_id = escolhido["id"]
+        app.logger.info('Campo "%s" resolvido como %s (via name).', field_name, field_id)
         _field_id_cache[cache_key] = field_id
         return field_id
 
@@ -434,6 +469,10 @@ def _resolve_responsavel_mops_field_id(config):
 
 def _resolve_subclassificacao_field_id(config):
     return _resolve_field_id(config, SUBCLASSIFICACAO_FIELD_NAME)
+
+
+def _resolve_classificacao_field_id(config):
+    return _resolve_field_id(config, CLASSIFICACAO_FIELD_NAME)
 
 
 def _por_grupo_a_violar(rows, grupos):
@@ -581,6 +620,290 @@ def connect():
     if resp.status_code == 401:
         return _error_response("E-mail ou API Token inválidos.", 401)
     return _error_response(f"Erro inesperado do Jira ({resp.status_code}).", 502)
+
+
+@app.route("/api/home-sla-mes", methods=["POST"])
+def home_sla_mes():
+    """Widget da home: SLA (dentro do prazo x violado) + % de reabertura, do
+    começo do mês atual até hoje. SLA reaproveita fetch_criados_x_resolvidos
+    (mesma lógica/campo já usada em Criados x Resolvidos/Report Vini, só o
+    pedaço de "resolvidos" importa aqui). Reabertura reaproveita
+    fetch_chamados_reabertos + fetch_total_criados_periodo, exatamente a
+    mesma conta já usada na ação Reabertos (total de reabertos ÷ total de
+    criados no mesmo período/caixa/projetos) — só que com esse período fixo
+    em vez do escolhido pelo usuário. Uma seção por caixa (Solar e Claro
+    Tv)."""
+    body = request.get_json(silent=True) or {}
+    projetos = _projetos_selecionados(body)
+    hoje = datetime.now(BRAZIL_TZ).date()
+    inicio_mes = hoje.replace(day=1)
+
+    caixas_resultado = []
+    for caixa_id in CAIXAS:
+        config = _config_from_request(body)
+        resultado = fetch_criados_x_resolvidos(config, CAIXAS[caixa_id]["grupos"], inicio_mes, hoje, projetos=projetos)
+
+        # fetch_chamados_reabertos/fetch_total_criados_periodo leem
+        # config["jql"] direto (diferente de fetch_criados_x_resolvidos, que
+        # monta a própria JQL a partir de grupos/projetos) — mesma dualidade
+        # já usada no Report Vini.
+        config_reabertos = dict(config, jql=_build_base_jql(caixa_id, projetos))
+        reabertos_rows = fetch_chamados_reabertos(config_reabertos, inicio_mes, hoje)
+        total_criados_periodo = fetch_total_criados_periodo(config_reabertos, inicio_mes, hoje)
+        percentual_reabertura = (
+            round(len(reabertos_rows) / total_criados_periodo * 100, 1) if total_criados_periodo else 0.0
+        )
+
+        caixas_resultado.append(
+            {
+                "caixa": caixa_id,
+                "dentro_prazo": resultado["resolvidos_dentro_prazo"],
+                "fora_prazo": resultado["resolvidos_fora_prazo"],
+                "percentual_dentro_prazo": resultado["percentual_dentro_prazo"],
+                "total_reabertos": len(reabertos_rows),
+                "total_criados_periodo": total_criados_periodo,
+                "percentual_reabertura": percentual_reabertura,
+            }
+        )
+
+    return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
+
+
+@app.route("/api/home-colaboradores-mes", methods=["POST"])
+def home_colaboradores_mes():
+    """Widget da home "Colaboradores": tabela por colaborador (Resolvidos,
+    Violados, Reabertos, % dentro do prazo), do começo do mês atual até
+    hoje — mesmo período fixo de home_sla_mes. Reaproveita
+    fetch_colaboradores_mes, uma seção por caixa (Solar e Claro Tv)."""
+    body = request.get_json(silent=True) or {}
+    projetos = _projetos_selecionados(body)
+    hoje = datetime.now(BRAZIL_TZ).date()
+    inicio_mes = hoje.replace(day=1)
+
+    caixas_resultado = []
+    for caixa_id in CAIXAS:
+        config = _config_from_request(body)
+        linhas = fetch_colaboradores_mes(config, CAIXAS[caixa_id]["grupos"], inicio_mes, hoje, projetos=projetos)
+        caixas_resultado.append({"caixa": caixa_id, "colaboradores": linhas})
+
+    return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
+
+
+@app.route("/api/home-coti-mes", methods=["POST"])
+def home_coti_mes():
+    """Widget da home: os mesmos 4 cards de COTI (P0/P1/P2) da ação
+    "Chamados Críticos" (fetch_chamados_criticos), do começo do mês atual
+    até hoje. COTI é uma classificação específica da caixa Mops Solar (sem
+    equivalente na Claro Tv, mesma regra da ação original), então essa
+    carta só tem uma seção — não usa o padrão de "as duas caixas" do resto
+    da home."""
+    body = request.get_json(silent=True) or {}
+    projetos = _projetos_selecionados(body)
+    hoje = datetime.now(BRAZIL_TZ).date()
+    inicio_mes = hoje.replace(day=1)
+
+    config = _config_from_request(body)
+    resultado = fetch_chamados_criticos(config, CAIXAS[CAIXA_SOLAR]["grupos"], inicio_mes, hoje, projetos=projetos)
+
+    return jsonify(
+        {
+            "inicio": inicio_mes.strftime("%Y-%m-%d"),
+            "fim": hoje.strftime("%Y-%m-%d"),
+            "total_criticos_abertos": resultado["total_criticos_abertos"],
+            "total_criticos_atual": resultado["total_criticos_atual"],
+            "total_pontuais": resultado["total_pontuais"],
+            "percentual_pontuais": resultado["percentual_pontuais"],
+            "percentual_criticos": resultado["percentual_criticos"],
+            "total_criados": resultado["total_criados"],
+        }
+    )
+
+
+@app.route("/api/home-classificacao-funil", methods=["POST"])
+def home_classificacao_funil():
+    """Widget da home: funil de Classificação — top 5 valores de
+    "Classificação" com mais chamados criados (Análise de Jornada, modo
+    "Geral" — fetch_chamados_geral_classificacao + ranking igual ao de
+    lá, só que limitado ao top 5), do começo do mês atual até hoje. Cada
+    item do ranking já traz "por_subclassificacao": top 5 valores de
+    "Sub-Classificação" dentro dessa Classificação (mesmo mecanismo de
+    Análise de Jornada), pro hover da tela. Uma seção por caixa (Solar e
+    Claro Tv), cada uma com os próprios campos resolvidos (best-effort:
+    sem "Classificação", a caixa sai com o funil vazio; sem
+    "Sub-Classificação", cada item sai com "por_subclassificacao" vazio —
+    nenhum dos dois quebra a outra caixa)."""
+    body = request.get_json(silent=True) or {}
+    projetos = _projetos_selecionados(body)
+    hoje = datetime.now(BRAZIL_TZ).date()
+    inicio_mes = hoje.replace(day=1)
+
+    caixas_resultado = []
+    for caixa_id in CAIXAS:
+        config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+
+        try:
+            classificacao_field_id = _resolve_classificacao_field_id(config)
+        except Exception:
+            app.logger.exception("Falha ao resolver o campo Classificação")
+            classificacao_field_id = None
+
+        try:
+            subclassificacao_field_id = _resolve_subclassificacao_field_id(config)
+        except Exception:
+            app.logger.exception("Falha ao resolver o campo Sub-Classificação")
+            subclassificacao_field_id = None
+
+        ranking = []
+        if classificacao_field_id:
+            rows = fetch_chamados_geral_classificacao(
+                config, inicio_mes, hoje, classificacao_field_id, subclassificacao_field_id=subclassificacao_field_id
+            )
+            totais = Counter(r.get("classificacao") for r in rows if r.get("classificacao"))
+            top5 = totais.most_common(5)
+
+            sub_por_classificacao = {}
+            if subclassificacao_field_id:
+                for r in rows:
+                    c, sub = r.get("classificacao"), r.get("sub_classificacao")
+                    if c and sub:
+                        sub_por_classificacao.setdefault(c, Counter())[sub] += 1
+
+            ranking = [
+                {
+                    "classificacao": c,
+                    "total": total,
+                    "por_subclassificacao": [
+                        {"sub_classificacao": sub, "total": sub_total}
+                        for sub, sub_total in sub_por_classificacao.get(c, Counter()).most_common(5)
+                    ],
+                }
+                for c, total in top5
+            ]
+
+        caixas_resultado.append({"caixa": caixa_id, "ranking": ranking})
+
+    return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
+
+
+@app.route("/api/home-grupo-criacao", methods=["POST"])
+def home_grupo_criacao():
+    """Widget da home: réplica de um gadget de dashboard nativo do Jira
+    (Grupo Solucionador × mês de criação) — entre os chamados atualmente
+    abertos, só projeto Central de Incidentes, quantos foram criados em
+    cada mês, por grupo. Mostra as duas caixas de uma vez (não depende do
+    alternador Solar/Claro Tv) — cada caixa usa seus próprios grupos
+    (CAIXAS[caixa]["grupos"]: 3 pra Solar, 2 pra Claro Tv), então o
+    resultado já "respeita as regras" de cada uma sozinho."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+
+    try:
+        grupo_field_id = _resolve_grupo_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
+        raise JiraExtractorError('Campo "Grupo Solucionador" não encontrado no Jira.')
+
+    caixas_resultado = [
+        dict(caixa=caixa_id, **fetch_grupo_criacao_mensal(config, CAIXAS[caixa_id]["grupos"], grupo_field_id))
+        for caixa_id in CAIXAS
+    ]
+    return jsonify({"caixas": caixas_resultado})
+
+
+@app.route("/api/home-violar-semanal", methods=["POST"])
+def home_violar_semanal():
+    """Widget da home: "A violar" dos próximos 7 dias, uma linha por caixa
+    (Solar e Claro Tv) de uma vez — mesma lógica de "Plano semanal"
+    (fetch_chamados_a_violar), incluindo o detalhamento por grupo
+    (_por_grupo_a_violar) pro quadradinho mostrar N1/N2/PROD — Claro Tv só
+    tem N1/N2 (CAIXAS["tv"]["grupos"] não tem "Prod"), então o
+    detalhamento sai automaticamente correto pra cada caixa. Também traz
+    "violados_abertos" (contador acima do card: quantos violados ainda
+    estão sem solução agora)."""
+    body = request.get_json(silent=True) or {}
+    projetos = _projetos_selecionados(body)
+    hoje = datetime.now(BRAZIL_TZ).date()
+
+    caixas_resultado = []
+    for caixa_id in CAIXAS:
+        config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+        grupos = CAIXAS[caixa_id]["grupos"]
+
+        grupo_field_id = None
+        try:
+            grupo_field_id = _resolve_grupo_field_id(config)
+        except Exception:
+            # Best-effort, mesmo padrão do "Plano semanal": sem esse campo,
+            # os dias saem sem o detalhamento por grupo, não quebra.
+            app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
+            grupo_field_id = None
+
+        # Um card por grupo (N1/N2/PROD pra Solar, N1/N2 pra Claro Tv) —
+        # sem o campo Grupo Solucionador, cai pra um único item "Total".
+        if grupo_field_id:
+            violados_abertos_por_grupo = fetch_violados_abertos_por_grupo(config, grupos, grupo_field_id)
+        else:
+            violados_abertos_por_grupo = [{"grupo": None, "total": fetch_total_violados_abertos(config)}]
+
+        dias = []
+        for offset in range(VIOLAR_SEMANAL_DIAS):
+            data = hoje + timedelta(days=offset)
+            rows = fetch_chamados_a_violar(config, days_ahead=offset, grupo_field_id=grupo_field_id)
+            dia_info = {
+                "data": data.strftime("%Y-%m-%d"),
+                "dia_semana": DIAS_SEMANA_ABREV[data.weekday()],
+                "total": len(rows),
+            }
+            if grupo_field_id:
+                dia_info["por_grupo"] = _por_grupo_a_violar(rows, grupos)
+            dias.append(dia_info)
+        caixas_resultado.append(
+            {"caixa": caixa_id, "violados_abertos_por_grupo": violados_abertos_por_grupo, "dias": dias}
+        )
+
+    return jsonify({"caixas": caixas_resultado})
+
+
+@app.route("/api/home-violados-30dias", methods=["POST"])
+def home_violados_30dias():
+    """Widget da home: últimos 30 dias, uma barra empilhada por dia — verde
+    (resolvido dentro do prazo) + vermelho (violado) somando o total de
+    chamados que tinham a data PREVISTA de estouro do SLA naquele dia,
+    violado ou não. Mesma lógica já usada na ação Violados: "previsto pra
+    violar" (fetch_previstos_violar_por_dia) é o total; "violados" de fato
+    (fetch_chamados_violados, agrupado por sla_estourou_em) é a fatia
+    vermelha; o resto é verde. Uma seção por caixa (Solar e Claro Tv)."""
+    body = request.get_json(silent=True) or {}
+    projetos = _projetos_selecionados(body)
+    hoje = datetime.now(BRAZIL_TZ).date()
+    inicio = hoje - timedelta(days=29)
+
+    caixas_resultado = []
+    for caixa_id in CAIXAS:
+        config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+
+        previstos_por_dia = fetch_previstos_violar_por_dia(config, inicio, hoje)
+        violados_rows = fetch_chamados_violados(config, start_date=inicio, end_date=hoje)
+        violados_por_dia = Counter(
+            row["sla_estourou_em"][:10] for row in violados_rows if row.get("sla_estourou_em")
+        )
+
+        dias = []
+        dia_atual = inicio
+        while dia_atual <= hoje:
+            chave = dia_atual.strftime("%Y-%m-%d")
+            violado = violados_por_dia.get(chave, 0)
+            # max() em vez de usar "previsto" direto: "previsto" exclui
+            # Cancelado (fetch_previstos_violar_por_dia), "violados" não —
+            # na prática rarissimo um cancelado aparecer como violado, mas
+            # sem essa trava a fatia verde poderia sair negativa nesse caso.
+            previsto = max(len(previstos_por_dia.get(chave, [])), violado)
+            dias.append({"data": chave, "previsto": previsto, "violado": violado, "resolvido": previsto - violado})
+            dia_atual += timedelta(days=1)
+
+        caixas_resultado.append({"caixa": caixa_id, "dias": dias})
+
+    return jsonify({"caixas": caixas_resultado})
 
 
 @app.route("/api/extracao-completa", methods=["POST"])
@@ -798,6 +1121,9 @@ def reabertos():
     return _respond(rows, "chamados_reabertos", body, extra=extra)
 
 
+JORNADA_GERAL = "__geral__"
+
+
 @app.route("/api/analise-jornada", methods=["POST"])
 def analise_jornada():
     """Análise de Jornada: busca chamados (qualquer status) pelo campo
@@ -805,7 +1131,13 @@ def analise_jornada():
     (data + um parâmetro categórico), mas disponível nas duas caixas (a
     lista de valores mostrada na tela muda conforme a caixa; a busca em si
     é a mesma JQL nas duas, só troca o valor de "Classificação" e os
-    grupos/projetos da caixa atual, via _build_base_jql)."""
+    grupos/projetos da caixa atual, via _build_base_jql).
+
+    "classificacao" = JORNADA_GERAL ("Geral", opção fixa no topo do
+    dropdown) busca TODOS os valores de uma vez em vez de um só — nesse
+    modo, "por_subclassificacao" (achatado) vira "ranking_classificacao"
+    (lista por Classificação, cada uma já com seu próprio detalhamento por
+    Sub-Classificação embutido — ver fetch_chamados_geral_classificacao)."""
     body = request.get_json(silent=True) or {}
     caixa_id = _resolve_caixa(body)
     projetos = _projetos_selecionados(body)
@@ -815,6 +1147,7 @@ def analise_jornada():
     classificacao = (body.get("classificacao") or "").strip()
     if not classificacao:
         raise JiraExtractorError("Selecione uma Classificação.")
+    geral = classificacao == JORNADA_GERAL
 
     try:
         subclassificacao_field_id = _resolve_subclassificacao_field_id(config)
@@ -825,20 +1158,64 @@ def analise_jornada():
         app.logger.exception("Falha ao resolver o campo Sub-Classificação")
         subclassificacao_field_id = None
 
-    rows = fetch_chamados_classificacao(
-        config, classificacao, inicio, fim, incluir_fornecedor=True, subclassificacao_field_id=subclassificacao_field_id
-    )
+    if geral:
+        try:
+            classificacao_field_id = _resolve_classificacao_field_id(config)
+        except Exception:
+            app.logger.exception("Falha ao resolver o campo Classificação")
+            classificacao_field_id = None
+        if not classificacao_field_id:
+            raise JiraExtractorError(
+                'Campo "Classificação" não encontrado no Jira — não é possível montar o modo "Geral".'
+            )
+        rows = fetch_chamados_geral_classificacao(
+            config,
+            inicio,
+            fim,
+            classificacao_field_id,
+            subclassificacao_field_id=subclassificacao_field_id,
+            incluir_fornecedor=True,
+        )
+    else:
+        rows = fetch_chamados_classificacao(
+            config, classificacao, inicio, fim, incluir_fornecedor=True, subclassificacao_field_id=subclassificacao_field_id
+        )
 
     extra = None
     if not _is_download(body):
         # Só calcula pra exibição na tela, mesma economia já aplicada nas
-        # outras ações. "Abertos" usa a mesma convenção de status "fechado"
-        # já usada em Chamados Críticos (Cancelado/Resolvido/Encerrado).
-        abertos = sum(1 for r in rows if r.get("status") not in ("Cancelado", "Resolvido", "Encerrado"))
+        # outras ações. "criados" é o total já buscado (a busca principal já
+        # é escopada a "created no período"); "resolvidos" é uma consulta à
+        # parte (mesma convenção de "Resolvidos" em Criados x Resolvidos:
+        # status IN (Resolvido, Encerrado) AND resolutiondate no período —
+        # pode incluir chamados criados antes do período, mas resolvidos
+        # dentro dele).
         por_status = Counter(r.get("status") for r in rows if r.get("status")).most_common()
-        criticos = fetch_total_criticos_classificacao(config, classificacao, inicio, fim)
-        extra = {"abertos": abertos, "por_status": por_status, "criticos": criticos}
-        if subclassificacao_field_id:
+        criados = len(rows)
+        resolvidos = fetch_total_resolvidos_classificacao(config, None if geral else classificacao, inicio, fim)
+        extra = {"criados": criados, "resolvidos": resolvidos, "saldo": criados - resolvidos, "por_status": por_status}
+
+        if geral:
+            # Ranking "quantos chamados por Classificação" — total conta
+            # toda linha com Classificação preenchida (com ou sem
+            # Sub-Classificação); o detalhamento aninhado só entra pras que
+            # também têm Sub-Classificação preenchida (mesma convenção do
+            # gráfico achatado do modo de valor único).
+            totais_classificacao = Counter(r.get("classificacao") for r in rows if r.get("classificacao"))
+            sub_por_classificacao = {}
+            for r in rows:
+                c, sub = r.get("classificacao"), r.get("sub_classificacao")
+                if c and sub:
+                    sub_por_classificacao.setdefault(c, Counter())[sub] += 1
+            extra["ranking_classificacao"] = [
+                {
+                    "classificacao": c,
+                    "total": total,
+                    "por_subclassificacao": sub_por_classificacao.get(c, Counter()).most_common(),
+                }
+                for c, total in totais_classificacao.most_common()
+            ]
+        elif subclassificacao_field_id:
             extra["por_subclassificacao"] = Counter(
                 r.get("sub_classificacao") for r in rows if r.get("sub_classificacao")
             ).most_common()
