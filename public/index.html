@@ -35,12 +35,17 @@
     <section id="app-view" class="hidden">
       <div class="app-layout">
       <aside class="sidebar">
+      <button id="btn-sidebar-toggle" class="sidebar-toggle" type="button" title="Recolher menu" aria-label="Recolher menu" aria-expanded="true">‹</button>
+
       <div class="sidebar-brand">
-        <strong>Extração de Chamados Jira</strong>
-        <span>Central de Incidentes · monitoramento de SLA</span>
+        <button id="btn-home" class="sidebar-brand-home" type="button" title="Voltar para o início">🏠</button>
+        <div class="sidebar-brand-text">
+          <strong>Extração de Chamados Jira</strong>
+          <span>Central de Incidentes · monitoramento de SLA</span>
+        </div>
       </div>
 
-      <div class="card">
+      <div class="card sidebar-collapsible">
         <div class="section-label">CAIXA SOLUCIONADORA</div>
         <div class="caixa-toggle" id="caixa-toggle">
           <button type="button" class="caixa-btn active" data-caixa="solar">Solar</button>
@@ -48,19 +53,22 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card sidebar-collapsible">
         <div class="section-label" style="margin-bottom: 8px">PROJETOS</div>
         <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
       </div>
 
       <div class="card">
-        <button class="section-label acoes-toggle" id="btn-acoes-toggle" type="button">
+        <button class="section-label acoes-toggle sidebar-collapsible" id="btn-acoes-toggle" type="button">
           <span>AÇÕES</span>
           <span id="acoes-toggle-icon">▾</span>
         </button>
         <div class="actions-grid collapse open" id="acoes-grid">
           <button id="btn-extracao-completa" class="nav-item" type="button">
             <span class="nav-icon">📋</span><span class="nav-label">Extração completa</span>
+          </button>
+          <button id="btn-extracao-query" class="nav-item" type="button">
+            <span class="nav-icon">🧾</span><span class="nav-label">Extração por Query</span>
           </button>
           <button id="btn-a-violar" class="nav-item" type="button">
             <span class="nav-icon">⏰</span><span class="nav-label">A violar</span>
@@ -74,8 +82,14 @@
           <button id="btn-criados-resolvidos" class="nav-item" type="button">
             <span class="nav-icon">📈</span><span class="nav-label">Criados x Resolvidos</span>
           </button>
+          <button id="btn-distribuicao" class="nav-item" type="button">
+            <span class="nav-icon">📊</span><span class="nav-label">Distribuição</span>
+          </button>
           <button id="btn-reabertos" class="nav-item" type="button">
             <span class="nav-icon">🔄</span><span class="nav-label">Reabertos</span>
+          </button>
+          <button id="btn-colaboradores" class="nav-item" type="button">
+            <span class="nav-icon">🧑‍🤝‍🧑</span><span class="nav-label">Colaboradores</span>
           </button>
           <button id="btn-criticos" class="nav-item" type="button">
             <span class="nav-icon">🚨</span><span class="nav-label">Chamados Críticos</span>
@@ -86,14 +100,20 @@
           <button id="btn-jornada" class="nav-item" type="button">
             <span class="nav-icon">🧭</span><span class="nav-label">Análise de Jornada</span>
           </button>
+          <button id="btn-eps" class="nav-item" type="button">
+            <span class="nav-icon">🏬</span><span class="nav-label">Análise de EPS</span>
+          </button>
           <button id="btn-report-vini" class="nav-item hidden" type="button">
             <span class="nav-icon">🎯</span><span class="nav-label">Report Vini</span>
+          </button>
+          <button id="btn-tv-resolvidos-reabertos" class="nav-item hidden" type="button">
+            <span class="nav-icon">🗂️</span><span class="nav-label">Resolvidos e Reabertos (Excel)</span>
           </button>
         </div>
       </div>
 
       <div class="card">
-        <button class="section-label acoes-toggle" id="btn-reports-toggle" type="button">
+        <button class="section-label acoes-toggle sidebar-collapsible" id="btn-reports-toggle" type="button">
           <span>REPORTS</span>
           <span id="reports-toggle-icon">▾</span>
         </button>
@@ -104,7 +124,7 @@
         </div>
       </div>
 
-      <div class="card sidebar-footer" id="status-bar">
+      <div class="card sidebar-footer sidebar-collapsible" id="status-bar">
         <div>
           <span class="dot">●</span>
           <strong id="status-text">Conectado</strong>
@@ -119,7 +139,7 @@
 
         <!-- Home: aparece só quando nenhum diálogo/resultado está aberto -->
         <div id="home-view" class="card">
-          <h2 style="margin-top: 0">Extração de Chamados Jira</h2>
+          <h2 style="margin-top: 0">Visão geral</h2>
           <p class="hint">
             Ferramenta de exportação sob demanda: <strong>nada fica salvo</strong>. Seu e-mail e
             API Token existem só na memória desta aba enquanto ela estiver aberta — cada
@@ -143,6 +163,25 @@
                   <span class="home-dashboard-tag home-dashboard-tag--periodo">Chamados abertos</span>
                 </div>
                 <div id="home-grupo-criacao"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Fornecedor Responsável × Mês de Criação</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Aguardando Fornecedor</span>
+                </div>
+                <div id="home-fornecedor-criacao"></div>
+              </div>
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Chamados Criados</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                </div>
+                <div class="home-bar30-legend">
+                  <span class="home-bar30-legend-item">
+                    <span class="home-bar30-legend-dot home-bar30-legend-dot--violado"></span>Já foi P0/P1/P2
+                  </span>
+                </div>
+                <div id="home-criados-mes"></div>
               </div>
               <div class="home-dashboard-card">
                 <div class="home-dashboard-title-row">
@@ -337,6 +376,21 @@
 
             <dt>
               <button class="query-dict-toggle" type="button" aria-expanded="false">
+                <span>🏬 Análise de EPS</span><span class="query-dict-arrow">▸</span>
+              </button>
+            </dt>
+            <dd>
+              <p>Top 5 EPS (campo "PROP_Site") que mais abriram chamados, mais resolveram e mais tiveram reabertos, por período — disponível nas duas caixas.</p>
+              <div class="collapse">
+                <code>created no período (Abertores)</code>
+                <p><strong>Resolvidos:</strong> <code>status IN ("Resolvido", "Encerrado") AND resolutiondate no período</code>.</p>
+                <p><strong>Reabertos:</strong> <code>status WAS "Reaberto" AND created no período</code> — mesma convenção de "Reabertos".</p>
+                <p>Cada população é agrupada pelo valor de "PROP_Site" de cada chamado, mostrando só o top 5.</p>
+              </div>
+            </dd>
+
+            <dt>
+              <button class="query-dict-toggle" type="button" aria-expanded="false">
                 <span>🎯 Report Vini</span><span class="query-dict-arrow">▸</span>
               </button>
             </dt>
@@ -431,31 +485,70 @@
           </div>
         </div>
 
+        <!-- Extração por Query: JQL livre informada pelo usuário — sempre
+             devolve as mesmas 6 colunas fixas (Número do Chamado, Categoria
+             de Encerramento, Status, Classificação, Data de Criação e
+             Responsável), não depende de caixa/grupo/projeto/período. -->
+        <div id="extracao-query-dialog" class="collapse">
+          <div class="option-group">
+            <div class="field" style="margin-bottom: 0">
+              <label for="extracao-query-input-jql">JQL</label>
+              <textarea
+                id="extracao-query-input-jql"
+                rows="4"
+                placeholder='Ex.: project = "Central de Incidentes" AND status = "Resolvido" AND created >= "2026-09-01"'
+              ></textarea>
+            </div>
+            <p class="hint" style="margin: 8px 0 0">
+              Colunas do resultado: Número do Chamado, Categoria de Encerramento, ALM do Ofensor (quando a Categoria
+              de Encerramento for um objeto do catálogo Jira Assets), Status, Classificação, Grupo Solucionador,
+              Data de Criação e Responsável.
+            </p>
+          </div>
+
+          <div class="dialog-row" style="margin-top: 14px">
+            <button id="btn-extracao-query-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-extracao-query-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
         <!-- Categorias de Encerramento: expande aqui mesmo, sob o botão -->
         <div id="categorias-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="cat-input-inicio">Data início</label>
-              <input id="cat-input-inicio" type="date" />
+          <div id="categorias-controles-padrao">
+            <div class="dialog-row">
+              <div class="field">
+                <label for="cat-input-inicio">Data início</label>
+                <input id="cat-input-inicio" type="date" />
+              </div>
+              <div class="field">
+                <label for="cat-input-fim">Data fim</label>
+                <input id="cat-input-fim" type="date" />
+              </div>
+              <div class="field">
+                <label for="cat-top-n">Top</label>
+                <select id="cat-top-n">
+                  <option value="3">3</option>
+                  <option value="5">5</option>
+                  <option value="10" selected>10</option>
+                  <option value="20">20</option>
+                </select>
+              </div>
             </div>
-            <div class="field">
-              <label for="cat-input-fim">Data fim</label>
-              <input id="cat-input-fim" type="date" />
-            </div>
-            <div class="field">
-              <label for="cat-top-n">Top</label>
-              <select id="cat-top-n">
-                <option value="3">3</option>
-                <option value="5">5</option>
-                <option value="10" selected>10</option>
-                <option value="20">20</option>
-              </select>
+            <div class="radio-row" style="margin-bottom: 10px">
+              <label><input type="checkbox" id="cat-check-encerrados" checked /> Encerrados</label>
+              <label><input type="checkbox" id="cat-check-reabertos" checked /> Reabertos</label>
             </div>
           </div>
-          <div class="radio-row" style="margin-bottom: 10px">
-            <label><input type="checkbox" id="cat-check-encerrados" checked /> Encerrados</label>
-            <label><input type="checkbox" id="cat-check-reabertos" checked /> Reabertos</label>
-          </div>
+
+          <!-- Mops Tv do Futuro usa uma consulta fixa (ver
+               fetch_categoria_encerramento_tv_fixo) — sem período/Top
+               N/Encerrados-Reabertos escolhidos na tela, então esses
+               controles ficam escondidos e um aviso aparece no lugar. -->
+          <p id="categorias-tv-fixo-hint" class="hint hidden" style="margin: 0 0 10px">
+            Mops Tv do Futuro usa uma consulta fixa: todos os chamados (Central de Incidentes + Abertura de
+            Chamados) das caixas N1/N2 criados desde 01/06/2026, agrupados por Categoria de Encerramento.
+          </p>
+
           <div class="dialog-row" style="margin-top: 0">
             <button id="btn-categorias-gerar" class="btn-primary" type="button">Gerar</button>
             <button id="btn-ofensor" class="btn-secondary" type="button">🔎 Busca Ofensor</button>
@@ -628,6 +721,10 @@
                direto no HTML como antes. -->
           <div id="categorias-encerrados-block" class="hidden"></div>
           <div id="categorias-reabertos-block" class="hidden" style="margin-top: 14px"></div>
+
+          <!-- Mops Tv do Futuro: tabela única (Categoria/Issues/%) + gráfico
+               de barras, montada via renderCategoriaTvFixo em app.js. -->
+          <div id="categorias-tv-fixo-block" class="hidden"></div>
         </div>
 
         <!-- Criados x Resolvidos: expande aqui mesmo, sob o botão -->
@@ -662,7 +759,7 @@
                  diária (total ÷ dias do período) — só quando o campo Grupo
                  Solucionador foi resolvido no servidor. -->
             <div id="cr-por-grupo-block" class="hidden">
-              <div class="section-label" style="margin-bottom: 8px">CHAMADOS ENCERRADOS POR GRUPO SOLUCIONADOR</div>
+              <div class="section-label" style="margin-bottom: 8px">CRIADOS / ENCERRADOS POR GRUPO SOLUCIONADOR</div>
               <div id="cr-por-grupo-cards" class="summary-cards"></div>
             </div>
           </div>
@@ -673,6 +770,44 @@
               <tbody></tbody>
             </table>
           </div>
+        </div>
+
+        <!-- Distribuição: chamados TRATADOS (resolvidos) no dia, classificados
+             em Convencional (azul) / Priorizado (amarelo) / COTI (vermelho),
+             + PDST criados no dia (cinza) — em barra vertical agrupada por
+             grupo (N1/N2/PROD). "SELECIONAR CAIXAS" aqui filtra os grupos
+             (mesmo painel/rótulo de Extração completa); a caixa
+             Solar/TV é a seleção global do topo. -->
+        <div id="distribuicao-dialog" class="collapse">
+          <div class="option-group">
+            <div class="section-label" style="margin-bottom: 8px">SELECIONAR CAIXAS</div>
+            <div class="radio-row" id="distribuicao-grupos-checkboxes" style="margin-bottom: 0"></div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <div class="field">
+              <label for="distribuicao-input-inicio">Data início</label>
+              <input id="distribuicao-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="distribuicao-input-fim">Data fim</label>
+              <input id="distribuicao-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-distribuicao-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-distribuicao-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div id="distribuicao-results" class="hidden" style="margin-top: 14px">
+          <span class="date-badge" id="distribuicao-date" style="margin-bottom: 10px"></span>
+          <div id="distribuicao-chart-wrap"></div>
+
+          <!-- Pré-análise textual do período (composição + TMA por
+               categoria), pensada pra embasar justificativa de SLA —
+               ver construirAnaliseDistribuicao / fetch_distribuicao_tratados. -->
+          <div class="section-label" style="margin: 18px 0 8px">PRÉ-ANÁLISE DO PERÍODO</div>
+          <div id="distribuicao-analise" class="distribuicao-analise"></div>
         </div>
 
         <!-- Reabertos: expande aqui mesmo, sob o botão. Resultado usa a mesma
@@ -692,6 +827,31 @@
             <button id="btn-reabertos-gerar" class="btn-primary" type="button">Gerar</button>
             <button id="btn-reabertos-cancelar" class="btn-secondary" type="button">Cancelar</button>
           </div>
+        </div>
+
+        <!-- Colaboradores: mesma tabela do widget da home (Resolvidos/
+             Violados/Reabertos/%), mas com período/caixa/projeto escolhidos
+             pelo usuário em vez do mês atual fixo com as duas caixas. -->
+        <div id="colaboradores-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="colaboradores-input-inicio">Data início</label>
+              <input id="colaboradores-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="colaboradores-input-fim">Data fim</label>
+              <input id="colaboradores-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-colaboradores-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-colaboradores-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div id="colaboradores-results" class="hidden" style="margin-top: 14px">
+          <span class="date-badge" id="colaboradores-date" style="margin-bottom: 10px"></span>
+          <div id="colaboradores-table-wrap" class="table-wrap"></div>
         </div>
 
         <!-- Análise de Jornada: Data início/fim + dropdown "Classificação"
@@ -767,6 +927,37 @@
           </div>
         </div>
 
+        <!-- Análise de EPS: expande aqui mesmo, sob o botão -->
+        <div id="eps-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="eps-input-inicio">Data início</label>
+              <input id="eps-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="eps-input-fim">Data fim</label>
+              <input id="eps-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-eps-gerar" class="btn-primary" type="button">Gerar</button>
+            <button id="btn-eps-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div id="eps-results" class="hidden" style="margin-top: 14px">
+          <span class="date-badge" id="eps-date" style="margin-bottom: 10px"></span>
+
+          <div class="section-label" style="margin-bottom: 8px">TOP 5 ABERTORES DE CHAMADO</div>
+          <div id="eps-top-abertos"></div>
+
+          <div class="section-label" style="margin: 14px 0 8px">TOP 5 RESOLVIDOS POR EPS</div>
+          <div id="eps-top-resolvidos"></div>
+
+          <div class="section-label" style="margin: 14px 0 8px">TOP 5 EPS COM REABERTOS</div>
+          <div id="eps-top-reabertos"></div>
+        </div>
+
         <!-- Report Vini: específico de Mops Tv do Futuro (botão some fora
              dela) — consolida num resultado só o que hoje é visto espalhado
              em 3 ações (Criados x Resolvidos com TMA/SLA, Reabertos,
@@ -789,9 +980,12 @@
         </div>
 
         <div id="report-vini-results" class="hidden" style="margin-top: 14px">
-          <div class="results-header" style="margin-bottom: 10px">
+          <div class="results-header" style="margin-bottom: 10px; flex-wrap: wrap; row-gap: 8px">
             <span class="date-badge" id="vini-date"></span>
             <span class="spacer"></span>
+            <!-- Quais seções entram no PDF (a tela sempre mostra tudo) —
+                 ver viniSecoesPdf/VINI_PDF_SECOES em app.js. -->
+            <div class="radio-row" id="vini-pdf-secoes-checkboxes" style="margin-bottom: 0"></div>
             <button id="btn-vini-pdf" class="btn-secondary" type="button">📄 Exportar PDF</button>
           </div>
 
@@ -800,7 +994,7 @@
           <div class="cr-donut-row">
             <div id="vini-cr-prazo-donut" class="hidden"></div>
             <div id="vini-cr-por-grupo-block" class="hidden">
-              <div class="section-label" style="margin-bottom: 8px">CHAMADOS ENCERRADOS POR GRUPO SOLUCIONADOR</div>
+              <div class="section-label" style="margin-bottom: 8px">CRIADOS / ENCERRADOS POR GRUPO SOLUCIONADOR</div>
               <div id="vini-cr-por-grupo-cards" class="summary-cards"></div>
             </div>
           </div>
@@ -810,6 +1004,29 @@
 
           <div class="section-label" style="margin: 14px 0 8px">TOP 5 CATEGORIAS DE ENCERRAMENTO</div>
           <div id="vini-categorias-block"></div>
+        </div>
+
+        <!-- Resolvidos e Reabertos (Excel): específico de Mops Tv do Futuro
+             (botão some fora dela) — baixa direto (sem tela de resultados),
+             2 abas: Resolvidos e Encerrados no período + Reabertos (Was
+             Reaberto) no período, cada uma com Número do Chamado/Data
+             Criação/Classificação/Categoria de Encerramento. -->
+        <div id="tv-resolvidos-reabertos-dialog" class="collapse">
+          <div class="dialog-row">
+            <div class="field">
+              <label for="tv-rr-input-inicio">Data início</label>
+              <input id="tv-rr-input-inicio" type="date" />
+            </div>
+            <div class="field">
+              <label for="tv-rr-input-fim">Data fim</label>
+              <input id="tv-rr-input-fim" type="date" />
+            </div>
+          </div>
+          <div class="dialog-row" style="margin-top: 0">
+            <button id="btn-tv-rr-gerar" class="btn-primary" type="button">📥 Gerar Excel</button>
+            <button id="btn-tv-rr-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          </div>
+          <div id="tv-rr-status" class="hint" style="margin-top: 10px"></div>
         </div>
 
         <!-- Report Diário: ação direta (sem diálogo, sempre "hoje"), igual

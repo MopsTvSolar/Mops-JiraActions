@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from jira_extractor import (  # noqa: E402
     BRAZIL_TZ,
     DEFAULT_FIELDS,
+    GRUPO_PROD,
     JiraExtractorError,
     PROJETO_INC,
     PROJETO_PDST,
@@ -38,20 +39,29 @@ from jira_extractor import (  # noqa: E402
     export_general_report_pdf,
     extract_fornecedor,
     fetch_categoria_encerrados,
+    fetch_categoria_encerramento_tv_fixo,
+    fetch_categoria_encerramento_tv_fixo_analitico,
     fetch_categoria_reabertos,
     fetch_chamados_a_violar,
     fetch_chamados_classificacao,
     fetch_chamados_criticos,
     fetch_chamados_funcionalidade_ofensor,
     fetch_chamados_geral_classificacao,
+    fetch_chamados_por_query,
     fetch_chamados_reabertos,
     fetch_chamados_violados,
     fetch_colaboradores_mes,
+    fetch_analise_eps,
+    fetch_criados_por_dia_grupo,
     fetch_contagem_atrelados_lote,
     fetch_previstos_violar_por_dia,
     fetch_criados_x_resolvidos,
     fetch_detalhe_analista,
+    fetch_distribuicao_tratados,
     fetch_grupo_criacao_mensal,
+    fetch_fornecedor_criacao_mensal,
+    fetch_reabertos_analitico,
+    fetch_resolvidos_encerrados_analitico,
     fetch_resolvidos_hoje_assignees,
     fetch_status_categoria_lote,
     fetch_total_criados_periodo,
@@ -175,6 +185,30 @@ def _build_base_jql(caixa_id, projetos=None):
     return f'"Grupo Solucionador[Group Picker (single group)]" IN ({grupos_str}) AND project IN ({projetos_str})'
 
 
+def _build_base_jql_home(caixa_id):
+    """Como _build_base_jql, mas só pros widgets da home: o grupo Prod (só
+    existe na Solar, GRUPO_PROD) considera só "Abertura de Chamados"; os
+    demais grupos (N1/N2) consideram só "Central de Incidentes" — ver nota
+    em home_sla_mes. Usada pelas rotas que passam config["jql"] pronto pra
+    fetch_chamados_a_violar/fetch_chamados_violados em vez de grupos/
+    projetos separados (home_violar_semanal, home_violados_30dias,
+    home_classificacao_funil)."""
+    grupos = CAIXAS[caixa_id]["grupos"]
+    outros_grupos = [g for g in grupos if g != GRUPO_PROD]
+
+    partes = []
+    if outros_grupos:
+        outros_str = ", ".join(f'"{g}"' for g in outros_grupos)
+        partes.append(
+            f'("Grupo Solucionador[Group Picker (single group)]" IN ({outros_str}) AND project = "{PROJETO_INC}")'
+        )
+    if GRUPO_PROD in grupos:
+        partes.append(
+            f'("Grupo Solucionador[Group Picker (single group)]" = "{GRUPO_PROD}" AND project = "{PROJETO_PDST}")'
+        )
+    return f"({' OR '.join(partes)})"
+
+
 def _grupos_selecionados(body, caixa_id):
     """Lista de grupos marcados no painel de opções, restrita aos grupos que
     realmente pertencem à caixa selecionada (evita injeção de grupo
@@ -284,6 +318,28 @@ def _rows_to_excel_bytes(rows):
     return buf.getvalue()
 
 
+def _rows_to_excel_bytes_multi(sheets, fieldnames):
+    """Como _rows_to_excel_bytes, mas gera VÁRIAS abas — "sheets" é uma
+    lista de (nome_da_aba, linhas). Diferente de _rows_to_excel_bytes (que
+    infere as colunas de rows[0], exigindo pelo menos 1 linha), aqui as
+    colunas ("fieldnames") são fixas e compartilhadas por todas as abas —
+    permite gerar uma aba vazia (só cabeçalho) quando não há chamados
+    naquele recorte, sem quebrar. Usado por /api/tv-resolvidos-reabertos."""
+    wb = Workbook()
+    primeira = True
+    for nome_aba, linhas in sheets:
+        ws = wb.active if primeira else wb.create_sheet()
+        primeira = False
+        ws.title = nome_aba[:31]  # limite de 31 caracteres do Excel pro nome da aba
+        ws.append(fieldnames)
+        for row in linhas:
+            ws.append([row.get(f) for f in fieldnames])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
 TOP_ASSIGNEES_LIMIT = 8
 
 
@@ -320,11 +376,13 @@ def _respond(rows, base_name, body, extra=None):
 
 
 GRUPO_FIELD_NAME = "Grupo Solucionador"
+TIPO_INCIDENTE_MOPS_FIELD_NAME = "Tipo Incidente MOPS"
 CATEGORIA_ENCERRAMENTO_FIELD_NAME = "Categoria de Encerramento"
 NIVEL_ESCALONAMENTO_FIELD_NAME = "Nivel de Escalonamento"
 RESPONSAVEL_MOPS_FIELD_NAME = "Responsável pela Solicitação MOPS"
 SUBCLASSIFICACAO_FIELD_NAME = "Sub-Classificação"
 CLASSIFICACAO_FIELD_NAME = "Classificação"
+EPS_FIELD_NAME = "PROP_Site"
 
 # ID de campos customizados resolvidos por nome (Grupo Solucionador,
 # Categoria de Encerramento etc.), um cache por (URL da instância, nome do
@@ -412,6 +470,10 @@ def _resolve_grupo_field_id(config):
     return _resolve_field_id(config, GRUPO_FIELD_NAME)
 
 
+def _resolve_tipo_incidente_mops_field_id(config):
+    return _resolve_field_id(config, TIPO_INCIDENTE_MOPS_FIELD_NAME)
+
+
 _account_id_cache = {}
 
 
@@ -475,22 +537,33 @@ def _resolve_classificacao_field_id(config):
     return _resolve_field_id(config, CLASSIFICACAO_FIELD_NAME)
 
 
+def _resolve_eps_field_id(config):
+    return _resolve_field_id(config, EPS_FIELD_NAME)
+
+
 def _por_grupo_a_violar(rows, grupos):
     """Para cada grupo da caixa selecionada: quantos chamados do resultado
-    pertencem àquele grupo, e o ranking de "Top responsáveis" só daquele
+    pertencem àquele grupo, o ranking de "Top responsáveis" só daquele
     grupo (pra acompanhar a coluna de cada caixa no card, em vez de um
-    ranking único combinando todos os grupos). Não faz nenhuma busca extra
-    no Jira: só agrupa as linhas já retornadas pela busca principal (que já
-    vêm com "grupo_solucionador" quando o campo foi resolvido)."""
+    ranking único combinando todos os grupos), quantos ainda estão sem
+    responsável (campo "assignee" vazio) e o detalhamento por status
+    (VIOLAR_STATUSES) — usado no hover do quadradinho do dia. Não faz
+    nenhuma busca extra no Jira: só agrupa as linhas já retornadas pela
+    busca principal (que já vêm com "grupo_solucionador"/"assignee"/"status"
+    quando os campos foram resolvidos)."""
     resultado = []
     for grupo in grupos:
         linhas_grupo = [r for r in rows if r.get("grupo_solucionador") == grupo]
         assignee_counts = Counter(r.get("assignee") for r in linhas_grupo if r.get("assignee"))
+        sem_responsavel = sum(1 for r in linhas_grupo if not r.get("assignee"))
+        status_counts = Counter(r.get("status") for r in linhas_grupo if r.get("status"))
         resultado.append(
             {
                 "grupo": grupo,
                 "total": len(linhas_grupo),
                 "top_assignees": assignee_counts.most_common(TOP_ASSIGNEES_LIMIT),
+                "sem_responsavel": sem_responsavel,
+                "por_status": status_counts.most_common(),
             }
         )
     return resultado
@@ -632,22 +705,32 @@ def home_sla_mes():
     mesma conta já usada na ação Reabertos (total de reabertos ÷ total de
     criados no mesmo período/caixa/projetos) — só que com esse período fixo
     em vez do escolhido pelo usuário. Uma seção por caixa (Solar e Claro
-    Tv)."""
+    Tv).
+
+    Projetos fixos, diferente das ações da tela (os cards da home não
+    seguem o painel "PROJETOS" escolhido pelo usuário): os grupos N1/N2
+    (de qualquer caixa) sempre consideram só "Central de Incidentes"; o
+    grupo Prod (só existe na Solar, GRUPO_PROD) sempre considera só
+    "Abertura de Chamados" — mesma regra em todos os widgets da home (ver
+    _grupo_projeto_clause em jira_extractor.py e _build_base_jql_home
+    aqui, usados por quem lê config["jql"] pronto)."""
     body = request.get_json(silent=True) or {}
-    projetos = _projetos_selecionados(body)
+    projetos = [PROJETO_INC]
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio_mes = hoje.replace(day=1)
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
         config = _config_from_request(body)
-        resultado = fetch_criados_x_resolvidos(config, CAIXAS[caixa_id]["grupos"], inicio_mes, hoje, projetos=projetos)
+        resultado = fetch_criados_x_resolvidos(
+            config, CAIXAS[caixa_id]["grupos"], inicio_mes, hoje, projetos=projetos, prod_projetos=[PROJETO_PDST]
+        )
 
         # fetch_chamados_reabertos/fetch_total_criados_periodo leem
         # config["jql"] direto (diferente de fetch_criados_x_resolvidos, que
         # monta a própria JQL a partir de grupos/projetos) — mesma dualidade
         # já usada no Report Vini.
-        config_reabertos = dict(config, jql=_build_base_jql(caixa_id, projetos))
+        config_reabertos = dict(config, jql=_build_base_jql_home(caixa_id))
         reabertos_rows = fetch_chamados_reabertos(config_reabertos, inicio_mes, hoje)
         total_criados_periodo = fetch_total_criados_periodo(config_reabertos, inicio_mes, hoje)
         percentual_reabertura = (
@@ -674,16 +757,21 @@ def home_colaboradores_mes():
     """Widget da home "Colaboradores": tabela por colaborador (Resolvidos,
     Violados, Reabertos, % dentro do prazo), do começo do mês atual até
     hoje — mesmo período fixo de home_sla_mes. Reaproveita
-    fetch_colaboradores_mes, uma seção por caixa (Solar e Claro Tv)."""
+    fetch_colaboradores_mes, uma seção por caixa (Solar e Claro Tv).
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes."""
     body = request.get_json(silent=True) or {}
-    projetos = _projetos_selecionados(body)
+    projetos = [PROJETO_INC]
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio_mes = hoje.replace(day=1)
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
         config = _config_from_request(body)
-        linhas = fetch_colaboradores_mes(config, CAIXAS[caixa_id]["grupos"], inicio_mes, hoje, projetos=projetos)
+        linhas = fetch_colaboradores_mes(
+            config, CAIXAS[caixa_id]["grupos"], inicio_mes, hoje, projetos=projetos, prod_projetos=[PROJETO_PDST]
+        )
         caixas_resultado.append({"caixa": caixa_id, "colaboradores": linhas})
 
     return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
@@ -696,14 +784,19 @@ def home_coti_mes():
     até hoje. COTI é uma classificação específica da caixa Mops Solar (sem
     equivalente na Claro Tv, mesma regra da ação original), então essa
     carta só tem uma seção — não usa o padrão de "as duas caixas" do resto
-    da home."""
+    da home.
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes."""
     body = request.get_json(silent=True) or {}
-    projetos = _projetos_selecionados(body)
+    projetos = [PROJETO_INC]
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio_mes = hoje.replace(day=1)
 
     config = _config_from_request(body)
-    resultado = fetch_chamados_criticos(config, CAIXAS[CAIXA_SOLAR]["grupos"], inicio_mes, hoje, projetos=projetos)
+    resultado = fetch_chamados_criticos(
+        config, CAIXAS[CAIXA_SOLAR]["grupos"], inicio_mes, hoje, projetos=projetos, prod_projetos=[PROJETO_PDST]
+    )
 
     return jsonify(
         {
@@ -731,15 +824,17 @@ def home_classificacao_funil():
     Claro Tv), cada uma com os próprios campos resolvidos (best-effort:
     sem "Classificação", a caixa sai com o funil vazio; sem
     "Sub-Classificação", cada item sai com "por_subclassificacao" vazio —
-    nenhum dos dois quebra a outra caixa)."""
+    nenhum dos dois quebra a outra caixa).
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes/_build_base_jql_home."""
     body = request.get_json(silent=True) or {}
-    projetos = _projetos_selecionados(body)
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio_mes = hoje.replace(day=1)
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
-        config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+        config = dict(_config_from_request(body), jql=_build_base_jql_home(caixa_id))
 
         try:
             classificacao_field_id = _resolve_classificacao_field_id(config)
@@ -789,11 +884,14 @@ def home_classificacao_funil():
 def home_grupo_criacao():
     """Widget da home: réplica de um gadget de dashboard nativo do Jira
     (Grupo Solucionador × mês de criação) — entre os chamados atualmente
-    abertos, só projeto Central de Incidentes, quantos foram criados em
-    cada mês, por grupo. Mostra as duas caixas de uma vez (não depende do
-    alternador Solar/Claro Tv) — cada caixa usa seus próprios grupos
-    (CAIXAS[caixa]["grupos"]: 3 pra Solar, 2 pra Claro Tv), então o
-    resultado já "respeita as regras" de cada uma sozinho."""
+    abertos, quantos foram criados em cada mês, por grupo. Mostra as duas
+    caixas de uma vez (não depende do alternador Solar/Claro Tv) — cada
+    caixa usa seus próprios grupos (CAIXAS[caixa]["grupos"]: 3 pra Solar, 2
+    pra Claro Tv), então o resultado já "respeita as regras" de cada uma
+    sozinho.
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes."""
     body = request.get_json(silent=True) or {}
     config = _config_from_request(body)
 
@@ -804,10 +902,92 @@ def home_grupo_criacao():
         raise JiraExtractorError('Campo "Grupo Solucionador" não encontrado no Jira.')
 
     caixas_resultado = [
-        dict(caixa=caixa_id, **fetch_grupo_criacao_mensal(config, CAIXAS[caixa_id]["grupos"], grupo_field_id))
+        dict(
+            caixa=caixa_id,
+            **fetch_grupo_criacao_mensal(
+                config, CAIXAS[caixa_id]["grupos"], grupo_field_id, prod_projetos=[PROJETO_PDST]
+            ),
+        )
         for caixa_id in CAIXAS
     ]
     return jsonify({"caixas": caixas_resultado})
+
+
+@app.route("/api/home-fornecedor-criacao", methods=["POST"])
+def home_fornecedor_criacao():
+    """Widget da home: réplica de um gadget de dashboard nativo do Jira
+    (Fornecedor Responsável × mês de criação) — entre os chamados
+    atualmente em "Aguardando Fornecedor", quantos foram criados em cada
+    mês, por Fornecedor Responsável (extract_fornecedor). Mostra as duas
+    caixas de uma vez, mesmo padrão de home_grupo_criacao.
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+
+    caixas_resultado = [
+        dict(
+            caixa=caixa_id,
+            **fetch_fornecedor_criacao_mensal(
+                config, CAIXAS[caixa_id]["grupos"], projetos=[PROJETO_INC], prod_projetos=[PROJETO_PDST]
+            ),
+        )
+        for caixa_id in CAIXAS
+    ]
+    return jsonify({"caixas": caixas_resultado})
+
+
+@app.route("/api/home-criados-mes", methods=["POST"])
+def home_criados_mes():
+    """Widget da home "Chamados Criados": um quadradinho por dia (do começo
+    do mês atual até hoje) e por grupo (N1/N2/PROD pra Solar, N1/N2 pra
+    Claro Tv) — mesmo estilo visual de "A violar". O número em evidência é
+    o total de chamados criados naquele dia; embaixo, menor, quantos desses
+    já foram P0/P1/P2 em algum momento (fetch_criados_por_dia_grupo).
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes."""
+    body = request.get_json(silent=True) or {}
+    projetos = [PROJETO_INC]
+    hoje = datetime.now(BRAZIL_TZ).date()
+    inicio_mes = hoje.replace(day=1)
+
+    caixas_resultado = []
+    for caixa_id in CAIXAS:
+        config = _config_from_request(body)
+        grupos = CAIXAS[caixa_id]["grupos"]
+
+        try:
+            grupo_field_id = _resolve_grupo_field_id(config)
+        except Exception:
+            app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
+            grupo_field_id = None
+
+        dias = []
+        if grupo_field_id:
+            total_por_dia_grupo, p0p1p2_por_dia_grupo = fetch_criados_por_dia_grupo(
+                config, grupos, inicio_mes, hoje, grupo_field_id, projetos=projetos, prod_projetos=[PROJETO_PDST]
+            )
+            dia_atual = inicio_mes
+            while dia_atual <= hoje:
+                chave = dia_atual.strftime("%Y-%m-%d")
+                por_grupo = [
+                    {
+                        "grupo": grupo,
+                        "total": total_por_dia_grupo.get((chave, grupo), 0),
+                        "p0p1p2": p0p1p2_por_dia_grupo.get((chave, grupo), 0),
+                    }
+                    for grupo in grupos
+                ]
+                dias.append(
+                    {"data": chave, "dia_semana": DIAS_SEMANA_ABREV[dia_atual.weekday()], "por_grupo": por_grupo}
+                )
+                dia_atual += timedelta(days=1)
+
+        caixas_resultado.append({"caixa": caixa_id, "dias": dias})
+
+    return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
 
 
 @app.route("/api/home-violar-semanal", methods=["POST"])
@@ -819,14 +999,16 @@ def home_violar_semanal():
     tem N1/N2 (CAIXAS["tv"]["grupos"] não tem "Prod"), então o
     detalhamento sai automaticamente correto pra cada caixa. Também traz
     "violados_abertos" (contador acima do card: quantos violados ainda
-    estão sem solução agora)."""
+    estão sem solução agora).
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes."""
     body = request.get_json(silent=True) or {}
-    projetos = _projetos_selecionados(body)
     hoje = datetime.now(BRAZIL_TZ).date()
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
-        config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+        config = dict(_config_from_request(body), jql=_build_base_jql_home(caixa_id))
         grupos = CAIXAS[caixa_id]["grupos"]
 
         grupo_field_id = None
@@ -872,15 +1054,17 @@ def home_violados_30dias():
     violado ou não. Mesma lógica já usada na ação Violados: "previsto pra
     violar" (fetch_previstos_violar_por_dia) é o total; "violados" de fato
     (fetch_chamados_violados, agrupado por sla_estourou_em) é a fatia
-    vermelha; o resto é verde. Uma seção por caixa (Solar e Claro Tv)."""
+    vermelha; o resto é verde. Uma seção por caixa (Solar e Claro Tv).
+
+    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
+    Chamados" — ver nota em home_sla_mes."""
     body = request.get_json(silent=True) or {}
-    projetos = _projetos_selecionados(body)
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio = hoje - timedelta(days=29)
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
-        config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
+        config = dict(_config_from_request(body), jql=_build_base_jql_home(caixa_id))
 
         previstos_por_dia = fetch_previstos_violar_por_dia(config, inicio, hoje)
         violados_rows = fetch_chamados_violados(config, start_date=inicio, end_date=hoje)
@@ -931,6 +1115,46 @@ def extracao_completa():
         rows.append(row)
 
     return _respond(rows, "chamados_jira", body)
+
+
+@app.route("/api/extracao-query", methods=["POST"])
+def extracao_query():
+    """"Extração por Query": busca chamados a partir de uma JQL informada
+    livremente pelo usuário na tela — diferente de Extração completa, não
+    depende de caixa/grupo/projeto/período escolhidos na interface, só do
+    texto digitado (uma JQL inválida chega como JiraExtractorError vinda
+    de fetch_issues, tratada pelo errorhandler igual às demais ações).
+    Sempre devolve as mesmas 8 colunas fixas — ver fetch_chamados_por_query.
+
+    "Categoria de Encerramento" e "Classificação" são resolvidos por nome
+    a cada requisição (não por ID fixo): esse Jira tem mais de um campo
+    chamado "Classificação" (ex.: "Classificação (B2B)", "Classificação
+    (INC)"), então só a resolução por clauseNames (_resolve_field_id)
+    garante vincular o campo "Classificação" de verdade. "Grupo
+    Solucionador" é best-effort (mesmo padrão de A violar/Criados x
+    Resolvidos): se a resolução falhar, a coluna sai vazia em vez de
+    derrubar a extração inteira."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+    jql = (body.get("jql") or "").strip()
+    if not jql:
+        raise JiraExtractorError("Informe a JQL.")
+
+    categoria_field_id = _resolve_categoria_encerramento_field_id(config)
+    if not categoria_field_id:
+        raise JiraExtractorError('Campo "Categoria de Encerramento" não encontrado no Jira.')
+    classificacao_field_id = _resolve_classificacao_field_id(config)
+    if not classificacao_field_id:
+        raise JiraExtractorError('Campo "Classificação" não encontrado no Jira.')
+
+    try:
+        grupo_field_id = _resolve_grupo_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
+        grupo_field_id = None
+
+    rows = fetch_chamados_por_query(config, jql, categoria_field_id, classificacao_field_id, grupo_field_id)
+    return _respond(rows, "extracao_query", body)
 
 
 def _fetch_violar_com_grupo(config, days_ahead, incluir_grupo, grupos):
@@ -1121,6 +1345,23 @@ def reabertos():
     return _respond(rows, "chamados_reabertos", body, extra=extra)
 
 
+@app.route("/api/colaboradores", methods=["POST"])
+def colaboradores():
+    """Ação "Colaboradores": mesma tabela por colaborador (Resolvidos,
+    Violados, Reabertos, % dentro do prazo) do widget da home
+    (fetch_colaboradores_mes), mas com período/caixa/projetos escolhidos
+    pelo usuário em vez do mês atual fixo com os dois de uma vez — mesmo
+    padrão de reabertos/analise_jornada."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    projetos = _projetos_selecionados(body)
+    config = _config_from_request(body)
+    inicio, fim = _parse_periodo(body)
+    linhas = fetch_colaboradores_mes(config, CAIXAS[caixa_id]["grupos"], inicio, fim, projetos=projetos)
+
+    return jsonify({"inicio": inicio.strftime("%Y-%m-%d"), "fim": fim.strftime("%Y-%m-%d"), "colaboradores": linhas})
+
+
 JORNADA_GERAL = "__geral__"
 
 
@@ -1223,6 +1464,29 @@ def analise_jornada():
     return _respond(rows, "chamados_jornada", body, extra=extra)
 
 
+@app.route("/api/analise-eps", methods=["POST"])
+def analise_eps():
+    """Análise de EPS: dentro do período informado, top 5 EPS (campo
+    "PROP_Site") que mais abriram chamados, top 5 com mais chamados
+    resolvidos e top 5 com mais chamados reabertos (fetch_analise_eps)."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    projetos = _projetos_selecionados(body)
+    config = _config_from_request(body)
+    inicio, fim = _parse_periodo(body)
+
+    try:
+        eps_field_id = _resolve_eps_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo PROP_Site (EPS)")
+        eps_field_id = None
+    if not eps_field_id:
+        raise JiraExtractorError('Campo "PROP_Site" não encontrado no Jira.')
+
+    resultado = fetch_analise_eps(config, CAIXAS[caixa_id]["grupos"], inicio, fim, eps_field_id, projetos=projetos)
+    return jsonify(resultado)
+
+
 def _parse_periodo(body):
     try:
         inicio = datetime.strptime(body.get("inicio", ""), "%Y-%m-%d").date()
@@ -1303,6 +1567,47 @@ def categorias_encerramento():
     body = request.get_json(silent=True) or {}
     caixa_id = _resolve_caixa(body)
     config = _config_from_request(body)
+
+    categoria_field_id = _resolve_categoria_encerramento_field_id(config)
+    if not categoria_field_id:
+        raise JiraExtractorError('Campo "Categoria de Encerramento" não encontrado no Jira.')
+
+    # Mops Tv do Futuro usa uma consulta FIXA pedida explicitamente pelo
+    # usuário (ver fetch_categoria_encerramento_tv_fixo) — substitui
+    # período/projetos/status/Top N escolhidos na tela, então nem chega a
+    # olhar pra esses campos do corpo da requisição.
+    if caixa_id == CAIXA_TV:
+        # "Baixar Analítico": uma linha por chamado (Número/Data Criação/
+        # Classificação/Categoria de Encerramento) em vez da contagem
+        # agregada — usa o campo "Classificação" (mesmo de Análise de
+        # Jornada, diferente de "Categoria de Encerramento"), resolvido só
+        # quando esse modo é pedido.
+        if _is_download(body) and body.get("analitico"):
+            classificacao_field_id = _resolve_classificacao_field_id(config)
+            if not classificacao_field_id:
+                raise JiraExtractorError('Campo "Classificação" não encontrado no Jira.')
+            linhas = fetch_categoria_encerramento_tv_fixo_analitico(
+                config, CAIXAS[caixa_id]["grupos"], classificacao_field_id, categoria_field_id
+            )
+            return _send_rows(linhas, "categorias_encerramento_tv_analitico", body.get("format"))
+
+        counts, total = fetch_categoria_encerramento_tv_fixo(config, CAIXAS[caixa_id]["grupos"], categoria_field_id)
+        categorias = [
+            {
+                "categoria": categoria,
+                "quantidade": qtd,
+                "percentual": round(qtd / total * 100, 1) if total else 0.0,
+            }
+            for categoria, qtd in counts.most_common()
+        ]
+        if _is_download(body):
+            linhas = [
+                {"Categoria": c["categoria"], "Issues (Chamados)": c["quantidade"], "%": c["percentual"]}
+                for c in categorias
+            ]
+            return _send_rows(linhas, "categorias_encerramento_tv", body.get("format"))
+        return jsonify({"tv_fixo": {"total_chamados": total, "categorias": categorias}})
+
     inicio, fim = _parse_periodo(body)
 
     incluir_encerrados = bool(body.get("encerrados", True))
@@ -1317,22 +1622,17 @@ def categorias_encerramento():
     if top_n not in CATEGORIAS_TOP_N_OPCOES:
         top_n = 10
 
-    categoria_field_id = _resolve_categoria_encerramento_field_id(config)
-    if not categoria_field_id:
-        raise JiraExtractorError('Campo "Categoria de Encerramento" não encontrado no Jira.')
-
     grupos = CAIXAS[caixa_id]["grupos"]
     projetos = _projetos_selecionados(body)
-    montar_payload = _categorias_payload_tv if caixa_id == CAIXA_TV else _categorias_payload
     payload = {}
 
     if incluir_encerrados:
         counts, total = fetch_categoria_encerrados(config, grupos, inicio, fim, categoria_field_id, projetos=projetos)
-        payload["encerrados"] = montar_payload(counts, total, top_n)
+        payload["encerrados"] = _categorias_payload(counts, total, top_n)
 
     if incluir_reabertos:
         counts, total = fetch_categoria_reabertos(config, grupos, inicio, fim, categoria_field_id, projetos=projetos)
-        payload["reabertos"] = montar_payload(counts, total, top_n)
+        payload["reabertos"] = _categorias_payload(counts, total, top_n)
 
     return jsonify(payload)
 
@@ -1415,6 +1715,36 @@ def criados_resolvidos():
     return jsonify(resultado)
 
 
+@app.route("/api/distribuicao", methods=["POST"])
+def distribuicao():
+    """Ação "Distribuição": Convencional/Priorizado/COTI (resolvidos) + PDST
+    criados, uma barra empilhada por dia dentro do período — ver
+    fetch_distribuicao_tratados. "grupos" (opcional, painel "SELECIONAR
+    CAIXAS") restringe a quais grupos (N1/N2/Prod) entram na contagem."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    config = _config_from_request(body)
+    inicio, fim = _parse_periodo(body)
+    grupos = _grupos_selecionados(body, caixa_id)
+    projetos = _projetos_selecionados(body)
+
+    tipo_incidente_field_id = None
+    try:
+        tipo_incidente_field_id = _resolve_tipo_incidente_mops_field_id(config)
+    except Exception:
+        app.logger.exception('Falha ao resolver o campo "Tipo Incidente MOPS"')
+
+    resultado = fetch_distribuicao_tratados(
+        config,
+        grupos,
+        inicio,
+        fim,
+        tipo_incidente_field_id=tipo_incidente_field_id,
+        projetos=projetos,
+    )
+    return jsonify(resultado)
+
+
 @app.route("/api/report-vini", methods=["POST"])
 def report_vini():
     """"Report Vini" — específico da caixa Mops Tv do Futuro: consolida num
@@ -1464,6 +1794,62 @@ def report_vini():
             "reabertos": reabertos,
             "categorias_encerrados": categorias_encerrados,
         }
+    )
+
+
+@app.route("/api/tv-resolvidos-reabertos", methods=["POST"])
+def tv_resolvidos_reabertos():
+    """Botão específico da caixa Mops Tv do Futuro: Excel de 2 abas pro
+    período informado —
+
+      - "Resolvidos e Encerrados": status IN (Resolvido, Encerrado) AND
+        resolutiondate no período (fetch_resolvidos_encerrados_analitico).
+      - "Reabertos": status WAS "Reaberto" em algum momento AND created no
+        período (fetch_reabertos_analitico).
+
+    Cada linha traz Número do Chamado, Data Criação, Classificação e
+    Categoria de Encerramento (mesmas colunas do analítico de "Categorias
+    de Encerramento"). Sempre os 2 projetos (Central de Incidentes +
+    Abertura de Chamados) — "Todos os resolvidos/reabertos" não deveria
+    variar conforme o painel "PROJETOS" da tela, então não usa
+    _projetos_selecionados aqui."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    if caixa_id != CAIXA_TV:
+        raise JiraExtractorError('Essa extração é específica da caixa "Mops Tv do Futuro".')
+
+    config = _config_from_request(body)
+    inicio, fim = _parse_periodo(body)
+    grupos = CAIXAS[caixa_id]["grupos"]
+    projetos = [PROJETO_INC, PROJETO_PDST]
+
+    classificacao_field_id = _resolve_classificacao_field_id(config)
+    if not classificacao_field_id:
+        raise JiraExtractorError('Campo "Classificação" não encontrado no Jira.')
+    categoria_field_id = _resolve_categoria_encerramento_field_id(config)
+    if not categoria_field_id:
+        raise JiraExtractorError('Campo "Categoria de Encerramento" não encontrado no Jira.')
+
+    resolvidos_rows = fetch_resolvidos_encerrados_analitico(
+        config, grupos, inicio, fim, classificacao_field_id, categoria_field_id, projetos=projetos
+    )
+    reabertos_rows = fetch_reabertos_analitico(
+        config, grupos, inicio, fim, classificacao_field_id, categoria_field_id, projetos=projetos
+    )
+
+    if not resolvidos_rows and not reabertos_rows:
+        return jsonify({"empty": True, "message": "Nenhum chamado encontrado para o período."})
+
+    fieldnames = ["Número do Chamado", "Data Criação", "Classificação", "Categoria de Encerramento"]
+    data = _rows_to_excel_bytes_multi(
+        [("Resolvidos e Encerrados", resolvidos_rows), ("Reabertos", reabertos_rows)], fieldnames
+    )
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return send_file(
+        io.BytesIO(data),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"tv_resolvidos_reabertos_{timestamp}.xlsx",
     )
 
 

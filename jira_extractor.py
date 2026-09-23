@@ -196,6 +196,7 @@ def fetch_issues(config, jql, fields):
     page_size = config["page_size"]
     next_page_token = None
     page = 1
+    concorrencia_tentativas = 0
 
     while True:
         body = {
@@ -211,6 +212,23 @@ def fetch_issues(config, jql, fields):
         if response.status_code == 401:
             raise JiraExtractorError("Falha de autenticação (401). Verifique o e-mail e o API Token.")
         if response.status_code == 400:
+            # O Jira Cloud usa esse mesmo 400 genérico ("tente de novo mais
+            # tarde") tanto pra JQL realmente inválida quanto pra estouro do
+            # limite de requisições concorrentes da conta — com vários
+            # widgets da home buscando em paralelo, é essa segunda situação
+            # que aparece na prática. Retry com backoff antes de desistir;
+            # uma JQL de fato inválida vai continuar falhando do mesmo jeito
+            # depois das tentativas.
+            if "tente de novo mais tarde" in response.text.lower() and concorrencia_tentativas < 5:
+                concorrencia_tentativas += 1
+                espera = 2 * concorrencia_tentativas
+                log.warning(
+                    "Jira recusou por concorrência (400, tentativa %d/5). Tentando novamente em %ds...",
+                    concorrencia_tentativas,
+                    espera,
+                )
+                time.sleep(espera)
+                continue
             raise JiraExtractorError(f"JQL inválida ou requisição incorreta (400): {response.text}")
         if response.status_code >= 500:
             log.warning("Erro do servidor Jira (%s). Tentando novamente em 5s...", response.status_code)
@@ -254,11 +272,15 @@ def _extract_values(field_value, key="value"):
     return [valor] if valor else []
 
 
-# Cache em memória de processo: (workspace_id, object_id) -> label resolvido
-# via API de Assets. Assim como os outros caches deste módulo, guarda só
-# metadado (nome de um objeto do catálogo), não credencial nem dado de
-# chamado — sobrevive enquanto o processo do servidor estiver de pé.
-_asset_label_cache = {}
+# Cache em memória de processo: (workspace_id, object_id) -> JSON bruto do
+# objeto resolvido via API de Assets. Compartilhado entre
+# _resolve_asset_label (extrai "label") e _resolve_asset_alm (extrai o
+# atributo "ALM", usado pela ação "Extração por Query") — os dois lêem do
+# mesmo objeto, então cacheiam a resposta inteira em vez de buscá-la duas
+# vezes. Assim como os outros caches deste módulo, guarda só metadado
+# (dados do objeto do catálogo), não credencial nem dado de chamado —
+# sobrevive enquanto o processo do servidor estiver de pé.
+_asset_object_cache = {}
 
 
 def _extract_asset_refs(field_value):
@@ -277,14 +299,14 @@ def _extract_asset_refs(field_value):
     return refs or None
 
 
-def _resolve_asset_label(config, workspace_id, object_id):
-    """Busca o nome legível (label) de um objeto do catálogo Jira Assets.
-    Usa a mesma autenticação (e-mail + API Token) das demais chamadas —
-    a API de Assets aceita Basic Auth igual ao restante da REST API do
-    Jira Cloud, só que por um domínio diferente (api.atlassian.com)."""
+def _fetch_asset_object(config, workspace_id, object_id):
+    """Busca (com cache) o JSON bruto de um objeto do catálogo Jira Assets.
+    Usa a mesma autenticação (e-mail + API Token) das demais chamadas — a
+    API de Assets aceita Basic Auth igual ao restante da REST API do Jira
+    Cloud, só que por um domínio diferente (api.atlassian.com)."""
     cache_key = (workspace_id, object_id)
-    cached = _asset_label_cache.get(cache_key)
-    if cached:
+    cached = _asset_object_cache.get(cache_key)
+    if cached is not None:
         return cached
 
     url = f"https://api.atlassian.com/jsm/assets/workspace/{workspace_id}/v1/object/{object_id}"
@@ -296,10 +318,44 @@ def _resolve_asset_label(config, workspace_id, object_id):
     )
     response.raise_for_status()
     data = response.json()
-    label = data.get("label") or data.get("name") or object_id
 
-    _asset_label_cache[cache_key] = label
-    return label
+    _asset_object_cache[cache_key] = data
+    return data
+
+
+def _resolve_asset_label(config, workspace_id, object_id):
+    """Busca o nome legível (label) de um objeto do catálogo Jira Assets."""
+    data = _fetch_asset_object(config, workspace_id, object_id)
+    return data.get("label") or data.get("name") or object_id
+
+
+# Nome do atributo (schema do catálogo Jira Assets) usado pela ação
+# "Extração por Query": quando "Categoria de Encerramento" é uma
+# referência a objeto (um "ofensor" do catálogo), esse é o atributo que
+# guarda o número do ALM vinculado a ele — mesmo nome já usado no campo
+# "ALM" do próprio chamado (ver ALM_CAMPO), mas aqui é o atributo do
+# OBJETO de catálogo, não um campo do chamado.
+ALM_ATTRIBUTE_NAME = "ALM"
+
+
+def _resolve_asset_alm(config, workspace_id, object_id):
+    """Busca o valor do atributo "ALM" de um objeto do catálogo Jira Assets
+    (mesmo objeto de _resolve_asset_label, cache compartilhado) — usado
+    pela ação "Extração por Query" para trazer o ALM do "ofensor"
+    vinculado à Categoria de Encerramento de cada chamado. Devolve None se
+    o objeto não tiver esse atributo preenchido (ou não tiver esse
+    atributo no schema)."""
+    data = _fetch_asset_object(config, workspace_id, object_id)
+    for attr in data.get("attributes") or []:
+        objeto_tipo_attr = attr.get("objectTypeAttribute") or {}
+        nome_attr = (objeto_tipo_attr.get("name") or attr.get("name") or "").strip().casefold()
+        if nome_attr != ALM_ATTRIBUTE_NAME.casefold():
+            continue
+        valores = attr.get("objectAttributeValues") or []
+        if valores:
+            return valores[0].get("displayValue") or valores[0].get("value")
+        return None
+    return None
 
 
 def _extract_categoria_values(config, field_value):
@@ -336,13 +392,14 @@ _PRECACHE_CATEGORIA_WORKERS = 20
 
 
 def _precache_categoria_labels(config, issues, categoria_field_id):
-    """Resolve em paralelo o label de cada objeto do Jira Assets distinto
-    referenciado por "categoria_field_id" nesses "issues", populando
-    _asset_label_cache ANTES da contagem — sem isso, fetch_categoria_
-    encerrados/fetch_categoria_reabertos resolvem um objeto novo por vez,
-    em série, dentro do loop de contagem (só a repetição de uma categoria
-    já vista se beneficia do cache; a primeira ocorrência de cada uma
-    sempre pagava a chamada de rede sequencialmente)."""
+    """Resolve em paralelo o objeto do Jira Assets (label + atributos, ver
+    _fetch_asset_object) de cada referência distinta em "categoria_field_id"
+    nesses "issues", populando _asset_object_cache ANTES da contagem — sem
+    isso, fetch_categoria_encerrados/fetch_categoria_reabertos (e
+    fetch_chamados_por_query, que também precisa do ALM) resolvem um
+    objeto novo por vez, em série, dentro do loop de contagem (só a
+    repetição de uma categoria já vista se beneficia do cache; a primeira
+    ocorrência de cada uma sempre pagava a chamada de rede sequencialmente)."""
     refs_unicas = set()
     for issue in issues:
         field_value = issue.get("fields", {}).get(categoria_field_id)
@@ -350,7 +407,7 @@ def _precache_categoria_labels(config, issues, categoria_field_id):
         if refs:
             refs_unicas.update(refs)
 
-    pendentes = [ref for ref in refs_unicas if ref not in _asset_label_cache]
+    pendentes = [ref for ref in refs_unicas if ref not in _asset_object_cache]
     if not pendentes:
         return
 
@@ -943,6 +1000,33 @@ def _grupo_clause(grupos):
     return f'"Grupo Solucionador[Group Picker (single group)]" IN ({grupos_str})'
 
 
+def _grupo_projeto_clause(grupos, projetos, prod_projetos=None):
+    """Cláusula "Grupo Solucionador IN (...) AND project IN (...)".
+
+    "prod_projetos" é opcional: quando informado E o grupo Prod
+    (GRUPO_PROD) está em "grupos", o grupo Prod é isolado numa condição À
+    PARTE, considerando "prod_projetos" em vez de "projetos" — o resto dos
+    grupos (N1/N2) continua com "projetos" normalmente. Usado pelos
+    widgets da home (N1/N2 só "Central de Incidentes", Prod só "Abertura
+    de Chamados"); sem "prod_projetos" (todo o resto do app, comportamento
+    inalterado), é só um "IN (...)" único pra todos os grupos.
+    """
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
+
+    if prod_projetos is None or GRUPO_PROD not in grupos:
+        return f"{_grupo_clause(grupos)} AND project IN ({projetos_str})"
+
+    outros_grupos = [g for g in grupos if g != GRUPO_PROD]
+    prod_projetos_str = ", ".join(f'"{p}"' for p in prod_projetos)
+    prod_clause = f'"Grupo Solucionador[Group Picker (single group)]" = "{GRUPO_PROD}" AND project IN ({prod_projetos_str})'
+
+    if not outros_grupos:
+        return f"({prod_clause})"
+
+    outros_clause = f"{_grupo_clause(outros_grupos)} AND project IN ({projetos_str})"
+    return f"(({outros_clause}) OR ({prod_clause}))"
+
+
 # Mesmos status considerados "fechados" pelo gadget de dashboard nativo do
 # Jira que esse widget replica (mais amplo que STATUS_FECHADOS_CLARINHA:
 # inclui também "Reprovado"/"Arquivado", que existem no fluxo de Central de
@@ -998,7 +1082,7 @@ def fetch_violados_abertos_por_grupo(config, grupos, grupo_field_id):
     return [{"grupo": grupo, "total": contagem.get(grupo, 0)} for grupo in grupos]
 
 
-def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id):
+def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id, prod_projetos=None):
     """Réplica de um gadget de dashboard nativo do Jira (Two Dimensional
     Filter Statistics: Grupo Solucionador × mês de criação) — usado na home
     da versão web. Entre os chamados atualmente ABERTOS (status fora de
@@ -1006,12 +1090,14 @@ def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id):
     Central de Incidentes, conta quantos foram criados em cada mês, por
     grupo. Só entram meses com pelo menos 1 chamado em algum grupo (mesmo
     comportamento do gadget original, que esconde colunas totalmente
-    vazias em vez de mostrar tudo zerado)."""
+    vazias em vez de mostrar tudo zerado).
+
+    "prod_projetos" (opcional): ver _grupo_projeto_clause — quando
+    informado, o grupo Prod passa a considerar esses projetos em vez de
+    "Central de Incidentes" (N1/N2 continuam só Central de Incidentes)."""
     status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
-    jql = (
-        f'{_grupo_clause(grupos)} AND project IN ("{PROJETO_INC}") '
-        f"AND status NOT IN ({status_clause})"
-    )
+    grupo_projeto_clause = _grupo_projeto_clause(grupos, [PROJETO_INC], prod_projetos)
+    jql = f"{grupo_projeto_clause} AND status NOT IN ({status_clause})"
     issues = fetch_issues(config, jql, ["created", grupo_field_id])
 
     contagem = {grupo: Counter() for grupo in grupos}
@@ -1042,6 +1128,159 @@ def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id):
         "linhas": linhas,
         "totais_por_mes": [totais_por_mes[mes] for mes in meses],
         "total_geral": total_geral,
+    }
+
+
+def _extract_categoria_com_alm(config, field_value):
+    """Como _extract_categoria_values, mas devolve também o ALM do
+    "ofensor" vinculado — só existe quando o campo é uma referência a
+    objeto do catálogo Jira Assets (mesmo formato de _extract_asset_refs);
+    campo de texto/seleção simples (Select List etc.) sai com ALM=None,
+    não tem objeto nenhum pra consultar (ver _resolve_asset_alm). Só a
+    primeira referência do campo é considerada, mesma convenção do resto
+    do módulo (um chamado raramente tem mais de um valor nesse campo).
+    Usado só pela ação "Extração por Query" (fetch_chamados_por_query)."""
+    asset_refs = _extract_asset_refs(field_value)
+    if asset_refs is None:
+        valores = _extract_values(field_value)
+        return (valores[0] if valores else None), None
+
+    workspace_id, object_id = asset_refs[0]
+    try:
+        categoria = _resolve_asset_label(config, workspace_id, object_id)
+    except Exception as e:
+        log.warning(
+            "Falha ao resolver objeto do Jira Assets (workspace=%s, object=%s): %s. "
+            "Usando o ID bruto como nome.",
+            workspace_id,
+            object_id,
+            e,
+        )
+        categoria = object_id
+
+    try:
+        alm = _resolve_asset_alm(config, workspace_id, object_id)
+    except Exception as e:
+        log.warning(
+            "Falha ao resolver o ALM do objeto do Jira Assets (workspace=%s, object=%s): %s.",
+            workspace_id,
+            object_id,
+            e,
+        )
+        alm = None
+
+    return categoria, alm
+
+
+def fetch_chamados_por_query(config, jql, categoria_field_id, classificacao_field_id, grupo_field_id=None):
+    """Busca chamados a partir de uma JQL informada livremente pelo usuário
+    (ação "Extração por Query") — diferente dos demais fetch_*, não monta
+    nenhuma cláusula a partir de grupo/projeto/caixa/período: usa
+    exatamente o texto digitado na tela. Sempre devolve as mesmas 8
+    colunas fixas: Número do Chamado, Categoria de Encerramento, ALM do
+    Ofensor, Status, Classificação, Grupo Solucionador, Data de Criação e
+    Responsável.
+
+    "categoria_field_id"/"classificacao_field_id" vêm resolvidos por nome
+    (_resolve_field_id, do lado da API web) — mesmo mecanismo do resto do
+    app, em vez de um ID fixo: o Jira desse ambiente tem mais de um campo
+    chamado "Classificação" (ex.: "Classificação (B2B)", "Classificação
+    (INC)"), então é a resolução por clauseNames que garante pegar o campo
+    "Classificação" de verdade, não um ID hardcoded que pode não bater em
+    outro esquema de projeto.
+
+    "grupo_field_id" é opcional (mesmo padrão best-effort de
+    fetch_chamados_a_violar/fetch_criados_x_resolvidos): quando a
+    resolução falha do lado da API web, a coluna "Grupo Solucionador" sai
+    vazia em vez de derrubar a extração inteira.
+
+    "Categoria de Encerramento" é lida com _extract_categoria_com_alm (em
+    vez de _extract_categoria_values): quando o campo é uma referência a
+    objeto do catálogo Jira Assets (um "ofensor"), também traz o atributo
+    "ALM" desse objeto pra coluna "ALM do Ofensor" — vazio quando o campo
+    é um Select List simples (sem objeto pra consultar) ou quando o objeto
+    não tem esse atributo preenchido. "Classificação" continua só com
+    _extract_categoria_values (label), mesmo mecanismo de sempre.
+    """
+    fields = ["status", "created", "assignee", categoria_field_id, classificacao_field_id]
+    if grupo_field_id:
+        fields = fields + [grupo_field_id]
+    issues = fetch_issues(config, jql, fields)
+
+    _precache_categoria_labels(config, issues, categoria_field_id)
+    _precache_categoria_labels(config, issues, classificacao_field_id)
+
+    rows = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        categoria, alm = _extract_categoria_com_alm(config, issue_fields.get(categoria_field_id))
+        classificacao = _extract_categoria_values(config, issue_fields.get(classificacao_field_id))
+        rows.append(
+            {
+                "Número do Chamado": issue.get("key"),
+                "Categoria de Encerramento": categoria,
+                "ALM do Ofensor": alm,
+                "Status": _extract(issue_fields.get("status"), "name"),
+                "Classificação": classificacao[0] if classificacao else None,
+                "Grupo Solucionador": (
+                    _extract_grupo_solucionador(issue_fields.get(grupo_field_id)) if grupo_field_id else None
+                ),
+                "Data de Criação": issue_fields.get("created"),
+                "Responsável": _extract(issue_fields.get("assignee"), "displayName"),
+            }
+        )
+
+    return rows
+
+
+def fetch_fornecedor_criacao_mensal(config, grupos, projetos=None, prod_projetos=None):
+    """Réplica de um gadget de dashboard nativo do Jira (Two Dimensional
+    Filter Statistics: Fornecedor Responsável × mês de criação) — usado na
+    home da versão web. Entre os chamados atualmente em "Aguardando
+    Fornecedor" dos grupos da caixa, conta quantos foram criados em cada
+    mês, por Fornecedor Responsável (extract_fornecedor — "None" quando o
+    campo não está preenchido, igual ao gadget nativo). Só entram meses
+    com pelo menos 1 chamado em algum fornecedor (mesmo comportamento do
+    gadget original, que esconde colunas totalmente vazias em vez de
+    mostrar tudo zerado).
+
+    Diferente de fetch_grupo_criacao_mensal (lista fixa de grupos): aqui os
+    valores de Fornecedor Responsável são descobertos dinamicamente nos
+    dados, e as linhas saem ordenadas do maior total pro menor (ranking).
+
+    "prod_projetos" (opcional): ver _grupo_projeto_clause — usado pela
+    home (N1/N2 só "Central de Incidentes", Prod só "Abertura de
+    Chamados")."""
+    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
+    jql = f'{grupo_projeto_clause} AND status = "Aguardando Fornecedor"'
+    issues = fetch_issues(config, jql, ["created"] + FORNECEDOR_RESPONSAVEL_FIELDS)
+
+    contagem = {}
+    total_por_fornecedor = Counter()
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        fornecedor = extract_fornecedor(issue_fields) or "None"
+        mes = (issue_fields.get("created") or "")[:7]
+        if not mes:
+            continue
+        contagem.setdefault(fornecedor, Counter())[mes] += 1
+        total_por_fornecedor[fornecedor] += 1
+
+    meses = sorted({mes for c in contagem.values() for mes in c})
+
+    linhas = []
+    totais_por_mes = Counter()
+    for fornecedor, total in total_por_fornecedor.most_common():
+        por_mes = [contagem[fornecedor].get(mes, 0) for mes in meses]
+        for mes, valor in zip(meses, por_mes):
+            totais_por_mes[mes] += valor
+        linhas.append({"fornecedor": fornecedor, "por_mes": por_mes, "total": total})
+
+    return {
+        "meses": meses,
+        "linhas": linhas,
+        "totais_por_mes": [totais_por_mes[mes] for mes in meses],
+        "total_geral": sum(total_por_fornecedor.values()),
     }
 
 
@@ -1167,6 +1406,7 @@ def fetch_chamados_criticos(
     projetos=None,
     nivel_escalonamento_field_id=None,
     responsavel_mops_field_id=None,
+    prod_projetos=None,
 ):
     """Compara, entre os chamados criados no período informado, quantos já
     foram abertos como COTI (priority WAS IN (P0, P1, P2)) em algum momento x
@@ -1176,6 +1416,10 @@ def fetch_chamados_criticos(
     (opcional) restringe os projetos considerados; por padrão os dois
     (Central de Incidentes + Abertura de Chamados, igual às demais ações de
     tela).
+
+    "prod_projetos" (opcional): quando informado, o grupo Prod passa a
+    considerar esses projetos em vez de "projetos" (ver _grupo_projeto_clause)
+    — usado pelo widget COTI da home.
 
     "Pontuais" (abertos − atual) são os que já foram COTI mas não são mais —
     desceram de prioridade ou já foram resolvidos abaixo de P0/P1/P2.
@@ -1197,12 +1441,10 @@ def fetch_chamados_criticos(
     contrário do Nível de Escalonamento, aqui o nome do responsável só é
     lido através do campo, não tem como contar sem o ID).
     """
-    grupo_clause_all = _grupo_clause(grupos)
-    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
-    projeto_clause = f"project IN ({projetos_str})"
+    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
     start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
     end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    base_clause = f'{grupo_clause_all} AND {projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
+    base_clause = f'{grupo_projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
 
     total_criados = len(fetch_issues(config, base_clause, ["key"]))
 
@@ -1702,6 +1944,157 @@ def fetch_categoria_encerrados(config, grupos, start_date, end_date, categoria_f
     return counts, len(issues)
 
 
+# Data fixa (não vem de período escolhido na tela) usada pela consulta
+# abaixo — pedida explicitamente pelo usuário como piso do relatório
+# "Categorias de Encerramento" da caixa Mops Tv do Futuro.
+CATEGORIA_ENCERRAMENTO_TV_DATA_INICIO = "2026-06-01"
+
+
+def _jql_categoria_encerramento_tv_fixo(grupos):
+    """JQL fixa pedida explicitamente pelo usuário como referência do
+    relatório "Categorias de Encerramento" da caixa Mops Tv do Futuro —
+    compartilhada entre fetch_categoria_encerramento_tv_fixo (contagem
+    agregada) e fetch_categoria_encerramento_tv_fixo_analitico (uma linha
+    por chamado):
+
+        project IN ("Central de Incidentes", "Abertura de Chamados")
+        AND "Grupo Solucionador[Group Picker (single group)]" IN (
+            <grupos da caixa Tv do Futuro>
+        )
+        AND created > "2026-06-01"
+        ORDER BY "cf[16122]" ASC
+
+    "grupos" aceita tanto uma lista de strings quanto a lista de dicts
+    {"nome": ...}."""
+    nomes_grupos = [g["nome"] if isinstance(g, dict) else g for g in grupos]
+    grupos_str = ", ".join(f"'{g}'" for g in nomes_grupos)
+    return (
+        f'project IN ("{PROJETO_INC}", "{PROJETO_PDST}") '
+        f'AND "Grupo Solucionador[Group Picker (single group)]" IN ({grupos_str}) '
+        f'AND created > "{CATEGORIA_ENCERRAMENTO_TV_DATA_INICIO}" '
+        f'ORDER BY "cf[16122]" ASC'
+    )
+
+
+def fetch_categoria_encerramento_tv_fixo(config, grupos, categoria_field_id):
+    """Busca de "Categorias de Encerramento" ESPECÍFICA da caixa Mops Tv do
+    Futuro — substitui período/projetos/status escolhidos na tela pela JQL
+    fixa de _jql_categoria_encerramento_tv_fixo.
+
+    Sem filtro de status/resolutiondate (diferente de
+    fetch_categoria_encerrados acima): conta TODO chamado da caixa TV
+    criado desde a data fixa, agrupado por "Categoria de Encerramento" —
+    chamados sem essa categoria preenchida entram no balde "Sem categoria"
+    (mesmo comportamento do gadget nativo "Pie Chart" do Jira, que sempre
+    reserva uma fatia pros sem valor). "grupos" aceita tanto uma lista de
+    strings quanto a lista de dicts {"nome": ...}. Devolve (Counter, total
+    de chamados encontrados)."""
+    jql = _jql_categoria_encerramento_tv_fixo(grupos)
+    issues = fetch_issues(config, jql, ["key", categoria_field_id])
+    _precache_categoria_labels(config, issues, categoria_field_id)
+
+    counts = Counter()
+    for issue in issues:
+        valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
+        if valores:
+            counts.update(valores)
+        else:
+            counts["Sem categoria"] += 1
+    return counts, len(issues)
+
+
+def _linhas_analiticas_categoria(config, issues, classificacao_field_id, categoria_encerramento_field_id):
+    """Uma linha por chamado — Número do Chamado, Data de Criação,
+    Classificação e Categoria de Encerramento — a partir de issues já
+    buscados (precisam ter vindo com "created" + os dois campos como
+    fields). Compartilhado por fetch_categoria_encerramento_tv_fixo_analitico,
+    fetch_resolvidos_encerrados_analitico e fetch_reabertos_analitico."""
+    _precache_categoria_labels(config, issues, classificacao_field_id)
+    _precache_categoria_labels(config, issues, categoria_encerramento_field_id)
+
+    rows = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        valores_classificacao = _extract_categoria_values(config, issue_fields.get(classificacao_field_id))
+        valores_categoria_encerramento = _extract_categoria_values(
+            config, issue_fields.get(categoria_encerramento_field_id)
+        )
+        rows.append(
+            {
+                "Número do Chamado": issue.get("key"),
+                "Data Criação": issue_fields.get("created"),
+                "Classificação": valores_classificacao[0] if valores_classificacao else None,
+                "Categoria de Encerramento": (
+                    valores_categoria_encerramento[0] if valores_categoria_encerramento else "Sem categoria"
+                ),
+            }
+        )
+    return rows
+
+
+def fetch_categoria_encerramento_tv_fixo_analitico(
+    config, grupos, classificacao_field_id, categoria_encerramento_field_id
+):
+    """Como fetch_categoria_encerramento_tv_fixo (mesma JQL fixa), mas
+    devolve o DETALHE analítico — uma linha por chamado, com Número do
+    Chamado, Data de Criação, Classificação (campo "Classificação", mesmo
+    de Análise de Jornada, diferente de "Categoria de Encerramento") e
+    Categoria de Encerramento — usado no "Baixar Analítico" da tela."""
+    jql = _jql_categoria_encerramento_tv_fixo(grupos)
+    fields = ["created", classificacao_field_id, categoria_encerramento_field_id]
+    issues = fetch_issues(config, jql, fields)
+    return _linhas_analiticas_categoria(config, issues, classificacao_field_id, categoria_encerramento_field_id)
+
+
+def _grupo_projeto_periodo_clause(grupos, projetos, campo_data, start_date, end_date):
+    """"Grupo Solucionador IN (...) AND project IN (...) AND <campo_data>
+    entre início/fim" — parte comum de fetch_resolvidos_encerrados_analitico/
+    fetch_reabertos_analitico abaixo ("campo_data" é "resolutiondate" ou
+    "created", conforme a busca)."""
+    nomes_grupos = [g["nome"] if isinstance(g, dict) else g for g in grupos]
+    grupo_clause_all = _grupo_clause(nomes_grupos)
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC]))
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    return (
+        f'{grupo_clause_all} AND project IN ({projetos_str}) '
+        f'AND {campo_data} >= "{start_str}" AND {campo_data} <= "{end_str}"'
+    )
+
+
+def fetch_resolvidos_encerrados_analitico(
+    config, grupos, start_date, end_date, classificacao_field_id, categoria_encerramento_field_id, projetos=None
+):
+    """Analítico (uma linha por chamado) de "Resolvidos e Encerrados no
+    período" — status IN (Resolvido, Encerrado) AND resolutiondate no
+    período, mesma população de fetch_categoria_encerrados — usado na aba
+    "Resolvidos e Encerrados" do Excel de 2 abas da caixa Mops Tv do
+    Futuro (ver /api/tv-resolvidos-reabertos). "grupos" aceita tanto uma
+    lista de strings quanto a lista de dicts {"nome": ...}; "projetos"
+    (opcional) restringe os projetos considerados, por padrão só "Central
+    de Incidentes"."""
+    clause = _grupo_projeto_periodo_clause(grupos, projetos, "resolutiondate", start_date, end_date)
+    jql = f'{clause} AND status IN ("Resolvido", "Encerrado")'
+    fields = ["created", classificacao_field_id, categoria_encerramento_field_id]
+    issues = fetch_issues(config, jql, fields)
+    return _linhas_analiticas_categoria(config, issues, classificacao_field_id, categoria_encerramento_field_id)
+
+
+def fetch_reabertos_analitico(
+    config, grupos, start_date, end_date, classificacao_field_id, categoria_encerramento_field_id, projetos=None
+):
+    """Analítico (uma linha por chamado) de "Reabertos" — status WAS
+    "Reaberto" em algum momento (não o status atual) AND created no
+    período, mesma população de fetch_categoria_reabertos — usado na aba
+    "Reabertos" do Excel de 2 abas da caixa Mops Tv do Futuro (ver
+    /api/tv-resolvidos-reabertos)."""
+    clause = _grupo_projeto_periodo_clause(grupos, projetos, "created", start_date, end_date)
+    jql = f'{clause} AND status WAS "Reaberto"'
+    fields = ["created", classificacao_field_id, categoria_encerramento_field_id]
+    issues = fetch_issues(config, jql, fields)
+    return _linhas_analiticas_categoria(config, issues, classificacao_field_id, categoria_encerramento_field_id)
+
+
 def fetch_categoria_reabertos(config, grupos, start_date, end_date, categoria_field_id, projetos=None):
     """Busca a contagem por 'Categoria de Encerramento' entre os chamados que
     passaram por 'Reaberto' no período — mesma população de 'Soma total de
@@ -1733,7 +2126,9 @@ def fetch_categoria_reabertos(config, grupos, start_date, end_date, categoria_fi
     return counts, total
 
 
-def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=None, grupo_field_id=None):
+def fetch_criados_x_resolvidos(
+    config, grupos, start_date, end_date, projetos=None, grupo_field_id=None, prod_projetos=None
+):
     """Compara, dia a dia dentro do período informado, quantos chamados foram
     criados (created) e quantos foram resolvidos (status IN ("Resolvido",
     "Encerrado") AND resolutiondate no período) — mesma ideia do gadget
@@ -1742,6 +2137,11 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
     por padrão os dois (Central de Incidentes + Abertura de Chamados, igual
     às demais ações de tela).
 
+    "prod_projetos" (opcional): quando informado, o grupo Prod passa a
+    considerar esses projetos em vez de "projetos" (ver _grupo_projeto_clause)
+    — usado pelos widgets da home, onde N1/N2 ficam só em "Central de
+    Incidentes" e Prod só em "Abertura de Chamados".
+
     Também calcula, entre os resolvidos (Resolvido + Encerrado), quantos
     ficaram dentro do prazo de SLA "Tempo de Resolução" x quantos violaram —
     mesma lógica/campo já usados no Relatório Consolidado. Chamados sem esse
@@ -1749,23 +2149,25 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
 
     "grupo_field_id" é opcional (mesmo padrão best-effort de fetch_chamados_a_violar):
     quando informado, calcula também "por_grupo" — pra cada grupo da caixa,
-    o total de chamados encerrados no período, a média diária (total
-    dividido pelo número de dias do período selecionado) e o TMA aproximado
-    em horas (HORAS_TRABALHO_DIA ÷ média diária — não vem do changelog de
-    status, é só uma estimativa a partir do volume). Sem esse campo,
-    "por_grupo" sai None.
+    quantos foram criados no período ("criados"), o total de chamados
+    encerrados ("total"), a média diária (total dividido pelo número de
+    dias do período selecionado) e o TMA aproximado em horas
+    (HORAS_TRABALHO_DIA ÷ média diária — não vem do changelog de status, é
+    só uma estimativa a partir do volume). Sem esse campo, "por_grupo" sai
+    None.
     """
-    grupo_clause_all = _grupo_clause(grupos)
-    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
-    projeto_clause = f"project IN ({projetos_str})"
+    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
     start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
     end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
 
-    criados_jql = f'{grupo_clause_all} AND {projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
-    criados_issues = fetch_issues(config, criados_jql, ["created"])
+    criados_jql = f'{grupo_projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
+    criados_fields = ["created"]
+    if grupo_field_id:
+        criados_fields = criados_fields + [grupo_field_id]
+    criados_issues = fetch_issues(config, criados_jql, criados_fields)
 
     resolvidos_jql = (
-        f'{grupo_clause_all} AND {projeto_clause} AND status IN ("Resolvido", "Encerrado") '
+        f'{grupo_projeto_clause} AND status IN ("Resolvido", "Encerrado") '
         f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
     )
     resolvidos_fields = ["resolutiondate"] + SLA_RESOLUTION_FIELDS
@@ -1816,10 +2218,16 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
                 for issue in resolvidos_issues
                 if _extract_grupo_solucionador(issue.get("fields", {}).get(grupo_field_id)) == grupo
             )
+            criados_grupo = sum(
+                1
+                for issue in criados_issues
+                if _extract_grupo_solucionador(issue.get("fields", {}).get(grupo_field_id)) == grupo
+            )
             media_diaria = round(total_grupo / num_dias, 1)
             por_grupo.append(
                 {
                     "grupo": grupo,
+                    "criados": criados_grupo,
                     "total": total_grupo,
                     "media_diaria": media_diaria,
                     "tma_horas": round(HORAS_TRABALHO_DIA / media_diaria, 1) if media_diaria else None,
@@ -1838,7 +2246,174 @@ def fetch_criados_x_resolvidos(config, grupos, start_date, end_date, projetos=No
     }
 
 
-def fetch_colaboradores_mes(config, grupos, start_date, end_date, projetos=None):
+COTI_PRIORIDADES = ("P0", "P1", "P2")
+
+
+def _parse_jira_datetime(valor_iso):
+    """Converte "created"/"resolutiondate" (ex.:
+    "2024-01-15T14:23:45.678-0300") num datetime aware — formato diferente
+    do "iso8601" do ciclo de SLA (ver extract_sla_breach), que já vem sem
+    frações de segundo."""
+    if not valor_iso:
+        return None
+    try:
+        return datetime.strptime(valor_iso, "%Y-%m-%dT%H:%M:%S.%f%z")
+    except ValueError:
+        try:
+            return datetime.strptime(valor_iso, "%Y-%m-%dT%H:%M:%S%z")
+        except ValueError:
+            return None
+
+
+def _tma_horas_medio(pares_created_resolutiondate):
+    """Média, em horas, de (resolutiondate - created) sobre os pares
+    informados — pares sem uma das duas datas (ou com data em formato
+    inesperado) são ignorados. None quando não há nenhum par válido."""
+    duracoes = []
+    for criado_iso, resolvido_iso in pares_created_resolutiondate:
+        criado = _parse_jira_datetime(criado_iso)
+        resolvido = _parse_jira_datetime(resolvido_iso)
+        if criado and resolvido:
+            duracoes.append((resolvido - criado).total_seconds() / 3600)
+    return round(sum(duracoes) / len(duracoes), 1) if duracoes else None
+
+
+def fetch_distribuicao_tratados(config, grupos, start_date, end_date, tipo_incidente_field_id=None, projetos=None):
+    """Ação "Distribuição": classifica os chamados TRATADOS (resolvidos)
+    dentro do período informado em 3 categorias, DIA A DIA (uma barra
+    empilhada por dia, mesma ideia de fetch_criados_x_resolvidos) —
+
+      - Convencional (azul): resolvido, priority fora de P0/P1/P2 e "Tipo
+        Incidente MOPS" vazio.
+      - Priorizado (amarelo): resolvido, priority fora de P0/P1/P2 e "Tipo
+        Incidente MOPS" preenchido.
+      - COTI (vermelho): resolvido com priority IN (P0, P1, P2) —
+        independente de "Tipo Incidente MOPS" (quando os dois critérios
+        batem ao mesmo tempo, COTI tem prioridade).
+
+    As 3 categorias acima são mutuamente exclusivas e cobrem 100% dos
+    resolvidos de cada dia. À parte, soma quantos chamados do projeto
+    "Abertura de Chamados" (PDST) foram CRIADOS (created, não
+    resolutiondate) naquele mesmo dia — "pdst_criados" (cinza) — essa
+    contagem não entra nas 3 categorias acima nem depende delas (PDST não
+    usa priority/"Tipo Incidente MOPS" do jeito que Central de Incidentes
+    usa).
+
+    "grupos" restringe quais grupos (N1/N2/Prod) entram na contagem (via
+    JQL, não aparece separado no resultado — a barra de cada dia já soma
+    todos os grupos selecionados). "tipo_incidente_field_id" é opcional
+    (mesmo padrão best-effort de fetch_chamados_a_violar): sem ele, nenhum
+    resolvido cai em "priorizado" (tudo que não é COTI vira
+    "convencional"). "projetos" (opcional) restringe os projetos
+    considerados nos resolvidos; por padrão os dois (Central de Incidentes
+    + Abertura de Chamados, igual às demais ações de tela).
+
+    Também calcula o TMA (tempo médio de atendimento, em horas,
+    resolutiondate − created) de cada uma das 4 categorias — Convencional
+    entra como baseline de comparação pras outras 3 (Priorizado/COTI/PDST),
+    usado na pré-análise da tela pra embasar se os casos fora do fluxo
+    padrão de fato demoram mais (contexto: justificar violação de SLA).
+    Para Convencional/Priorizado/COTI usa os mesmos resolvidos já buscados
+    acima; PDST usa sua PRÓPRIA busca à parte (chamados do projeto
+    "Abertura de Chamados" RESOLVIDOS no período, não os "criados no
+    período" da barra cinza — não dá pra medir tempo de atendimento de
+    quem ainda nem foi resolvido)."""
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+
+    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos)
+    resolvidos_jql = (
+        f'{grupo_projeto_clause} AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    resolvidos_fields = ["priority", "created", "resolutiondate"]
+    if tipo_incidente_field_id:
+        resolvidos_fields.append(tipo_incidente_field_id)
+    resolvidos_issues = fetch_issues(config, resolvidos_jql, resolvidos_fields)
+
+    def _categoria(issue_fields):
+        prioridade = _extract(issue_fields.get("priority"), "name")
+        if prioridade in COTI_PRIORIDADES:
+            return "coti"
+        if tipo_incidente_field_id and issue_fields.get(tipo_incidente_field_id):
+            return "priorizado"
+        return "convencional"
+
+    pdst_jql = (
+        f'{_grupo_clause(grupos)} AND project = "{PROJETO_PDST}" '
+        f'AND created >= "{start_str}" AND created <= "{end_str}"'
+    )
+    pdst_issues = fetch_issues(config, pdst_jql, ["created"])
+
+    pdst_resolvidos_jql = (
+        f'{_grupo_clause(grupos)} AND project = "{PROJETO_PDST}" AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    pdst_resolvidos_issues = fetch_issues(config, pdst_resolvidos_jql, ["created", "resolutiondate"])
+
+    def _dia(valor_iso):
+        return valor_iso[:10] if valor_iso else None
+
+    contagem_por_dia = {}
+    for issue in resolvidos_issues:
+        issue_fields = issue.get("fields", {})
+        chave = _dia(issue_fields.get("resolutiondate"))
+        if not chave:
+            continue
+        contagem_por_dia.setdefault(chave, Counter())[_categoria(issue_fields)] += 1
+
+    pdst_por_dia = Counter(_dia(i.get("fields", {}).get("created")) for i in pdst_issues)
+
+    dias = []
+    totais = Counter()
+    dia_atual = start_date
+    while dia_atual <= end_date:
+        chave = dia_atual.strftime("%Y-%m-%d")
+        contagem_dia = contagem_por_dia.get(chave, Counter())
+        entrada = {
+            "data": chave,
+            "convencional": contagem_dia.get("convencional", 0),
+            "priorizado": contagem_dia.get("priorizado", 0),
+            "coti": contagem_dia.get("coti", 0),
+            "pdst_criados": pdst_por_dia.get(chave, 0),
+        }
+        for chave_categoria, valor in entrada.items():
+            if chave_categoria != "data":
+                totais[chave_categoria] += valor
+        dias.append(entrada)
+        dia_atual += timedelta(days=1)
+
+    tma_horas = {
+        "convencional": _tma_horas_medio(
+            (i["fields"].get("created"), i["fields"].get("resolutiondate"))
+            for i in resolvidos_issues
+            if _categoria(i["fields"]) == "convencional"
+        ),
+        "priorizado": _tma_horas_medio(
+            (i["fields"].get("created"), i["fields"].get("resolutiondate"))
+            for i in resolvidos_issues
+            if _categoria(i["fields"]) == "priorizado"
+        ),
+        "coti": _tma_horas_medio(
+            (i["fields"].get("created"), i["fields"].get("resolutiondate"))
+            for i in resolvidos_issues
+            if _categoria(i["fields"]) == "coti"
+        ),
+        "pdst": _tma_horas_medio(
+            (i["fields"].get("created"), i["fields"].get("resolutiondate")) for i in pdst_resolvidos_issues
+        ),
+    }
+
+    return {
+        "inicio": start_date.strftime("%Y-%m-%d"),
+        "fim": end_date.strftime("%Y-%m-%d"),
+        "totais": dict(totais),
+        "dias": dias,
+        "tma_horas": tma_horas,
+    }
+
+
+def fetch_colaboradores_mes(config, grupos, start_date, end_date, projetos=None, prod_projetos=None):
     """Widget da home "Colaboradores": pra cada colaborador (assignee) com
     ao menos um chamado resolvido ou reaberto no período, quantos ele
     Resolveu (Resolvido/Encerrado, resolutiondate no período — mesma
@@ -1850,21 +2425,22 @@ def fetch_colaboradores_mes(config, grupos, start_date, end_date, projetos=None)
     resolvidos, mesma lógica de fetch_criados_x_resolvidos, só que por
     colaborador em vez de agregado. Ordenado por total resolvido, do maior
     pro menor.
+
+    "prod_projetos" (opcional): ver _grupo_projeto_clause — usado pela home
+    (N1/N2 só "Central de Incidentes", Prod só "Abertura de Chamados").
     """
-    grupo_clause_all = _grupo_clause(grupos)
-    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
-    projeto_clause = f"project IN ({projetos_str})"
+    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
     start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
     end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
 
     resolvidos_jql = (
-        f'{grupo_clause_all} AND {projeto_clause} AND status IN ("Resolvido", "Encerrado") '
+        f'{grupo_projeto_clause} AND status IN ("Resolvido", "Encerrado") '
         f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
     )
     resolvidos_issues = fetch_issues(config, resolvidos_jql, ["assignee"] + SLA_RESOLUTION_FIELDS)
 
     reabertos_jql = (
-        f'{grupo_clause_all} AND {projeto_clause} AND status WAS "Reaberto" '
+        f'{grupo_projeto_clause} AND status WAS "Reaberto" '
         f'AND created >= "{start_str}" AND created <= "{end_str}"'
     )
     reabertos_issues = fetch_issues(config, reabertos_jql, ["assignee"])
@@ -1904,6 +2480,104 @@ def fetch_colaboradores_mes(config, grupos, start_date, end_date, projetos=None)
         )
     linhas.sort(key=lambda l: l["resolvidos"], reverse=True)
     return linhas
+
+
+def fetch_analise_eps(config, grupos, start_date, end_date, eps_field_id, projetos=None):
+    """Ação "Análise de EPS": dentro do período informado, agrupa por valor
+    do campo "PROP_Site" (EPS) e devolve o top 5 de cada:
+
+    - "top_abertos": chamados criados no período (created), por EPS.
+    - "top_resolvidos": chamados Resolvido/Encerrado com resolutiondate no
+      período, por EPS.
+    - "top_reabertos": chamados que passaram por "Reaberto" (status WAS
+      "Reaberto"), created no período — mesma regra de
+      fetch_chamados_reabertos.
+
+    "PROP_Site" pode ser referência a objeto do Jira Assets (mesmo caso de
+    Classificação/Sub-Classificação) — pré-resolve os labels em paralelo
+    (_precache_categoria_labels) ANTES de contar, senão cada valor novo
+    custa uma chamada de rede em série por chamado (ver
+    fetch_chamados_geral_classificacao)."""
+    grupo_clause_all = _grupo_clause(grupos)
+    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
+    projeto_clause = f"project IN ({projetos_str})"
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    base_clause = f"{grupo_clause_all} AND {projeto_clause}"
+
+    abertos_jql = f'{base_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
+    abertos_issues = fetch_issues(config, abertos_jql, [eps_field_id])
+
+    resolvidos_jql = (
+        f'{base_clause} AND status IN ("Resolvido", "Encerrado") '
+        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
+    )
+    resolvidos_issues = fetch_issues(config, resolvidos_jql, [eps_field_id])
+
+    reabertos_jql = f'{base_clause} AND status WAS "Reaberto" AND created >= "{start_str}" AND created <= "{end_str}"'
+    reabertos_issues = fetch_issues(config, reabertos_jql, [eps_field_id])
+
+    _precache_categoria_labels(config, abertos_issues + resolvidos_issues + reabertos_issues, eps_field_id)
+
+    def _top5(issues):
+        contagem = Counter()
+        for issue in issues:
+            valores = _extract_categoria_values(config, issue.get("fields", {}).get(eps_field_id))
+            eps = valores[0] if valores else None
+            if eps:
+                contagem[eps] += 1
+        return [{"eps": eps, "total": total} for eps, total in contagem.most_common(5)]
+
+    return {
+        "top_abertos": _top5(abertos_issues),
+        "top_resolvidos": _top5(resolvidos_issues),
+        "top_reabertos": _top5(reabertos_issues),
+    }
+
+
+def fetch_criados_por_dia_grupo(
+    config, grupos, start_date, end_date, grupo_field_id, projetos=None, prod_projetos=None
+):
+    """Widget da home "Chamados Criados": para o período informado, conta
+    quantos chamados foram criados (created) em cada dia, por grupo, e
+    quantos desses já foram P0/P1/P2 em algum momento
+    (priority WAS IN (P0, P1, P2) — mesma condição de "abertos" usada em
+    fetch_chamados_criticos/COTI, aqui aplicada a qualquer grupo/caixa, não
+    só Solar).
+
+    "prod_projetos" (opcional): ver _grupo_projeto_clause — N1/N2 só
+    "Central de Incidentes", Prod só "Abertura de Chamados".
+
+    Duas buscas no total (não uma por dia/grupo): todos os criados no
+    período e, à parte, só os que já foram P0/P1/P2 — depois bucketiza por
+    (dia, grupo) em Python, mesmo truque de fetch_previstos_violar_por_dia/
+    fetch_chamados_violados usado no widget "Violados — Últimos 30 dias".
+
+    Devolve (total_por_dia_grupo, p0p1p2_por_dia_grupo): dois dicts
+    {(dia_iso, grupo): quantidade} — quem monta a lista dia a dia (com
+    "dia_semana" etc.) é a rota, mesmo padrão de home_violar_semanal.
+    """
+    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
+    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
+    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
+    base_clause = f'{grupo_projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
+
+    criados_issues = fetch_issues(config, base_clause, ["created", grupo_field_id])
+
+    p0p1p2_jql = f"{base_clause} AND priority WAS IN (P0, P1, P2)"
+    p0p1p2_issues = fetch_issues(config, p0p1p2_jql, ["created", grupo_field_id])
+
+    def _bucket(issues):
+        contagem = Counter()
+        for issue in issues:
+            fields = issue.get("fields", {})
+            dia = (fields.get("created") or "")[:10]
+            grupo = _extract_grupo_solucionador(fields.get(grupo_field_id))
+            if dia and grupo in grupos:
+                contagem[(dia, grupo)] += 1
+        return contagem
+
+    return _bucket(criados_issues), _bucket(p0p1p2_issues)
 
 
 def build_consolidated_report(config, start_date, end_date, grupos=None, categoria_encerramento_field_id=None):

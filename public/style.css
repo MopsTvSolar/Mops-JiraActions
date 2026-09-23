@@ -1,32 +1,61 @@
 :root {
   color-scheme: dark;
 
-  --bg: #120e1f;
-  --card-bg: #1c1630;
-  --card-bg-elevated: #251d3f;
-  --card-border: #362c52;
-  --secondary-bg: #362c52;
-  --secondary-bg-hover: #443868;
+  /* Grafite/petróleo premium — substitui o roxo antigo por um visual mais
+     "executivo": fundo quase preto, painéis em camadas sutis de cinza-azulado
+     e um único acento dourado (marca "premium"), em vez de cor viva por toda
+     parte. */
+  --bg: #0a0d13;
+  --card-bg: #141821;
+  --card-bg-elevated: #1b212c;
+  --card-border: #262e3c;
+  --secondary-bg: #212836;
+  --secondary-bg-hover: #2b3343;
 
-  --header-bg: #2c1457;
-  --header-fg: #f5f2fb;
-  --header-sub: #cbb8f2;
+  /* Degradê da barra lateral (ver .sidebar) — dois tons de petróleo bem
+     escuro, quase preto nas pontas. */
+  --header-bg: #141c29;
+  --header-bg-2: #080a10;
+  --header-fg: #f4f1e8;
+  --header-sub: #9aa3b5;
 
-  --text: #f0ecf9;
-  --muted: #a99ec4;
+  --text: #eef1f6;
+  --muted: #8993a6;
 
-  --accent: #7c3aed;
-  --accent-active: #6427cf;
-  --accent-soft: #b794f6;
-  --accent-disabled: #4a3d70;
+  --accent: #c9a227;
+  --accent-active: #ad8a1f;
+  --accent-soft: #e6c95c;
+  --accent-ink: #221b08;
+  --accent-disabled: #4d4530;
 
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #f87171;
+  --success: #34d399;
+  --warning: #f5a524;
+  --danger: #f2555c;
+
+  /* Cores fixas da ação Distribuição (Convencional/PDST) — as outras duas
+     categorias (Priorizado/COTI) reaproveitam --warning/--danger acima. */
+  --dist-azul: #4f9cf9;
+  --dist-cinza: #9aa3b2;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  --shadow-elevated: 0 16px 40px -16px rgba(0, 0, 0, 0.6);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Esconde a barra de rolagem em qualquer elemento (menu lateral, tabelas,
+   dropdowns, popovers...) — a rolagem continua funcionando normal (mouse,
+   trackpad, teclado), só o "trilho" cinza do navegador some, visual mais
+   limpo/premium. */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
 }
 
 body {
@@ -34,6 +63,26 @@ body {
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.01em;
+}
+
+/* Efeito de abertura: toda vez que uma "página" (home, diálogo de ação ou
+   resultado) aparece na tela, ela entra com um leve fade + deslize pra cima
+   em vez de simplesmente aparecer — reforça a sensação de navegação entre
+   páginas de um CRM, não de conteúdo se acrescentando por cima do anterior. */
+@keyframes viewEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 main {
@@ -58,13 +107,32 @@ main {
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 18px 20px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
 }
 
 .hidden {
   display: none !important;
+}
+
+/* Aplica o efeito de abertura (ver @keyframes viewEnter acima) em toda
+   "página" que troca de visível pra escondida via .hidden — como o troca de
+   display:none reconstrói a caixa do elemento, a animação toca de novo a
+   cada vez que a página aparece, sem precisar de nenhum código em app.js. */
+#home-view:not(.hidden),
+#results-card:not(.hidden),
+#categorias-results:not(.hidden),
+#criados-resolvidos-results:not(.hidden),
+#distribuicao-results:not(.hidden),
+#colaboradores-results:not(.hidden),
+#criticos-results:not(.hidden),
+#eps-results:not(.hidden),
+#analista-detalhe:not(.hidden),
+#report-vini-results:not(.hidden),
+#report-diario-results:not(.hidden) {
+  animation: viewEnter 0.32s ease;
 }
 
 /* login */
@@ -93,7 +161,8 @@ main {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--card-border);
@@ -103,8 +172,14 @@ main {
   color: var(--text);
 }
 
+.field textarea {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
@@ -233,7 +308,7 @@ main {
 }
 
 .calendario-dia-criados {
-  color: #ff1dce;
+  color: var(--dist-azul);
 }
 
 /* Gráfico de barras horizontal (Sub-Classificação em Análise de Jornada) —
@@ -278,6 +353,148 @@ main {
   font-weight: 700;
   color: var(--muted);
   text-align: right;
+}
+
+/* Ação "Distribuição": uma barra EMPILHADA por dia do período — dentro de
+   cada barra, a repartição do dia entre Convencional/Priorizado/COTI/PDST.
+   Escala (altura máxima) é o maior TOTAL entre os dias, pra comparar dias
+   entre si. */
+.distribuicao-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 26px 6px 0;
+  overflow-x: auto;
+}
+
+.distribuicao-chart-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 44px;
+}
+
+.distribuicao-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 190px;
+}
+
+.distribuicao-bar-stack {
+  width: 36px;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.distribuicao-bar-segment {
+  width: 100%;
+  flex-shrink: 0;
+  transition: filter 0.1s;
+}
+
+.distribuicao-bar-stack:hover .distribuicao-bar-segment {
+  filter: brightness(1.12);
+}
+
+.distribuicao-bar-value {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.distribuicao-bar-segment.convencional {
+  background: var(--dist-azul);
+}
+
+.distribuicao-bar-segment.priorizado {
+  background: var(--warning);
+}
+
+.distribuicao-bar-segment.coti {
+  background: var(--danger);
+}
+
+.distribuicao-bar-segment.pdst {
+  background: var(--dist-cinza);
+}
+
+.distribuicao-chart-group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.distribuicao-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.distribuicao-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.distribuicao-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.distribuicao-legend-dot.convencional {
+  background: var(--dist-azul);
+}
+
+.distribuicao-legend-dot.priorizado {
+  background: var(--warning);
+}
+
+.distribuicao-legend-dot.coti {
+  background: var(--danger);
+}
+
+.distribuicao-legend-dot.pdst {
+  background: var(--dist-cinza);
+}
+
+/* Pré-análise textual da ação Distribuição — prosa corrida (não cards),
+   pensada pra ser lida/copiada como embasamento de justificativa de SLA. */
+.distribuicao-analise {
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.distribuicao-analise p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.distribuicao-analise p:last-child {
+  margin-bottom: 0;
+}
+
+.distribuicao-analise strong {
+  color: var(--accent-soft);
 }
 
 /* Ranking por Classificação (Análise de Jornada, modo "Geral") — linha
@@ -330,29 +547,31 @@ button {
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: white;
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--accent) 100%);
+  color: var(--accent-ink);
   border: none;
   border-radius: 6px;
   padding: 10px 16px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 6px 16px -6px rgba(201, 162, 39, 0.55);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-active);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--accent-active) 100%);
 }
 
 .btn-primary:disabled {
   background: var(--accent-disabled);
-  color: #cbbfe6;
+  color: rgba(238, 241, 246, 0.55);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
 .btn-secondary {
   background: var(--secondary-bg);
   color: var(--text);
-  border: none;
+  border: 1px solid var(--card-border);
   border-radius: 6px;
   padding: 8px 14px;
   font-size: 13px;
@@ -360,6 +579,7 @@ button {
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--secondary-bg-hover);
+  border-color: rgba(201, 162, 39, 0.4);
 }
 
 .btn-secondary:disabled {
@@ -369,7 +589,7 @@ button {
 
 .btn-primary,
 .btn-secondary {
-  transition: transform 0.1s ease, background-color 0.15s ease;
+  transition: transform 0.1s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-primary:active:not(:disabled),
@@ -385,15 +605,17 @@ button {
 .collapse {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease, opacity 0.25s ease, padding-top 0.3s ease;
+  transition: max-height 0.3s ease, opacity 0.25s ease, padding-top 0.3s ease, transform 0.3s ease;
   opacity: 0;
   padding-top: 0;
+  transform: translateY(-6px);
 }
 
 .collapse.open {
   max-height: 700px;
   opacity: 1;
   padding-top: 16px;
+  transform: translateY(0);
 }
 
 /* analistas de encerramento: painel único com dropdown + detalhe (cards,
@@ -505,9 +727,99 @@ button {
   left: 0;
   height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px 16px;
-  background: linear-gradient(165deg, #2c1457 0%, #1b0f3d 55%, #150a30 100%);
-  color: #ece7f7;
+  background: linear-gradient(180deg, var(--header-bg) 0%, var(--header-bg-2) 100%);
+  border-right: 1px solid var(--card-border);
+  box-shadow: var(--shadow-elevated);
+  color: var(--header-fg);
+  transition: width 0.2s ease, padding 0.2s ease;
+}
+
+/* Botão de recolher/expandir — "aba" fixa na borda direita do menu, sempre
+   no mesmo lugar da tela independente do estado, pra ser fácil de achar de
+   novo depois de recolher. */
+.sidebar-toggle {
+  position: fixed;
+  top: 22px;
+  left: 264px;
+  z-index: 30;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg-elevated);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: left 0.2s ease, background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.sidebar-toggle:hover {
+  color: var(--accent-soft);
+  border-color: rgba(201, 162, 39, 0.4);
+}
+
+/* Recolher só se aplica em telas largas o bastante pro menu ser uma coluna
+   fixa (ver @media no fim do arquivo — abaixo de 860px o menu já empilha em
+   cima do conteúdo, e "recolher" não faz sentido nesse layout). */
+@media (min-width: 861px) {
+  /* Recolhida: menu vira uma faixa só com os ícones de navegação — o resto
+     (Caixa, Projetos, status/Sair) some até expandir de novo. */
+  body.sidebar-collapsed .sidebar {
+    width: 76px;
+    padding: 20px 10px;
+  }
+
+  body.sidebar-collapsed .content-area {
+    margin-left: 76px;
+  }
+
+  body.sidebar-collapsed .sidebar-toggle {
+    left: 60px;
+    transform: rotate(180deg);
+  }
+
+  /* !important: #status-bar tem "display: flex" por id (mais específico que
+     essa regra por classe) — sem isso, o rodapé (Conectado/Sair) continuava
+     vazando por cima do resto escondido. */
+  body.sidebar-collapsed .sidebar-collapsible {
+    display: none !important;
+  }
+
+  body.sidebar-collapsed .sidebar-brand {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  body.sidebar-collapsed .sidebar-brand-text {
+    display: none;
+  }
+
+  /* Os grupos AÇÕES/REPORTS continuam visíveis recolhidos — só o rótulo (com
+     a setinha de expandir/recolher local) some; a lista de ícones fica sempre
+     aberta nesse estado, ignorando o accordion próprio dela. */
+  body.sidebar-collapsed .actions-grid {
+    max-height: none !important;
+    opacity: 1 !important;
+    padding-top: 0 !important;
+    transform: none !important;
+  }
+
+  body.sidebar-collapsed .nav-item {
+    justify-content: center;
+    padding: 8px;
+  }
+
+  body.sidebar-collapsed .nav-label {
+    display: none;
+  }
 }
 
 /* Conectado/Sair vira rodapé do menu — empurrado pro fim com margin-top:
@@ -518,9 +830,37 @@ button {
 }
 
 .sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 0 4px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   margin-bottom: 16px;
+}
+
+.sidebar-brand-home {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-brand-home:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.sidebar-brand-text {
+  min-width: 0;
 }
 
 .sidebar-brand strong {
@@ -541,6 +881,11 @@ button {
   min-width: 0;
   margin-left: 280px;
   padding: 20px 24px 60px;
+  /* Trava a largura útil em telas muito largas (monitor ultrawide) — sem
+     isso, cards e tabelas esticariam a lâmina inteira e ficariam difíceis
+     de escanear, o oposto do visual denso/organizado de um CRM. */
+  max-width: 1760px;
+  margin-right: auto;
 }
 
 /* Referência visual: grupos sem card/borda própria, flutuando direto no
@@ -577,9 +922,9 @@ button {
 }
 
 .sidebar .caixa-btn.active {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  box-shadow: none;
+  background: rgba(201, 162, 39, 0.16);
+  color: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.4);
 }
 
 .sidebar .radio-row label {
@@ -605,18 +950,33 @@ button {
   padding: 7px 8px;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(244, 241, 232, 0.68);
   text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .nav-item:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.06);
   color: #fff;
 }
 
 .nav-item:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* Item correspondente à ação/tela atualmente aberta — mesma linguagem de um
+   CRM real (destaca a seção corrente no menu), ver updateNavActiveState()
+   em app.js. Usa box-shadow (não border) pra não deslocar o conteúdo. */
+.nav-item.active {
+  background: rgba(201, 162, 39, 0.12);
+  color: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.nav-item.active .nav-icon {
+  background: rgba(201, 162, 39, 0.18);
+  border-color: rgba(201, 162, 39, 0.3);
 }
 
 .nav-icon {
@@ -627,8 +987,10 @@ button {
   width: 28px;
   height: 28px;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 14px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .nav-label {
@@ -676,17 +1038,17 @@ button {
 }
 
 #result-banner.info {
-  background: rgba(124, 58, 237, 0.18);
+  background: rgba(201, 162, 39, 0.16);
   color: var(--accent-soft);
 }
 
 #result-banner.error {
-  background: rgba(248, 113, 113, 0.14);
+  background: rgba(242, 85, 92, 0.14);
   color: var(--danger);
 }
 
 #result-banner.success {
-  background: rgba(74, 222, 128, 0.14);
+  background: rgba(52, 211, 153, 0.14);
   color: var(--success);
 }
 
@@ -737,7 +1099,10 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(9, 6, 20, 0.55);
+  background: rgba(5, 6, 10, 0.6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: viewEnter 0.2s ease;
 }
 
 #loading-overlay.hidden {
@@ -755,7 +1120,7 @@ button {
   color: var(--accent-soft);
   font-size: 14px;
   font-weight: 600;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-elevated);
 }
 
 /* toggle de caixa solucionadora */
@@ -830,12 +1195,12 @@ button {
 }
 
 .tag-sim {
-  background: rgba(74, 222, 128, 0.16);
+  background: rgba(52, 211, 153, 0.16);
   color: var(--success);
 }
 
 .tag-nao {
-  background: rgba(169, 158, 196, 0.16);
+  background: rgba(137, 147, 166, 0.16);
   color: var(--muted);
 }
 
@@ -1104,30 +1469,63 @@ button {
   background: var(--card-bg-elevated);
   border-radius: 8px;
   padding: 12px 14px;
+  box-shadow: inset 3px 0 0 var(--card-border);
 }
 
 .summary-card .summary-value {
   font-size: 26px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
   line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-card.tone-accent {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .summary-card.tone-accent .summary-value {
   color: var(--accent-soft);
 }
 
+.summary-card.tone-warning {
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
 .summary-card.tone-warning .summary-value {
   color: var(--warning);
+}
+
+.summary-card.tone-danger {
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 
 .summary-card.tone-danger .summary-value {
   color: var(--danger);
 }
 
+.summary-card.tone-info {
+  box-shadow: inset 3px 0 0 var(--dist-azul);
+}
+
+.summary-card.tone-info .summary-value {
+  color: var(--dist-azul);
+}
+
+.summary-card.tone-neutral {
+  box-shadow: inset 3px 0 0 var(--dist-cinza);
+}
+
+.summary-card.tone-neutral .summary-value {
+  color: var(--dist-cinza);
+}
+
 .summary-card .summary-label {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   margin-top: 4px;
 }
 
@@ -1229,10 +1627,19 @@ button {
   background: var(--card-bg-elevated);
   color: var(--muted);
   font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   position: sticky;
   top: 0;
+  box-shadow: 0 1px 0 var(--card-border);
+}
+
+/* Zebra sutil nas linhas — mais fácil de acompanhar uma linha na horizontal
+   em tabelas densas, visual mais "planilha executiva". */
+#results-table tbody tr:nth-child(even),
+.data-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
 }
 
 /* Categorias de Encerramento (top N): 3 colunas fixas — Categoria (nome
@@ -1253,7 +1660,7 @@ button {
 
 #results-table tbody tr:hover,
 .data-table tbody tr:hover {
-  background: var(--card-bg-elevated);
+  background: rgba(201, 162, 39, 0.08);
 }
 
 
@@ -1353,11 +1760,11 @@ button {
 }
 
 .heat-tile.tone-warning {
-  background: rgba(251, 191, 36, 0.22);
+  background: rgba(245, 165, 36, 0.2);
 }
 
 .heat-tile.tone-danger {
-  background: rgba(248, 113, 113, 0.3);
+  background: rgba(242, 85, 92, 0.28);
 }
 
 /* Criados x Resolvidos: seta de tendência por dia (resolvidos vs. criados) */
@@ -1500,6 +1907,13 @@ footer {
   border: 1px solid var(--card-border);
   border-radius: 10px;
   padding: 16px;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.home-dashboard-card:hover {
+  border-color: rgba(201, 162, 39, 0.3);
+  transform: translateY(-1px);
 }
 
 .home-dashboard-title-row {
@@ -1538,7 +1952,7 @@ footer {
 .home-dashboard-tag--atual {
   color: var(--accent-soft);
   border-color: var(--accent);
-  background: rgba(124, 58, 237, 0.15);
+  background: rgba(201, 162, 39, 0.15);
 }
 
 .home-dashboard-tag--periodo {
@@ -1632,7 +2046,7 @@ footer {
 
 .home-violar-tile {
   width: 42px;
-  aspect-ratio: 1 / 1;
+  min-height: 42px;
   border-radius: 7px;
   background: var(--card-bg-elevated);
   border: 1px solid var(--card-border);
@@ -1641,8 +2055,7 @@ footer {
   align-items: center;
   justify-content: center;
   gap: 1px;
-  padding: 2px;
-  overflow: hidden;
+  padding: 2px 2px 3px;
 }
 
 .home-violar-tile-label {
@@ -1659,12 +2072,42 @@ footer {
   line-height: 1;
 }
 
+/* Sutil, só aparece quando o dia tem pelo menos 1 chamado sem responsável
+   — fonte pequena e opacidade reduzida pra não competir com o número
+   principal (total do dia). */
+.home-violar-tile-sem-responsavel {
+  font-size: 7px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0.75;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* "Chamados Criados": mesmo tile de "A violar", mas o mês inteiro não
+   cabe em 7 colunas fixas — quebra linha livremente. */
+.home-criados-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* Sutil (mesmo padrão de "sem responsável" acima), mas em vermelho — só
+   aparece quando pelo menos 1 chamado do dia/grupo já foi P0/P1/P2. */
+.home-violar-tile-p0p1p2 {
+  font-size: 7px;
+  font-weight: 700;
+  color: var(--danger);
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .home-violar-tile.tone-warning {
-  background: rgba(251, 191, 36, 0.22);
+  background: rgba(245, 165, 36, 0.2);
 }
 
 .home-violar-tile.tone-danger {
-  background: rgba(248, 113, 113, 0.3);
+  background: rgba(242, 85, 92, 0.28);
 }
 
 /* Uma linha por grupo (N1/N2/Prod) dentro do sub-bloco da caixa, em vez de
@@ -1891,6 +2334,13 @@ footer {
     overflow-y: visible;
     border-right: none;
     border-bottom: 1px solid var(--card-border);
+  }
+
+  /* Recolher não faz sentido em coluna única (mobile) — o botão some (as
+     regras de ".sidebar-collapsed" ficam todas dentro de um @media
+     min-width:861px, então nem chegam a se aplicar aqui). */
+  .sidebar-toggle {
+    display: none;
   }
 
   .content-area {
