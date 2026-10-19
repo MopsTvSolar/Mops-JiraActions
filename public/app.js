@@ -595,6 +595,13 @@
   aplicarHomeReloadButtons();
 
   // ------------------------------------------------------------ conexão
+  function entrarNoApp(displayName, email) {
+    $("status-identity").textContent = `Conectado como ${displayName} (${email})`;
+    loginCard.classList.add("hidden");
+    appView.classList.remove("hidden");
+    carregarHomeDashboardsGradual();
+  }
+
   $("btn-connect").addEventListener("click", async () => {
     const email = $("input-email").value.trim();
     const token = $("input-token").value;
@@ -623,11 +630,7 @@
 
       state.email = email;
       state.token = token;
-
-      $("status-identity").textContent = `Conectado como ${data.displayName} (${email})`;
-      loginCard.classList.add("hidden");
-      appView.classList.remove("hidden");
-      carregarHomeDashboardsGradual();
+      entrarNoApp(data.displayName, email);
     } catch (e) {
       loginError.textContent = "Não foi possível conectar ao servidor.";
       loginError.style.display = "block";
@@ -5637,22 +5640,29 @@
     toggle.setAttribute("aria-expanded", String(abrindo));
   });
 
-  // ---------------------------------------------------- autologin (dev local)
-  // "/api/dev-autologin" só existe quando o servidor roda via
-  // "python api/index.py" direto (nunca em produção na Vercel — lá a rota
-  // nem é registrada, então isso não faz nada e falha em silêncio). Poupa
-  // ter que digitar e-mail/token de novo a cada teste local.
+  // ------------------------------------------- credenciais do .env (local)
+  // Rodando localmente ("python api/index.py"), o servidor usa JIRA_EMAIL/
+  // JIRA_API_TOKEN do .env direto (pedido explícito do usuário): a tela
+  // entra sozinha, sem login, e o token nunca passa pelo navegador — as
+  // requisições vão sem e-mail/token e o servidor completa com o .env.
+  // "/api/credenciais-env" não existe em produção (Vercel): lá falha em
+  // silêncio e segue o login normal.
   (async () => {
     try {
-      const resp = await fetch("/api/dev-autologin", { cache: "no-store" });
+      const resp = await fetch("/api/credenciais-env", { cache: "no-store" });
       if (!resp.ok) return;
-      const data = await resp.json();
-      if (!data.email || !data.token) return;
-      $("input-email").value = data.email;
-      $("input-token").value = data.token;
-      $("btn-connect").click();
+      const env = await resp.json();
+      if (!env.disponivel) return;
+      const respConnect = await apiCall("/api/connect", {});
+      const data = await respConnect.json();
+      if (!respConnect.ok) {
+        loginError.textContent = `Credenciais do .env recusadas: ${data.error || "falha ao conectar."}`;
+        loginError.style.display = "block";
+        return;
+      }
+      entrarNoApp(data.displayName, env.email);
     } catch (e) {
-      // sem servidor de dev-autologin (produção) — segue pro login normal.
+      // sem /api/credenciais-env (produção) — segue pro login normal.
     }
   })();
 })();

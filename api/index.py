@@ -297,12 +297,29 @@ def _no_store(response):
     return response
 
 
+# Rodando localmente ("python api/index.py", ver o bloco __main__ no fim
+# do arquivo), as credenciais vêm direto de JIRA_EMAIL/JIRA_API_TOKEN do
+# .env (pedido explícito do usuário) — a tela entra sozinha e o token
+# nunca sai do servidor. Em deploy (Vercel, importado como app WSGI) isso
+# fica desligado: qualquer um com a URL estaria usando o token do .env,
+# então lá continua valendo só o e-mail/token digitado na tela.
+CREDENCIAIS_DO_ENV = False
+
+
+def _credenciais_env():
+    email = (os.getenv("JIRA_EMAIL") or "").strip()
+    token = os.getenv("JIRA_API_TOKEN") or ""
+    return (email, token) if CREDENCIAIS_DO_ENV and email and token else (None, None)
+
+
 def _config_from_request(body):
     if FIXED_CONFIG is None:
         raise JiraExtractorError(FIXED_CONFIG_ERROR)
 
-    email = (body or {}).get("email", "").strip()
-    token = (body or {}).get("token", "")
+    email = ((body or {}).get("email") or "").strip()
+    token = (body or {}).get("token") or ""
+    if not email or not token:
+        email, token = _credenciais_env()
     if not email or not token:
         raise JiraExtractorError("Informe e-mail e API Token.")
 
@@ -3502,17 +3519,15 @@ if __name__ == "__main__":
     def _serve_static(filename):
         return send_from_directory(PUBLIC_DIR, filename)
 
-    @app.route("/api/dev-autologin")
-    def _dev_autologin():
-        # Só para poupar login manual durante testes locais: lê JIRA_EMAIL/
-        # JIRA_API_TOKEN do .env (já carregado no processo por load_dotenv,
-        # chamado dentro de load_fixed_config() lá em cima). Essa rota só
-        # existe quando o servidor roda direto via "python api/index.py" —
-        # em produção na Vercel (importado como app WSGI) ela nem é
-        # registrada, então não tem como isso vazar credencial em deploy.
-        email = os.getenv("JIRA_EMAIL", "")
-        token = os.getenv("JIRA_API_TOKEN", "")
-        return jsonify({"email": email or None, "token": token or None})
+    # Local: credenciais vêm do .env (ver CREDENCIAIS_DO_ENV lá em cima).
+    CREDENCIAIS_DO_ENV = True
+
+    @app.route("/api/credenciais-env")
+    def _credenciais_env_status():
+        # Só diz SE há credencial no .env (e o e-mail, pra exibir) — o
+        # token nunca vai pro navegador; o servidor usa ele direto.
+        email, _token = _credenciais_env()
+        return jsonify({"disponivel": bool(email), "email": email})
 
     # threaded=True: a Extração Geral sem filtro pode levar minutos
     # respondendo (checa "Categoria Ativa?" de milhares de chamados antes
