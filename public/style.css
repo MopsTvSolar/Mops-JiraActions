@@ -32,10 +32,20 @@
   --warning: #f5a524;
   --danger: #f2555c;
 
+  /* Versões mais escuras de --danger/--success, só pro gráfico "Criados x
+     Resolvidos por mês" (pedido do usuário — não mexe nos outros usos de
+     --danger/--success no resto do app). */
+  --sla-chart-criados: #c23b43;
+  --sla-chart-resolvidos: #1f9e73;
+
   /* Cores fixas da ação Distribuição (Convencional/PDST) — as outras duas
      categorias (Priorizado/COTI) reaproveitam --warning/--danger acima. */
   --dist-azul: #4f9cf9;
   --dist-cinza: #9aa3b2;
+  /* 4ª cor categórica (calendário de Violados da home, "Priorizado") — não
+     reaproveita --accent porque esse é reservado pro dourado de marca (UI),
+     não pra dado. */
+  --dist-violeta: #a78bfa;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
   --shadow-elevated: 0 16px 40px -16px rgba(0, 0, 0, 0.6);
@@ -182,351 +192,6 @@ main {
 .field textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
-}
-
-/* combobox: campo de texto + dropdown customizado com busca (ex.: Analistas
-   de Encerramento) — substitui <datalist> nativo, que não dá pra estilizar
-   e destoa do tema escuro. */
-.combobox {
-  position: relative;
-}
-
-.combobox-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  background: var(--card-bg-elevated);
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 20;
-  padding: 4px;
-}
-
-.combobox-option {
-  padding: 8px 10px;
-  border-radius: 5px;
-  font-size: 14px;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.combobox-option:hover,
-.combobox-option.active {
-  background: var(--secondary-bg);
-}
-
-.combobox-option mark {
-  background: none;
-  color: var(--accent-soft);
-  font-weight: 700;
-}
-
-.combobox-empty {
-  padding: 10px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-/* calendário do detalhe de analista — um mini-calendário por mês tocado
-   pelo período, com a contagem do dia bem discreta dentro do quadrado. */
-.calendario-mes {
-  margin-bottom: 18px;
-}
-
-.calendario-mes-titulo {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 8px;
-  text-transform: capitalize;
-}
-
-.calendario-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  border: 2px solid var(--card-border);
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.calendario-dow {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  text-align: center;
-  padding-bottom: 4px;
-}
-
-.calendario-dia {
-  aspect-ratio: 2 / 1;
-  border-radius: 6px;
-  border: 1px solid var(--card-border);
-  background: transparent;
-  padding: 4px 6px;
-  display: flex;
-  flex-direction: column;
-}
-
-.calendario-dia.vazio {
-  border-color: transparent;
-}
-
-.calendario-dia-numero {
-  font-weight: 600;
-  color: var(--text);
-  font-size: 11px;
-}
-
-.calendario-dia.vazio .calendario-dia-numero {
-  color: var(--muted);
-  opacity: 0.4;
-}
-
-.calendario-dia-info {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  font-size: 9px;
-  line-height: 1.3;
-  font-weight: 700;
-}
-
-.calendario-dia-encerrados {
-  color: var(--success);
-}
-
-.calendario-dia-reabertos {
-  color: var(--warning);
-}
-
-.calendario-dia-criados {
-  color: var(--dist-azul);
-}
-
-/* Gráfico de barras horizontal (Sub-Classificação em Análise de Jornada) —
-   sem biblioteca externa, largura da barra proporcional ao maior valor. */
-.bar-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.bar-chart-row {
-  display: grid;
-  grid-template-columns: 200px 1fr 44px;
-  align-items: center;
-  gap: 10px;
-}
-
-.bar-chart-label {
-  font-size: 12px;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bar-chart-track {
-  background: var(--card-bg-elevated);
-  border-radius: 4px;
-  height: 12px;
-  overflow: hidden;
-}
-
-.bar-chart-fill {
-  height: 100%;
-  border-radius: 4px;
-  background: var(--accent);
-  min-width: 3px;
-}
-
-.bar-chart-value {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  text-align: right;
-}
-
-/* Ação "Distribuição": uma barra EMPILHADA por dia do período — dentro de
-   cada barra, a repartição do dia entre Convencional/Priorizado/COTI/PDST.
-   Escala (altura máxima) é o maior TOTAL entre os dias, pra comparar dias
-   entre si. */
-.distribuicao-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 14px;
-  padding: 26px 6px 0;
-  overflow-x: auto;
-}
-
-.distribuicao-chart-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  min-width: 44px;
-}
-
-.distribuicao-chart-bars {
-  display: flex;
-  align-items: flex-end;
-  height: 190px;
-}
-
-.distribuicao-bar-stack {
-  width: 36px;
-  min-height: 2px;
-  border-radius: 4px 4px 0 0;
-  position: relative;
-  display: flex;
-  flex-direction: column-reverse;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.distribuicao-bar-segment {
-  width: 100%;
-  flex-shrink: 0;
-  transition: filter 0.1s;
-}
-
-.distribuicao-bar-stack:hover .distribuicao-bar-segment {
-  filter: brightness(1.12);
-}
-
-.distribuicao-bar-value {
-  position: absolute;
-  top: -20px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.distribuicao-bar-segment.convencional {
-  background: var(--dist-azul);
-}
-
-.distribuicao-bar-segment.priorizado {
-  background: var(--warning);
-}
-
-.distribuicao-bar-segment.coti {
-  background: var(--danger);
-}
-
-.distribuicao-bar-segment.pdst {
-  background: var(--dist-cinza);
-}
-
-.distribuicao-chart-group-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.distribuicao-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 16px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.distribuicao-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.distribuicao-legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.distribuicao-legend-dot.convencional {
-  background: var(--dist-azul);
-}
-
-.distribuicao-legend-dot.priorizado {
-  background: var(--warning);
-}
-
-.distribuicao-legend-dot.coti {
-  background: var(--danger);
-}
-
-.distribuicao-legend-dot.pdst {
-  background: var(--dist-cinza);
-}
-
-/* Pré-análise textual da ação Distribuição — prosa corrida (não cards),
-   pensada pra ser lida/copiada como embasamento de justificativa de SLA. */
-.distribuicao-analise {
-  background: var(--card-bg-elevated);
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-  padding: 14px 16px;
-}
-
-.distribuicao-analise p {
-  margin: 0 0 10px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text);
-}
-
-.distribuicao-analise p:last-child {
-  margin-bottom: 0;
-}
-
-.distribuicao-analise strong {
-  color: var(--accent-soft);
-}
-
-/* Ranking por Classificação (Análise de Jornada, modo "Geral") — linha
-   clicável que expande uma linha de detalhe logo abaixo, com uma
-   sub-tabela (mesma .data-table, aninhada) de Sub-Classificação. */
-.jornada-ranking-row {
-  cursor: pointer;
-}
-
-.jornada-ranking-row:hover {
-  background: var(--card-bg-elevated);
-}
-
-.jornada-ranking-arrow {
-  display: inline-block;
-  width: 14px;
-  color: var(--muted);
-  transition: transform 0.15s ease;
-}
-
-.jornada-ranking-row.open .jornada-ranking-arrow {
-  transform: rotate(90deg);
-}
-
-.jornada-ranking-detail td {
-  background: var(--bg);
-  padding: 12px 16px;
-}
-
-.jornada-ranking-subtable {
-  margin: 0;
-  max-width: 420px;
 }
 
 input[type="checkbox"] {
@@ -1123,6 +788,132 @@ button {
   box-shadow: var(--shadow-elevated);
 }
 
+/* Popup de drill-down "Sub-Classificação" (clique numa barra do carrossel
+   "Classificação" do Pareto Solar) — mesmo padrão de #loading-overlay
+   (fixed, inset:0, backdrop com blur), mas com z-index maior (fica por
+   cima dele se os dois coincidirem) e um card central em vez de uma caixa
+   pequena. */
+#pareto-sub-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 6, 10, 0.7);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  padding: 20px;
+  animation: viewEnter 0.2s ease;
+}
+
+#pareto-sub-modal.hidden {
+  display: none;
+}
+
+.pareto-sub-modal-box {
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin-bottom: 0;
+}
+
+/* Carrossel dos 3 cards do drill-down (Sub-Classificação/PROP_Site/
+   Categoria de Encerramento) — mesma Classificação/mês, cada card com seu
+   próprio gráfico (os 3 já buscados em paralelo na abertura do popup, ver
+   abrirParetoSubModal). Mesmo mecanismo do carrossel de mês antigo
+   (track desliza via transform: translateX), só que escopado a esse
+   popup (classes próprias, .pareto-mes-select não serviria aqui — são
+   3 fixos, não uma lista dinâmica de meses). */
+.pareto-sub-modal-carousel {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.pareto-sub-modal-viewport {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.pareto-sub-modal-track {
+  display: flex;
+  transition: transform 0.25s ease;
+}
+
+.pareto-sub-modal-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+.pareto-sub-modal-arrow {
+  flex: 0 0 auto;
+  width: 36px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card-bg-elevated);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.pareto-sub-modal-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pareto-sub-modal-arrow:not(:disabled):hover {
+  background: var(--secondary-bg-hover);
+}
+
+.pareto-sub-modal-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pareto-sub-modal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: var(--card-border);
+  cursor: pointer;
+}
+
+.pareto-sub-modal-dot.active {
+  background: var(--dist-azul);
+}
+
+/* Título em destaque dos gráficos de Pareto (mês escolhido + campo do
+   drill-down) — texto centralizado, maiúsculo e em negrito, sem fundo/
+   contorno próprio (pedido explícito do usuário: só o texto, sem o
+   "quadrado atrás"). Usada tanto no card do mês (criarParetoSeletorMes)
+   quanto em cada slide do carrossel de drill-down (abrirParetoSubModal). */
+.pareto-titulo-destaque {
+  margin-bottom: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Mês/total (ex.: "Out 2026 — 555 encerrados (467 classificados)") — era
+   o título grande, agora é só uma linha pequena no canto esquerdo (pedido
+   explícito do usuário), já que o nome da seção virou o título. */
+.pareto-subtitulo-info {
+  text-align: left;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
 /* toggle de caixa solucionadora */
 .caixa-toggle {
   display: inline-flex;
@@ -1161,7 +952,20 @@ button {
   margin-bottom: 14px;
 }
 
-.results-header select {
+/* Filtro "De"/"até": "label" reaproveita ".home-caixa-filtro-label"
+   (display:flex, block por fora), que sozinha quebraria linha antes de
+   cada label — aqui o wrap vira o container flex em linha, então
+   label/input/label/input ficam lado a lado, como os outros controles do
+   header. */
+#material-icg-filtro-personalizado-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.results-header select,
+.results-header input[type="date"] {
   padding: 8px 10px;
   border: 1px solid var(--card-border);
   border-radius: 6px;
@@ -1228,7 +1032,10 @@ button {
    key copia ela pra área de transferência. */
 .hover-popover {
   position: fixed;
-  z-index: 50;
+  /* Precisa ficar acima de #pareto-sub-modal (110) — senão o popover de
+     hover (nome da Sub-Classificação ao passar o mouse na barra, dentro
+     do popup de drill-down) fica escondido atrás do próprio popup. */
+  z-index: 120;
   background: var(--card-bg-elevated);
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -1244,6 +1051,27 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 6px;
+}
+
+/* Popover em tópicos (1 linha por item, com marcador) — ver
+   showParetoPopover(anchorEl, [linha1, linha2, ...]) em app.js. */
+.hover-popover-item {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  padding-left: 14px;
+  position: relative;
+}
+
+.hover-popover-item:not(:last-child) {
+  margin-bottom: 4px;
+}
+
+.hover-popover-item::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--muted);
 }
 
 /* Copia todas as keys de uma vez, formatadas 'KEY1', 'KEY2' — fica entre o
@@ -1293,33 +1121,8 @@ button {
   color: var(--danger);
 }
 
-/* Chamados Clarinha (grupo 2 de Chamados Críticos): Frame 1 (contador) ao
-   lado do Frame 2 (tabela por nível), lado a lado como no wireframe. Empilha
-   em telas estreitas pra não espremer a tabela. */
-.criticos-clarinha-row {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  align-items: stretch;
-}
-
-.criticos-clarinha-frame2 {
-  flex: 1 1 260px;
-  margin: 0;
-}
-
-#criticos-clarinha-frame1 {
-  flex: 0 0 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-#criticos-clarinha-frame1 .summary-card {
-  flex: 1;
-}
-
-/* linha de totais no fim de uma tabela (ex.: Escalonamento Informal) */
+/* linha de totais no fim de uma tabela (ex.: Grupo Solucionador × Mês de
+   Criação, na home) */
 .data-table-total-row td {
   font-weight: 700;
   color: var(--text);
@@ -1442,27 +1245,6 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
-}
-
-/* Análise de Jornada: cards (Total/Abertos) empilhados à esquerda + as
-   tabelas (Status, Top Analistas) dividindo igualmente o resto da largura,
-   todas alinhadas no topo (align-items: flex-start). */
-.jornada-layout {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.jornada-cards {
-  flex: 0 0 200px;
-  grid-template-columns: 1fr;
-  margin-bottom: 0;
-}
-
-.jornada-table-wrap {
-  flex: 1;
-  min-width: 0;
 }
 
 .summary-card {
@@ -1602,6 +1384,153 @@ button {
   border-radius: 8px;
 }
 
+/* Cache de Chamados: a tela não tem mais nada abaixo da tabela (sem
+   gráficos/cards extras como as outras ações), então a lista pode usar a
+   altura disponível inteira — rola por dentro em vez de empurrar o rodapé
+   pra fora da tela. */
+.cache-table-wrap {
+  max-height: calc(100vh - 230px);
+}
+
+/* "Extração em Lote": layout geral da tela (mesmo "card" implícito do
+   resto do content-area, só com um título de verdade em vez do rótulo de
+   navegação repetido). */
+.extracao-lote-screen {
+  margin-top: 14px;
+}
+
+.extracao-lote-intro {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.extracao-lote-toolbar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.extracao-lote-toolbar .field {
+  flex: 1 1 320px;
+  margin-bottom: 0;
+}
+
+.extracao-lote-toolbar .extracao-lote-field-formato {
+  flex: 0 1 160px;
+}
+
+.extracao-lote-toolbar-botoes {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.extracao-lote-table-wrap {
+  max-height: calc(100vh - 420px);
+  min-height: 160px;
+}
+
+.extracao-lote-col-num {
+  width: 36px;
+  text-align: center;
+}
+
+.extracao-lote-col-nome {
+  width: 200px;
+}
+
+.extracao-lote-col-status {
+  width: 220px;
+}
+
+.extracao-lote-col-acao {
+  width: 40px;
+}
+
+/* Status fica DENTRO da linha (coluna própria), não num painel separado —
+   texto nunca trunca: sem nowrap/ellipsis, quebra em quantas linhas
+   precisar (mensagem de erro pode ser longa: caminho do arquivo, erro do
+   Jira etc.). */
+#extracao-lote-table td.extracao-lote-col-status {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  font-size: 12.5px;
+}
+
+.extracao-lote-status--idle {
+  color: var(--muted);
+}
+
+.extracao-lote-status--rodando {
+  color: var(--accent-soft);
+  font-weight: 600;
+}
+
+.extracao-lote-status--ok {
+  color: var(--success);
+}
+
+.extracao-lote-status--erro {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+#extracao-lote-table td.extracao-lote-col-num {
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+#extracao-lote-table td.extracao-lote-col-acao {
+  text-align: center;
+}
+
+#extracao-lote-table td.extracao-lote-col-acao button {
+  padding: 4px 8px;
+}
+
+.extracao-lote-rodape {
+  margin-top: 14px;
+}
+
+/* "Extração em Lote": tabela de queries (JQL + nome do arquivo) — inputs
+   direto nas células (não estão dentro de ".field", que é só pros
+   diálogos de ação), então ganham o próprio estilo aqui. */
+#extracao-lote-table .extracao-lote-input-jql,
+#extracao-lote-table td input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--card-bg-elevated);
+  color: var(--text);
+  resize: vertical;
+}
+
+#extracao-lote-table .extracao-lote-input-jql {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  min-height: 44px;
+}
+
+#extracao-lote-table .extracao-lote-input-jql:focus,
+#extracao-lote-table td input[type="text"]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Destaca (negrito + cor de alerta) a célula de Solar/Prod/Claro Tv/Outros
+   que tem pelo menos 1 chamado em aberto — bate o olho em vez de precisar
+   ler número por número. */
+.cache-valor-positivo {
+  color: var(--warning);
+  font-weight: 700;
+}
+
 #results-table,
 .data-table {
   border-collapse: collapse;
@@ -1683,103 +1612,6 @@ button {
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   margin-top: 14px;
   padding-top: 14px;
-}
-
-/* mapa de calor "Plano semanal" — um quadrado por dia, cor conforme a
-   quantidade relativa ao dia de maior carga na semana visível. */
-.heatmap-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
-  gap: 10px;
-}
-
-.heat-tile {
-  position: relative;
-  aspect-ratio: 1 / 1;
-  border-radius: 12px;
-  background: var(--card-bg-elevated);
-  border: 1px solid var(--card-border);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 0 6px;
-}
-
-.heat-tile-label {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
-}
-
-.heat-tile-value {
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-/* detalhamento por caixa dentro do quadrado — bem discreto, não compete
-   com o número grande. Uma linha por caixa (N1/N2/PROD), empilhadas, com
-   o rótulo e a quantidade alinhados em colunas. */
-.heat-tile-breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-top: 4px;
-}
-
-.heat-tile-breakdown-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  font-size: 9px;
-  font-weight: 400;
-  color: var(--muted);
-  line-height: 1.3;
-}
-
-.heat-tile-breakdown-row span:first-child {
-  min-width: 26px;
-  text-align: right;
-  opacity: 0.85;
-}
-
-.heat-tile-breakdown-row span:last-child {
-  min-width: 12px;
-  text-align: left;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.heat-tile.tone-warning {
-  background: rgba(245, 165, 36, 0.2);
-}
-
-.heat-tile.tone-danger {
-  background: rgba(242, 85, 92, 0.28);
-}
-
-/* Criados x Resolvidos: seta de tendência por dia (resolvidos vs. criados) */
-.cr-seta-up {
-  color: var(--success);
-  font-weight: 700;
-}
-
-.cr-seta-down {
-  color: var(--danger);
-  font-weight: 700;
-}
-
-.cr-seta-neutro {
-  color: var(--muted);
 }
 
 footer {
@@ -1888,6 +1720,178 @@ footer {
 
 /* Dashboards da home — réplicas de gadgets nativos do Jira, um card por
    coluna, lado a lado (empilha no mobile, ver @media no fim do arquivo). */
+.home-dashboards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cache-toolbar {
+  align-items: flex-end;
+}
+
+.cache-pasta-field {
+  flex: 1 1 320px;
+  min-width: 200px;
+}
+
+.cache-pasta-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.cache-pasta-input-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cache-pasta-input-row button {
+  flex-shrink: 0;
+  padding: 10px 12px;
+}
+
+.cache-toolbar-botoes {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.cache-particao-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cache-caixa-select {
+  padding: 6px 10px;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+/* Seção de cache (ver #cache-secoes/construirSecaoCache em app.js) — 1
+   card por pasta registrada, todas empilhadas e visíveis ao mesmo tempo
+   (pedido do usuário: "tenho mais de uma pasta de cache"). */
+.cache-secao-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cache-secao-label-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg-elevated);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cache-secao-label-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.cache-secao-remover {
+  flex-shrink: 0;
+}
+
+.home-caixa-filtro-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-caixa-filtro-select {
+  padding: 6px 10px;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.home-dashboards-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Botão de atualizar — o geral (".home-reload-btn--geral", no topo do
+   painel) tem texto; o individual (1 por widget, injetado em cada
+   ".home-dashboard-title-row" por aplicarHomeReloadButtons em app.js) é
+   só o ícone, compacto o bastante pra caber ao lado da tag do card. */
+.home-reload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+
+.home-reload-btn:hover {
+  color: var(--accent-soft);
+  border-color: rgba(201, 162, 39, 0.4);
+}
+
+.home-reload-btn:active {
+  transform: rotate(90deg);
+}
+
+.home-reload-btn--geral {
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+/* Filtro de caixa (Solar/Claro Tv) pro painel inteiro — qualquer bloco
+   marcado com data-caixa (homeCaixaSubbloco, linhas do histórico "SLA",
+   cards de "Reabertos do mês", gráficos de "Criados x Resolvidos") some
+   quando não bate com a caixa selecionada em "#home-caixa-filtro-select"
+   (estado espelhado no atributo data-caixa-filtro de "#home-view", ver
+   aplicarHomeCaixaFiltro em app.js). Um seletor só, resultado em toda a
+   tela — não precisa duplicar a lógica de filtro em cada widget. */
+#home-view[data-caixa-filtro="solar"] [data-caixa="tv"] {
+  display: none;
+}
+
+#home-view[data-caixa-filtro="tv"] [data-caixa="solar"] {
+  display: none;
+}
+
 .home-dashboards {
   display: flex;
   gap: 16px;
@@ -1919,18 +1923,22 @@ footer {
 .home-dashboard-title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   margin-bottom: 12px;
 }
 
-.home-dashboard-title {
+/* flex: 1 em vez de "justify-content: space-between" na linha acima —
+   mesmo resultado visual com só título + tag (título cresce, empurra a
+   tag pro canto direito), mas agrupa certinho a tag com o botão de
+   atualizar (injetado por aplicarHomeReloadButtons em app.js) quando os
+   dois existem juntos, em vez de "space-between" espalhar os 3 igualmente
+   e deixar a tag flutuando no meio da linha. */
+.home-dashboard-title-row .home-dashboard-title {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
   font-weight: 700;
   color: var(--text);
-}
-
-.home-dashboard-title-row .home-dashboard-title {
   margin-bottom: 0;
 }
 
@@ -1959,6 +1967,15 @@ footer {
   color: var(--muted);
 }
 
+/* "Cacheado": widget montado a partir das planilhas de cache locais, sem
+   consultar o Jira na hora — cor própria (azul), pra não confundir com
+   "Mês atual" (dourado) nem "Período" (neutro). */
+.home-dashboard-tag--cacheado {
+  color: var(--dist-azul);
+  border-color: var(--dist-azul);
+  background: rgba(79, 156, 249, 0.15);
+}
+
 /* Sub-bloco de uma caixa dentro de um card que mostra as duas de uma vez
    (ex.: Grupo Solucionador × Mês) — rótulo pequeno acima da tabela/conteúdo
    daquela caixa, espaço extra entre um bloco e o próximo. */
@@ -1981,23 +1998,343 @@ footer {
    dois comecem exatamente na mesma altura, mesmo que o subtítulo de um
    quebre linha e o do outro não). Quebra linha inteira se não couber na
    largura do card. */
-.home-sla-mes-row {
+
+/* Histórico "SLA" (widget full-width da home, 1 mini anel por mês) — 1
+   linha por caixa (Solar: N1+N2+Prod juntos; Claro Tv: N1+N2 juntos, sem
+   separar por grupo). Cada linha rola na horizontal quando os meses não
+   couberem (table-wrap já faz isso pras tabelas; aqui é o mesmo
+   princípio, overflow-x). */
+.home-sla-historico-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.home-sla-historico-label {
+  flex: 0 0 70px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.home-sla-historico-circulos {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.home-sla-historico-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.home-sla-historico-mes {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* "Criados x Resolvidos por mês" (card novo, tag "Cacheado") — gráfico de
+   coluna, par de barrinhas por mês (vermelho = criados, verde =
+   resolvidos), com o número em cima de cada barra
+   (.home-sla-chart-bar-valor). */
+.home-sla-chart-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-sla-chart-legenda {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.home-sla-chart-legenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.home-sla-chart-legenda-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.home-sla-chart-legenda-dot--criados {
+  background: var(--sla-chart-criados);
+}
+
+.home-sla-chart-legenda-dot--resolvidos {
+  background: var(--sla-chart-resolvidos);
+}
+
+.home-sla-chart-legenda-dot--baseline {
+  background: var(--warning);
+  border-radius: 0;
+  height: 2px;
+  align-self: center;
+}
+
+/* ".home-sla-chart-plot": eixo (valores da baseline, fixo) + barras
+   (rolam na horizontal) lado a lado — eixo não faz parte da área que
+   rola, então o "1870"/"1530" ficam sempre visíveis mesmo com scroll. */
+.home-sla-chart-plot {
   display: flex;
   align-items: flex-start;
-  gap: 24px;
-  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
 }
 
-/* Anula o margin-top de ".home-dashboard-subblock + .home-dashboard-subblock"
-   (pensado pra empilhamento vertical) — aqui os blocos estão lado a lado, e
-   esse margin-top estava empurrando o segundo (Claro Tv) pra baixo em vez
-   de servir de espaçamento horizontal (isso já é o "gap" acima). */
-.home-sla-mes-row .home-dashboard-subblock + .home-dashboard-subblock {
-  margin-top: 0;
+/* Mesma altura de ".home-sla-chart-bars" (210px) — "bottom" de
+   ".home-sla-chart-eixo-valor" é calculado em JS (bottomDoValor, com
+   CRIADOS_RESOLVIDOS_OFFSET_BASE já embutido) igualzinho ao da linha de
+   baseline dentro de ".home-sla-chart-bars", então os dois batem na
+   mesma altura (nenhum padding aqui — padding NÃO desloca a referência
+   de "bottom" de um filho position:absolute, só a posição do conteúdo
+   em fluxo normal). */
+.home-sla-chart-eixo {
+  position: relative;
+  flex: 0 0 76px;
+  width: 76px;
+  height: 210px;
 }
 
-.home-sla-mes-row .prazo-donut-legenda {
-  display: none;
+/* Índice do baseline (amarelo) fica numa coluna própria, à ESQUERDA dos
+   índices da malha (cinza, mais perto das barras) — "right" maior
+   desloca pra esquerda. */
+.home-sla-chart-eixo-valor {
+  position: absolute;
+  right: 38px;
+  transform: translateY(50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warning);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-sla-chart-eixo-valor--grid {
+  right: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Liga o número do eixo à linha correspondente em ".home-sla-chart-bars"
+   — mesma altura (bottom), só no respiro ENTRE o número e o início das
+   barras (não por baixo do texto): a largura de cada variante bate com o
+   "right" do rótulo correspondente (".home-sla-chart-eixo-valor--grid" =
+   8px, ".home-sla-chart-eixo-valor" = 38px), então a linha começa
+   exatamente onde o número termina, nunca atravessa por cima dele. */
+.home-sla-chart-eixo-linha {
+  position: absolute;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.home-sla-chart-eixo-linha--grid {
+  width: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.home-sla-chart-eixo-linha--baseline {
+  width: 38px;
+  border-top: 2px dashed var(--warning);
+}
+
+.home-sla-chart-bars {
+  /* position:relative sozinho NÃO cria um stacking context novo (só com
+     z-index diferente de "auto"). Sem isso, o z-index:-1 da grade/baseline
+     (ver ".home-sla-chart-grid"/".home-sla-chart-baseline" abaixo) escapa
+     pra cima na árvore procurando o contexto mais próximo — que só existe
+     quando ".home-dashboard-card:hover" aplica "transform" (transform cria
+     stacking context), daí a grade só aparecia com o mouse em cima do
+     card. "z-index: 0" aqui fecha o contexto sempre, independente de hover
+     em qualquer ancestral. */
+  position: relative;
+  z-index: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 210px;
+  /* overflow-x sozinho faz o navegador tratar overflow-y como "auto"
+     também (regra da spec CSS pra overflow) — sem isso explícito, o
+     número em cima da barra mais alta fica cortado no topo, porque o
+     conteúdo da coluna (barra + número + rótulo do mês) passa da altura
+     fixa daqui e o eixo vertical também passa a recortar. */
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 4px;
+  padding-top: 20px;
+  width: 100%;
+}
+
+.home-sla-chart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.home-sla-chart-par {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  height: 180px;
+}
+
+/* Linha de baseline amarela — 1 elemento só, contínuo (filha de
+   ".home-sla-chart-bars", largura fixa calculada em JS pra cobrir todos
+   os meses, ver "larguraTotalPx"), mesmo "bottom" do rótulo no eixo.
+   z-index negativo: fica atrás do conteúdo normal (as barras, que não são
+   "position"ed) — z-index negativo pinta ANTES do conteúdo em fluxo
+   normal, mesmo sendo um elemento position:absolute. */
+.home-sla-chart-baseline {
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  height: 0;
+  border-top: 2px dashed var(--warning);
+  pointer-events: none;
+}
+
+/* Malha cartesiana — mesmo truque/z-index da baseline acima, só que linha
+   fina sólida cinza-claro em vez de tracejada amarela. */
+.home-sla-chart-grid {
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+.home-sla-chart-bar {
+  position: relative;
+  flex: 0 0 28px;
+  width: 28px;
+  min-height: 1px;
+  border-radius: 2px 2px 0 0;
+}
+
+.home-sla-chart-bar--criados {
+  background: var(--sla-chart-criados);
+}
+
+.home-sla-chart-bar--resolvidos {
+  background: var(--sla-chart-resolvidos);
+}
+
+.home-sla-chart-bar--reabertos {
+  background: var(--warning);
+}
+
+/* Grupo comparativo (cinza) do "Índice de reabertura" — mesmo período do
+   mês anterior, à direita do grupo de barras do mês selecionado (pedido
+   explícito do usuário). Mesmas 3 barras, só que todas na mesma cor
+   neutra (sem distinguir criados/encerrados/reabertos por cor aqui — o
+   hover já diferencia). */
+/* 3 tons de cinza diferentes (1 por tipo — Criados/Encerrados/Reabertura),
+   pedido explícito do usuário, em vez da mesma cor nas 3 barras
+   comparativas. */
+.home-sla-chart-bar--comparativo-criados {
+  background: #6b7280;
+}
+
+.home-sla-chart-bar--comparativo-resolvidos {
+  background: #8993a6;
+}
+
+.home-sla-chart-bar--comparativo-reabertos {
+  background: #aeb6c4;
+}
+
+.home-sla-chart-col--comparativo {
+  margin-left: 18px;
+  padding-left: 18px;
+  border-left: 1px solid var(--card-border);
+}
+
+/* Valor em cima da barra — usado só no gráfico de "Índice de
+   reabertura" (3 barras de 1 mês só, ver construirIcgReaberturaChart em
+   app.js); o gráfico padrão de vários meses (Criados x Resolvidos da
+   home) não usa isso, só o hover, pra não poluir visualmente. */
+.home-sla-chart-bar-valor {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.home-sla-chart-col-mes {
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--muted);
+}
+
+/* Variante usada só pelo gráfico de "Índice de reabertura" (Material
+   ICG, 1 coluna só, sem eixo nem grade de fundo — pedido do usuário) —
+   "centralize e aumente o tamanho". Barras mais largas + fonte do valor
+   maior (altura em si já vem maior via "alturaMax" em JS); o
+   "justify-content: center" centraliza a coluna única dentro de
+   ".home-sla-chart-bars" (que por padrão é "flex-start", pensado pro
+   gráfico de vários meses da home, que preenche/rola a largura toda —
+   não afetado por esse modificador). */
+.home-sla-chart-inner--grande .home-sla-chart-bars {
+  height: 280px;
+  justify-content: center;
+}
+
+.home-sla-chart-inner--grande .home-sla-chart-par {
+  height: 240px;
+}
+
+.home-sla-chart-inner--grande .home-sla-chart-bar {
+  flex: 0 0 48px;
+  width: 48px;
+}
+
+.home-sla-chart-inner--grande .home-sla-chart-bar-valor {
+  font-size: 16px;
+}
+
+/* Mini anel (sem contagem/legenda, só o % no centro) — mesmas cores de
+   status de .prazo-donut-dentro/-fora/-track acima, só menor. */
+.prazo-donut-mini-holder {
+  position: relative;
+  width: 54px;
+  height: 54px;
+}
+
+.prazo-donut-mini-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 /* Fonte/espaçamento mais compactos que .data-table padrão, pra ficar
@@ -2146,6 +2483,45 @@ footer {
   border: 1px solid var(--card-border);
 }
 
+/* "Violados — Quantidade atual sem solução": 1 coluna por grupo (N1/N2/
+   PROD), separadas por divisor vertical — dentro de cada coluna, os 4
+   cards (A violar/Violados/Aguardando Fornecedor/PDST) num grid 2×2. */
+.home-violados-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.home-violados-grid-col {
+  padding-left: 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.home-violados-grid-col:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.home-violados-grid-col-titulo {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+
+.home-violados-grid-col-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(70px, max-content));
+  gap: 8px;
+}
+
+.home-violados-grid-col-cards .summary-card {
+  border: 1px solid var(--card-border);
+}
+
 /* "Reabertos do mês": caixinhas contornadas (Solar/TV lado a lado). */
 .home-reabertos-mes-cards .summary-card {
   border: 1px solid var(--card-border);
@@ -2165,6 +2541,221 @@ footer {
   border-radius: 50%;
   flex-shrink: 0;
   background: conic-gradient(var(--success) var(--pct), var(--danger) 0);
+}
+
+/* "Colaboradores" (tag "Cacheado"): uma coluna por mês, cada célula com 3
+   números empilhados — Resolvidos (verde), Violados (vermelho), Reabertos
+   (amarelo), nessa ordem fixa. */
+.home-colab-mensal-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-colab-mensal-resolvidos {
+  color: var(--success);
+}
+
+.home-colab-mensal-violados {
+  color: var(--danger);
+}
+
+.home-colab-mensal-reabertos {
+  color: var(--warning);
+}
+
+/* .data-table usa table-layout: fixed + width: 100% (bom pras outras
+   tabelas, com poucas colunas) — aqui, com uma coluna por mês (pode
+   passar de 10) e nomes de colaborador longos, isso espremeria a coluna
+   do nome a ponto de quebrar letra por letra. table-layout: auto deixa
+   cada coluna no tamanho do conteúdo e a tabela crescer além do card; o
+   .table-wrap em volta (overflow: auto) é que rola na horizontal. */
+.home-colab-mensal-table {
+  table-layout: auto;
+  width: auto;
+  min-width: 100%;
+}
+
+.home-colab-mensal-table th:first-child,
+.home-colab-mensal-table td:first-child {
+  white-space: nowrap;
+}
+
+/* #results-table/.data-table th é sticky (top: 0) pra header ficar visível
+   ao rolar. Nessa tabela as células têm 3 linhas (resolvidos/violados/
+   reabertos) em vez de 1 — ao rolar, o header sticky (fundo opaco) acaba
+   cobrindo a linha de cima (resolvidos) da primeira linha visível,
+   "sumindo" com o número. Desliga o sticky só aqui. */
+.home-colab-mensal-table th {
+  position: static;
+}
+
+.home-colab-mensal-table .home-colab-mensal-total-col {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Diagrama de Pareto (Pareto Solar) — barras de frequência (eixo
+   esquerdo) + linha de % acumulado (eixo direito), modelo pedido pelo
+   usuário (imagem de referência: barras azuis + linha vermelha). */
+.pareto-chart-holder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Carrossel "Categoria de Encerramento (só reabertos)" — único com cards
+   (Quantidade/Percentual de abertura) do lado esquerdo do gráfico, ver
+   construirParetoReabertoCards/renderizar (parâmetro "obterCardsEl"). */
+.pareto-slide-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.pareto-slide-cards {
+  flex: 0 0 150px;
+  grid-template-columns: 1fr;
+}
+
+.pareto-chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.pareto-chart-svg {
+  display: block;
+}
+
+/* Linha/pontos/rótulos/grade ficam por cima das barras na ordem de
+   desenho (SVG empilha pela ordem do DOM) — sem "pointer-events: none"
+   neles, um clique bem em cima do cruzamento da linha com uma barra (ou
+   de um rótulo) nunca chegava na barra (nem no hover/popover, nem no
+   onBarClick do drill-down de Sub-Classificação). Só ".pareto-bar"
+   precisa capturar clique/hover. */
+.pareto-chart-svg text,
+.pareto-grid-line,
+.pareto-axis-line,
+.pareto-line,
+.pareto-line-dot {
+  pointer-events: none;
+}
+
+.pareto-grid-line {
+  stroke: var(--card-border);
+  stroke-width: 1;
+}
+
+.pareto-axis-line {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.pareto-axis-label {
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.pareto-bar {
+  fill: var(--dist-azul);
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.pareto-bar:hover {
+  filter: brightness(1.35);
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+
+/* Halo (contorno na cor do fundo) nos rótulos de valor — o ponto da linha
+   de acumulado pode cair bem perto do topo de uma barra vizinha (eixos
+   diferentes, a coincidência é normal), sem o halo os dois textos
+   embaralham num só. */
+.pareto-bar-label,
+.pareto-line-label {
+  paint-order: stroke fill;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.pareto-bar-label {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--text);
+}
+
+.pareto-x-label {
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.pareto-line {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 2;
+}
+
+.pareto-line-dot {
+  fill: var(--danger);
+}
+
+.pareto-line-label {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--danger);
+}
+
+.pareto-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pareto-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pareto-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.pareto-legend-swatch--bar {
+  background: var(--dist-azul);
+}
+
+.pareto-legend-swatch--line {
+  background: var(--danger);
+}
+
+/* Seletor de mês do Pareto Solar — <select> escolhe o mês, "track" só
+   segura o card (".pareto-carousel-slide") daquele mês (um por vez, sem
+   animação de troca). */
+.pareto-mes-select {
+  display: block;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pareto-carousel-slide {
+  min-width: 0;
+  margin-bottom: 0;
 }
 
 /* "Classificação — Funil": barra decrescente por valor, a maior primeiro
@@ -2214,13 +2805,8 @@ footer {
   margin-top: 4px;
 }
 
-/* "Violados — Últimos 30 dias" (home): uma linha por dia — data + barra
-   horizontal (verde = resolvido dentro do prazo, vermelho = violado) que
-   cresce da esquerda pra direita, proporcional ao maior "previsto pra
-   violar" do período visível. Lista rola verticalmente (altura travada,
-   pra não esticar a página) e horizontalmente se a largura mínima da linha
-   não couber no card. Dias com previsto 0 nem entram na lista. Um
-   sub-bloco por caixa (mesmo homeCaixaSubbloco dos outros dois widgets). */
+/* Legenda de bolinhas coloridas usada nos widgets da home com mapa de calor
+   (hoje só "Chamados Criados" — ver home-bar30-legend-dot--violado). */
 .home-bar30-legend {
   display: flex;
   gap: 16px;
@@ -2241,81 +2827,6 @@ footer {
   height: 8px;
   border-radius: 2px;
   flex-shrink: 0;
-}
-
-.home-bar30-legend-dot--resolvido {
-  background: var(--success);
-}
-
-.home-bar30-legend-dot--violado {
-  background: var(--danger);
-}
-
-.home-bar30-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 260px;
-  overflow-y: auto;
-  overflow-x: auto;
-}
-
-.home-bar30-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 220px;
-}
-
-.home-bar30-row-date {
-  flex: 0 0 38px;
-  font-size: 10px;
-  color: var(--muted);
-}
-
-/* .home-bar30-row-track é a "raia" inteira (largura fixa, flex:1) — dentro
-   dela, .home-bar30-row-bar é a barra do dia em si, com largura relativa ao
-   maior "previsto" do período (dia mais cheio = raia inteira). Sem esse
-   wrapper extra, "flex: 1" ganharia de qualquer width inline nos segmentos
-   (flex-basis 0% do flex:1 ignora width). */
-.home-bar30-row-track {
-  flex: 1;
-  height: 12px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--card-bg-elevated);
-  border: 1px solid var(--card-border);
-  cursor: default;
-}
-
-.home-bar30-row-bar {
-  display: flex;
-  height: 100%;
-}
-
-.home-bar30-row-seg--resolvido {
-  background: var(--success);
-}
-
-.home-bar30-row-seg--violado {
-  background: var(--danger);
-}
-
-.home-bar30-row-value {
-  flex: 0 0 26px;
-  text-align: right;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.home-bar30-popover-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text);
-  margin-top: 4px;
 }
 
 /* Tela estreita: menu lateral empilha acima do conteúdo em vez de coluna
@@ -2348,20 +2859,744 @@ footer {
     padding: 20px;
   }
 
-  .jornada-layout {
-    flex-direction: column;
-  }
-
-  .jornada-cards {
-    flex-basis: auto;
-    width: 100%;
-  }
-
-  .bar-chart-row {
-    grid-template-columns: 110px 1fr 36px;
-  }
-
   .home-dashboards {
     flex-direction: column;
   }
+}
+
+/* Material ICG — os 3 gráficos (SLA/Índice de chamados abertos/Índice
+   de reabertura) dividem 1 card só, em 3 colunas lado a lado (pedido
+   explícito do usuário: "esses 3 devem dividir o mesmo card" — era um
+   carrossel antes, só 1 visível por vez, mas cada slide ficava com
+   espaço vazio demais sobrando). Separador vertical sutil entre as
+   colunas (border, não um ".card" próprio — continuam sendo 1 card só).
+   FCA's fica num card separado, fixo embaixo. */
+.icg-trio-row {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+}
+
+.icg-trio-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.icg-trio-col:not(:last-child) {
+  padding-right: 24px;
+  border-right: 1px solid var(--card-border);
+}
+
+.icg-trio-col-conteudo {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+}
+
+/* SLA + Índice de chamados abertos empilhados (1 acima do outro) numa
+   única coluna, em vez de lado a lado — pedido explícito do usuário. */
+.icg-trio-col--empilhado {
+  gap: 16px;
+}
+
+.icg-trio-sub {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.icg-trio-sub:not(:last-child) {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.icg-trio-col-conteudo--compacta {
+  min-height: 130px;
+}
+
+/* "Índice de reabertura": gráfico + card de percentual, empilhados na
+   mesma coluna (pedido explícito do usuário). */
+.icg-reabertura-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.icg-reabertura-wrap .summary-card {
+  width: 100%;
+  max-width: 220px;
+}
+
+/* 1 card de "Percentual de abertura" por grupo (mês selecionado + mês
+   anterior, quando tem comparativa) — lado a lado, pedido explícito do
+   usuário. */
+.icg-reabertura-cards-percentual {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 14px;
+  width: 100%;
+}
+
+/* "Atendimento diário" (2ª página do carrossel, pedido explícito do
+   usuário) — gráfico de linha com Plotly (ver renderizarIcgAtendimento
+   DiarioChart em app.js): 2 séries (Criados/Resolvidos) + 1 baseline
+   tracejado por série (média diária dos últimos 3 meses). */
+/* Cabeçalho do card "Atendimento diário": título + seletor de grupo
+   (pedido explícito do usuário — Tudo/N1/N2/PROD, múltipla seleção). */
+.icg-atendimento-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.icg-atendimento-topo .pareto-titulo-destaque {
+  margin-bottom: 0;
+}
+
+/* Seletor de grupo estilo Excel: botão abre um painel com checkboxes +
+   Confirmar/Cancelar (pedido explícito do usuário — "devem selecionar os
+   filtros e confirmar para alterar o gráfico"), em vez de aplicar a cada
+   clique. */
+.icg-filtro-grupo {
+  position: relative;
+}
+
+/* Barra acima da página 1 do carrossel (SLA/Abertos/Reabertura) com o
+   seletor de grupo dela, alinhado à direita. */
+.icg-pagina-topo {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.icg-filtro-grupo-painel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  padding: 10px;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.icg-filtro-grupo-opcao {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icg-filtro-grupo-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--card-border);
+}
+
+/* Container do Plotly (ver renderizarIcgAtendimentoDiarioChart em
+   app.js) — altura fixa vem do layout do Plotly. */
+.icg-atendimento-plot {
+  width: 100%;
+}
+
+/* Barra de SLA (verde/vermelha) — ver construirIcgSlaBarra em app.js.
+   Pílula cheia (100% da largura), com um respiro de 2px entre os 2
+   segmentos (cor do próprio card, "gap" do flex revela o fundo por
+   baixo) em vez de borda — mesmo mecanismo usado em qualquer barra
+   empilhada do app. */
+.icg-sla-barra-wrap {
+  width: 100%;
+  max-width: 300px;
+  text-align: center;
+}
+
+.icg-sla-barra-valor {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+  line-height: 1.1;
+}
+
+.icg-sla-barra {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  height: 34px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+/* SLA: percentual sobreposto aos segmentos verde/vermelho, centralizado
+   (pedido do usuário: "deve aparecer dentro da barra") — só quando o
+   valor é filho da barra (ver construirIcgSlaBarra); o "Índice de
+   chamados abertos" reaproveita a mesma classe ".icg-sla-barra-valor" mas
+   continua acima da barra (construirIcgAbertosBarra), sem essa regra. */
+.icg-sla-barra > .icg-sla-barra-valor {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0;
+  font-size: 16px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  z-index: 1;
+}
+
+.icg-sla-barra-seg--dentro {
+  background: var(--success);
+}
+
+.icg-sla-barra-seg--fora {
+  background: var(--danger);
+}
+
+/* Trilha em volta da barra de SLA, com a meta (95%) marcada — overflow
+   visível pro rótulo poder ficar acima sem cortar; a barra em si
+   continua com overflow escondido, só pra manter o corte arredondado dos
+   2 segmentos (mesmo mecanismo do "icg-abertos-barra"). */
+.icg-sla-barra-trilha {
+  position: relative;
+  margin-top: 24px;
+}
+
+.icg-sla-barra-marca {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed var(--warning);
+  pointer-events: none;
+}
+
+.icg-sla-barra-marca-label {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warning);
+  white-space: nowrap;
+}
+
+.icg-sla-barra--vazia {
+  width: 100%;
+  background: var(--card-border);
+}
+
+/* "Índice de chamados abertos" (criados no mês) — mesmo estilo visual da
+   barra de SLA acima (".icg-sla-barra-wrap"/".icg-sla-barra-valor",
+   reaproveitadas tal qual, ver construirIcgAbertosBarra em app.js), só
+   que com 1 único preenchimento (não 2 segmentos somando 100%: aqui é 1
+   valor só comparado a uma meta em faixa) + 2 marcações verticais
+   tracejadas mostrando onde a faixa de meta fica na escala ("mantendo o
+   baseline demarcado na linha" — pedido do usuário). "overflow: visible"
+   (ao contrário de ".icg-sla-barra") pro rótulo de cada marcação poder
+   ficar acima da barra sem ser cortado; margem no topo abre espaço pra
+   esse rótulo. */
+.icg-abertos-barra {
+  position: relative;
+  width: 100%;
+  height: 34px;
+  border-radius: 6px;
+  overflow: visible;
+  background: var(--card-bg);
+  /* Contorno da barra inteira (escala 0~2000) — sem isso, o fundo
+     ("--card-bg") é igual ao do card por trás e a trilha some, deixando
+     só o preenchimento visível e as marcações de baseline "soltas" no
+     ar, sem referência de onde a barra termina (pedido do usuário:
+     "deixar a linha de contorno"). */
+  border: 1px solid var(--card-border);
+  box-sizing: border-box;
+  margin-top: 24px;
+}
+
+/* Valor sobreposto à barra inteira (pedido do usuário: "deve aparecer
+   dentro da barra"), centralizado mesmo quando o preenchimento é curto —
+   mesma técnica da barra de SLA (".icg-sla-barra > .icg-sla-barra-valor"). */
+.icg-abertos-barra > .icg-sla-barra-valor {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0;
+  font-size: 16px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  z-index: 1;
+}
+
+.icg-abertos-barra-fill {
+  height: 100%;
+  border-radius: 0;
+  transition: width 0.2s ease;
+}
+
+.icg-abertos-barra-fill--dentro {
+  background: var(--success);
+}
+
+.icg-abertos-barra-fill--fora {
+  background: var(--danger);
+}
+
+.icg-abertos-barra-marca {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed var(--warning);
+  pointer-events: none;
+}
+
+/* Barra comparativa (cinza esmaecido), abaixo da barra de SLA e da de
+   "chamados abertos" — mesmo período do mês anterior (ver
+   construirIcgComparativoBarra em app.js). Mesmo modelo visual da barra
+   principal (pílula cheia, 34px, valor centralizado dentro dela), só em
+   cinza em vez de verde/vermelho — aqui não há "dentro"/"fora" de meta,
+   só comparação (pedido explícito do usuário: "mesmo modelo da barra
+   atual"). */
+.icg-barra-com-comparativo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.icg-barra-com-comparativo .summary-card {
+  width: 100%;
+  max-width: 300px;
+}
+
+/* Linha com a barra/gráfico de um lado e a tabela de variação do outro
+   (pedido explícito do usuário: "ao lado direito") — "nowrap": a coluna
+   de SLA/Abertos é estreita (dividida com a outra metade do card), então
+   com "wrap" a tabela caía pra baixo em vez de ficar ao lado (era
+   exatamente o que o usuário reportou: "ainda está embaixo do gráfico").
+   O 1º filho (a barra/gráfico) encolhe pra abrir espaço — ela já é
+   fluida (width: 100%) — enquanto a tabela mantém o tamanho fixo. */
+.icg-secao-com-variacao {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 20px;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+.icg-secao-com-variacao > *:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Tabela de variação + tabela de média, empilhadas (pedido explícito do
+   usuário: a média "aparece abaixo, em uma tabela nova"), as duas à
+   direita do gráfico. */
+.icg-tabelas-direita {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Tabela de variação: 1 linha por categoria — quadrado colorido (mesma
+   cor da barra/legenda daquela categoria) + seta + percentual. Seta
+   verde/pra cima quando o valor atual é maior que o do período anterior
+   (barra cinza), vermelha/pra baixo quando é menor. */
+.icg-variacao-tabela {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.icg-variacao-linha {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.icg-variacao-linha:not(:last-child) {
+  border-bottom: 1px solid var(--card-border);
+}
+
+.icg-variacao-categoria {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  min-width: 110px;
+}
+
+.icg-variacao-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.icg-variacao-seta {
+  width: 16px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.icg-variacao-seta--up {
+  color: var(--success);
+}
+
+.icg-variacao-seta--down {
+  color: var(--danger);
+}
+
+.icg-variacao-seta--neutro {
+  color: var(--muted);
+}
+
+.icg-variacao-pct {
+  min-width: 52px;
+  text-align: right;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Diferença em contagem (atual - anterior), coluna a mais pedida pelo
+   usuário — separada da % por uma borda sutil, como uma coluna de
+   tabela mesmo. */
+.icg-variacao-diferenca {
+  min-width: 48px;
+  text-align: right;
+  padding-left: 10px;
+  border-left: 1px solid var(--card-border);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* Tabela da média dos últimos 3 meses — mesmo contorno de
+   ".icg-variacao-tabela" (reaproveitado), só rótulo + valor (sem
+   seta/dot: não é uma comparação direta, é a média de 3 períodos). */
+.icg-media-tabela-rotulo {
+  flex: 1;
+  color: var(--muted);
+}
+
+.icg-media-tabela-valor {
+  min-width: 52px;
+  text-align: right;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.icg-comparativo-wrap {
+  width: 100%;
+  max-width: 300px;
+}
+
+/* Alinhada à direita, mesmo lado da legenda Dentro/Fora do prazo acima
+   dela (pedido explícito do usuário: "legendas devem ficar à direita"). */
+.icg-comparativo-legenda {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  text-align: left;
+}
+
+.icg-comparativo-barra {
+  position: relative;
+  width: 100%;
+  height: 34px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-sizing: border-box;
+}
+
+.icg-comparativo-barra-fill {
+  height: 100%;
+  border-radius: 0;
+  background: var(--muted);
+}
+
+.icg-comparativo-trilha {
+  position: relative;
+  margin-top: 24px;
+}
+
+.icg-comparativo-barra-valor {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  z-index: 1;
+}
+
+.icg-abertos-barra-marca-label {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warning);
+  white-space: nowrap;
+}
+
+.icg-fca-card-wrap {
+  margin-bottom: 0;
+}
+
+/* Cabeçalho do card de FCA's: título + "Dia da apresentação" + botão. */
+.icg-fca-topo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.icg-fca-topo input[type="month"],
+.icg-fca-input-data {
+  padding: 8px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--card-bg-elevated);
+  color: var(--text);
+}
+
+/* Lista alternada de dias (pedido explícito do usuário) — zebra nas
+   linhas; cada dia abre/fecha clicando no cabeçalho. */
+.icg-fca-lista {
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.icg-fca-lista > .hint {
+  margin: 12px 14px;
+}
+
+.icg-fca-dia {
+  background: var(--card-bg);
+}
+
+.icg-fca-dia:nth-child(even) {
+  background: var(--card-bg-elevated);
+}
+
+.icg-fca-dia:not(:last-child) {
+  border-bottom: 1px solid var(--card-border);
+}
+
+.icg-fca-dia-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.icg-fca-dia-cabecalho::before {
+  content: "▸";
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.icg-fca-dia.aberto .icg-fca-dia-cabecalho::before {
+  transform: rotate(90deg);
+}
+
+.icg-fca-dia-titulo {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.icg-fca-dia-contagem {
+  flex: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.icg-fca-dia-corpo {
+  display: none;
+  padding: 4px 14px 14px 34px;
+}
+
+.icg-fca-dia.aberto .icg-fca-dia-corpo {
+  display: block;
+}
+
+.icg-fca-adicionar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* Nível "Mês" (Mês -> Dia -> FCA's): mesma linha alternada do dia, com
+   título maior; a lista de dias fica aninhada dentro dele. */
+.icg-fca-mes > .icg-fca-dia-cabecalho .icg-fca-dia-titulo {
+  font-size: 15px;
+}
+
+.icg-fca-mes > .icg-fca-dia-corpo > .icg-fca-lista {
+  margin-top: 4px;
+}
+
+/* 1 bloco por FCA (indicador) dentro do dia. */
+.icg-fca-bloco {
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.icg-fca-bloco-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.icg-fca-bloco-titulo {
+  flex: 1;
+  font-weight: 700;
+  color: var(--dist-azul);
+}
+
+.icg-fca-vazio {
+  margin: 0;
+}
+
+/* Árvore Fato -> Causa -> Ação: cada nível recuado, com uma linha-guia
+   vertical à esquerda ligando os filhos ao pai. */
+.icg-fca-arvore {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.icg-fca-arvore .icg-fca-arvore {
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 1px dashed var(--card-border);
+}
+
+.icg-fca-no {
+  margin-top: 6px;
+}
+
+.icg-fca-no-linha {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.icg-fca-no-rotulo {
+  flex: 0 0 48px;
+  padding-top: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.icg-fca-no--fato > .icg-fca-no-linha .icg-fca-no-rotulo {
+  color: var(--danger);
+}
+
+.icg-fca-no--causa > .icg-fca-no-linha .icg-fca-no-rotulo {
+  color: var(--warning);
+}
+
+.icg-fca-no--acao > .icg-fca-no-linha .icg-fca-no-rotulo {
+  color: var(--success);
+}
+
+.icg-fca-no-texto {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg-elevated);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.icg-fca-no-texto:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.icg-fca-btn-add,
+.icg-fca-btn-excluir,
+.icg-fca-btn-remover {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.icg-fca-btn-add:hover,
+.icg-fca-btn-remover:hover {
+  background: var(--secondary-bg-hover);
+}
+
+.icg-fca-btn-excluir {
+  color: var(--danger);
+}
+
+.icg-fca-btn-excluir:hover,
+.icg-fca-btn-remover:hover {
+  border-color: var(--danger);
+  color: var(--danger);
 }

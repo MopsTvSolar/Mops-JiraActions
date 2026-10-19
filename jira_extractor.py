@@ -517,6 +517,40 @@ def extract_fornecedor(issue_fields):
     return None
 
 
+def extract_eps_subclassificacao(config, issues, eps_field_id=None, subclassificacao_field_id=None):
+    """A partir de uma lista de issues já buscados no Jira (precisam ter
+    "eps_field_id"/"subclassificacao_field_id" entre os campos pedidos),
+    resolve os valores de "PROP_Site" (EPS) e "Sub-Classificação" de cada
+    um — cobrindo os dois formatos possíveis desses campos (referência a
+    objeto do Jira Assets ou Select List simples, via
+    _extract_categoria_values; _precache_categoria_labels resolve os
+    objetos em paralelo antes, mesmo mecanismo de
+    fetch_categoria_encerrados/fetch_chamados_por_query). Devolve {chave:
+    {"eps": valor ou None, "subclassificacao": valor ou None}}. Passar
+    None num dos 2 field_id pula aquele campo (sai None pra todo mundo),
+    em vez de falhar. Usado só pela sincronização do cache (ver
+    _cache_eps_sub_jira em api/index.py) — "Extração por Query"/outras
+    ações não usam esses 2 campos."""
+    if eps_field_id:
+        _precache_categoria_labels(config, issues, eps_field_id)
+    if subclassificacao_field_id:
+        _precache_categoria_labels(config, issues, subclassificacao_field_id)
+
+    resultado = {}
+    for issue in issues:
+        issue_fields = issue.get("fields", {})
+        eps = None
+        if eps_field_id:
+            valores = _extract_categoria_values(config, issue_fields.get(eps_field_id))
+            eps = valores[0] if valores else None
+        subclassificacao = None
+        if subclassificacao_field_id:
+            valores = _extract_categoria_values(config, issue_fields.get(subclassificacao_field_id))
+            subclassificacao = valores[0] if valores else None
+        resultado[issue.get("key")] = {"eps": eps, "subclassificacao": subclassificacao}
+    return resultado
+
+
 def fetch_chamados_a_violar(config, days_ahead=0, incluir_fornecedor=False, grupo_field_id=None):
     """Busca chamados cujo prazo de SLA (Tempo de Resolução) estoura no dia-alvo
     (hoje se days_ahead=0, amanhã se days_ahead=1), dentro da janela de
@@ -606,7 +640,26 @@ def _fetch_keys_reabertos(config, keys):
     return {issue.get("key") for issue in issues}
 
 
-def fetch_chamados_violados(config, incluir_fornecedor=False, start_date=None, end_date=None):
+def _fetch_keys_priority_was_p0p1p2(config, keys):
+    """Mesmo padrão de _fetch_keys_reabertos, mas pra "já foi P0/P1/P2 em
+    algum momento" (priority WAS IN (P0, P1, P2)) — mesma condição usada em
+    COTI Abertos. Usado pelo calendário de Violados da home."""
+    if not keys:
+        return set()
+    keys_str = ", ".join(f'"{k}"' for k in keys)
+    jql = f"key IN ({keys_str}) AND priority WAS IN (P0, P1, P2)"
+    issues = fetch_issues(config, jql, ["key"])
+    return {issue.get("key") for issue in issues}
+
+
+def fetch_chamados_violados(
+    config,
+    incluir_fornecedor=False,
+    start_date=None,
+    end_date=None,
+    incluir_p0p1p2=False,
+    tipo_incidente_field_id=None,
+):
     """Busca chamados cujo SLA de resolução já estourou (tempo negativo),
     reaproveitando os filtros base (grupo/projeto/status) da JQL configurada.
 
@@ -622,7 +675,18 @@ def fetch_chamados_violados(config, incluir_fornecedor=False, start_date=None, e
     já passou por status "Reaberto" em algum momento (independente do status
     atual) — checado numa única consulta extra (key IN (...)), depois do
     filtro de período, não uma consulta por chamado.
-    """
+
+    "incluir_p0p1p2" (opcional, default False): quando True, faz mais uma
+    consulta extra (mesmo padrão de "reaberto") pra marcar "foi_p0p1p2"
+    ("Sim"/"Não") — se o chamado já teve priority IN (P0, P1, P2) em algum
+    momento (priority WAS IN, mesma condição de COTI Abertos). Fica
+    desligado por padrão pra não pagar o custo dessa consulta extra em quem
+    não precisa dela (ex.: tela de Violados, Report Diário).
+
+    "tipo_incidente_field_id" (opcional): quando informado, cada linha ganha
+    "tipo_incidente_mops" com o valor atual do campo "Tipo Incidente MOPS"
+    (ex.: "Centro Tático", "Priorizado", "Escalonado") ou None se vazio —
+    mesmo padrão best-effort dos outros usos desse campo (fetch_distribuicao_tratados)."""
     base_jql = config["jql"]
     if not base_jql:
         raise JiraExtractorError("Nenhuma JQL base definida.")
@@ -630,9 +694,11 @@ def fetch_chamados_violados(config, incluir_fornecedor=False, start_date=None, e
     base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
     jql = f'({base_jql}) AND ("Tempo de Resolução" < 0h OR "Tempo de resolução" < 0h)'
 
-    fields = ["summary", "status", "assignee", "reporter", "project", "issuetype"] + SLA_RESOLUTION_FIELDS
+    fields = ["summary", "status", "assignee", "reporter", "project", "issuetype", "priority"] + SLA_RESOLUTION_FIELDS
     if incluir_fornecedor:
         fields = fields + FORNECEDOR_RESPONSAVEL_FIELDS
+    if tipo_incidente_field_id:
+        fields = fields + [tipo_incidente_field_id]
 
     log.info("Buscando chamados violados com JQL: %s", jql)
     issues = fetch_issues(config, jql, fields)
@@ -657,6 +723,11 @@ def fetch_chamados_violados(config, incluir_fornecedor=False, start_date=None, e
         candidatos.append((issue, issue_fields, sla_campo, breach_dt))
 
     keys_reabertos = _fetch_keys_reabertos(config, [issue.get("key") for issue, *_ in candidatos])
+    keys_p0p1p2 = (
+        _fetch_keys_priority_was_p0p1p2(config, [issue.get("key") for issue, *_ in candidatos])
+        if incluir_p0p1p2
+        else set()
+    )
 
     rows = []
     for issue, issue_fields, sla_campo, breach_dt in candidatos:
@@ -676,6 +747,10 @@ def fetch_chamados_violados(config, incluir_fornecedor=False, start_date=None, e
         }
         if incluir_fornecedor:
             row["fornecedor_responsavel"] = extract_fornecedor(issue_fields)
+        if incluir_p0p1p2:
+            row["foi_p0p1p2"] = "Sim" if key in keys_p0p1p2 else "Não"
+        if tipo_incidente_field_id:
+            row["tipo_incidente_mops"] = _extract(issue_fields.get(tipo_incidente_field_id))
         rows.append(row)
 
     rows.sort(key=lambda r: r["horas_em_atraso"] or 0, reverse=True)
@@ -1055,12 +1130,15 @@ def fetch_total_violados_abertos(config):
     return len(fetch_issues(config, jql, ["key"]))
 
 
-def fetch_violados_abertos_por_grupo(config, grupos, grupo_field_id):
-    """Como fetch_total_violados_abertos, mas detalhado por grupo da caixa
-    (N1/N2/PROD pra Solar, N1/N2 pra Claro Tv) — um card por grupo na home,
-    em vez de um total só por caixa. Precisa do ID do campo Grupo
-    Solucionador (resolvido best-effort do lado da API web) pra poder
-    agrupar; sem ele, use fetch_total_violados_abertos como alternativa."""
+def fetch_total_a_violar_abertos(config):
+    """Oposto de fetch_total_violados_abertos: quantos chamados (grupo/
+    projeto já embutidos em config["jql"]) ainda estão DENTRO do prazo
+    (SLA "Tempo de Resolução" não estourou) E em aberto (status fora de
+    STATUS_FECHADOS_HOME_DASHBOARD), SEM contar quem está "Aguardando
+    Fornecedor" (esses já têm card próprio — ver
+    fetch_total_aguardando_fornecedor — não entram aqui, mesmo dentro do
+    prazo) — "quantidade total a violar" do contador da home, ao lado de
+    "quantidade total de violados"."""
     base_jql = config["jql"]
     if not base_jql:
         raise JiraExtractorError("Nenhuma JQL base definida.")
@@ -1068,9 +1146,59 @@ def fetch_violados_abertos_por_grupo(config, grupos, grupo_field_id):
     base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
     status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
     jql = (
-        f'({base_jql}) AND ("Tempo de Resolução" < 0h OR "Tempo de resolução" < 0h) '
-        f"AND status NOT IN ({status_clause})"
+        f'({base_jql}) AND NOT ("Tempo de Resolução" < 0h OR "Tempo de resolução" < 0h) '
+        f'AND status NOT IN ({status_clause}) AND status != "Aguardando Fornecedor"'
     )
+    return len(fetch_issues(config, jql, ["key"]))
+
+
+def fetch_total_aguardando_fornecedor(config):
+    """Quantos chamados (grupo/projeto já embutidos em config["jql"]) estão
+    no status "Aguardando Fornecedor" agora — contador da home, widget
+    "Violados — Quantidade atual sem solução"."""
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    jql = f'({base_jql}) AND status = "Aguardando Fornecedor"'
+    return len(fetch_issues(config, jql, ["key"]))
+
+
+def fetch_total_pdst_abertos(config):
+    """Quantos chamados (grupo/projeto já embutidos em config["jql"], mesmo
+    _build_base_jql_home das outras 3 funções desta família) estão no
+    projeto "Abertura de Chamados" (PROJETO_PDST) e ainda em aberto
+    (status fora de STATUS_FECHADOS_HOME_DASHBOARD) — contador da home,
+    widget "Violados — Quantidade atual sem solução". Mesmo config["jql"]
+    pinado por grupo (N1/N2 só "Central de Incidentes", Prod só
+    "Abertura de Chamados") das outras funções — "AND project = PDST"
+    aqui simplesmente reduz pro sub-trecho do grupo Prod (único mapeado
+    pra esse projeto); nas demais caixas (sem Prod), dá sempre 0."""
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
+    jql = f'({base_jql}) AND project = "{PROJETO_PDST}" AND status NOT IN ({status_clause})'
+    return len(fetch_issues(config, jql, ["key"]))
+
+
+def _contar_abertos_por_grupo(config, grupos, grupo_field_id, extra_clause):
+    """Conta, pra cada grupo de "grupos", quantos chamados batem com
+    "extra_clause" (combinada com config["jql"]) — usada pelas 4 variantes
+    "_por_grupo" do contador "Violados — Quantidade atual sem solução"
+    (a_violar/violados/aguardando_fornecedor/pdst), uma função só pra não
+    repetir a lógica de agrupar pelo campo Grupo Solucionador 4 vezes.
+    Precisa do ID desse campo (resolvido best-effort do lado da API web);
+    sem ele, use a variante "fetch_total_*" (sem "_por_grupo") no lugar."""
+    base_jql = config["jql"]
+    if not base_jql:
+        raise JiraExtractorError("Nenhuma JQL base definida.")
+
+    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
+    jql = f"({base_jql}) AND {extra_clause}"
     issues = fetch_issues(config, jql, [grupo_field_id])
 
     contagem = Counter()
@@ -1080,6 +1208,42 @@ def fetch_violados_abertos_por_grupo(config, grupos, grupo_field_id):
             contagem[grupo] += 1
 
     return [{"grupo": grupo, "total": contagem.get(grupo, 0)} for grupo in grupos]
+
+
+def fetch_violados_abertos_por_grupo(config, grupos, grupo_field_id):
+    """Como fetch_total_violados_abertos, mas detalhado por grupo da caixa
+    (N1/N2/PROD pra Solar, N1/N2 pra Claro Tv) — um card por grupo na home,
+    em vez de um total só por caixa."""
+    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
+    extra_clause = (
+        f'("Tempo de Resolução" < 0h OR "Tempo de resolução" < 0h) AND status NOT IN ({status_clause})'
+    )
+    return _contar_abertos_por_grupo(config, grupos, grupo_field_id, extra_clause)
+
+
+def fetch_a_violar_abertos_por_grupo(config, grupos, grupo_field_id):
+    """Como fetch_total_a_violar_abertos, mas detalhado por grupo da caixa."""
+    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
+    extra_clause = (
+        f'NOT ("Tempo de Resolução" < 0h OR "Tempo de resolução" < 0h) '
+        f'AND status NOT IN ({status_clause}) AND status != "Aguardando Fornecedor"'
+    )
+    return _contar_abertos_por_grupo(config, grupos, grupo_field_id, extra_clause)
+
+
+def fetch_aguardando_fornecedor_por_grupo(config, grupos, grupo_field_id):
+    """Como fetch_total_aguardando_fornecedor, mas detalhado por grupo da caixa."""
+    return _contar_abertos_por_grupo(config, grupos, grupo_field_id, 'status = "Aguardando Fornecedor"')
+
+
+def fetch_pdst_abertos_por_grupo(config, grupos, grupo_field_id):
+    """Como fetch_total_pdst_abertos, mas detalhado por grupo da caixa —
+    só o grupo Prod deve aparecer com valor >0 (é o único roteado pro
+    projeto PDST em _build_base_jql_home); N1/N2 e Claro Tv (sem Prod)
+    sempre saem zerados."""
+    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
+    extra_clause = f'project = "{PROJETO_PDST}" AND status NOT IN ({status_clause})'
+    return _contar_abertos_por_grupo(config, grupos, grupo_field_id, extra_clause)
 
 
 def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id, prod_projetos=None):

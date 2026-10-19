@@ -15,24 +15,14 @@
   const resultsCard = $("results-card");
 
   const otherActionButtons = [
-    $("btn-extracao-completa"),
-    $("btn-extracao-query"),
-    $("btn-a-violar"),
-    $("btn-violar-hoje"),
-    $("btn-violar-amanha"),
-    $("btn-violar-semanal"),
     $("btn-violados"),
-    $("btn-categorias-encerramento"),
-    $("btn-criados-resolvidos"),
-    $("btn-distribuicao"),
-    $("btn-reabertos"),
-    $("btn-criticos"),
-    $("btn-analistas-encerramento"),
-    $("btn-jornada"),
-    $("btn-eps"),
+    $("btn-colaboradores"),
     $("btn-report-vini"),
     $("btn-tv-resolvidos-reabertos"),
     $("btn-report-diario"),
+    $("btn-cache"),
+    $("btn-pareto-solar"),
+    $("btn-material-icg"),
   ];
 
   // Grupos ("caixas") de cada caixa solucionadora — espelha CAIXAS em
@@ -219,19 +209,8 @@
   // (abra ele um painel próprio ou dispare uma ação na hora), os outros que
   // estavam abertos retraem primeiro.
   const ALL_DIALOG_IDS = [
-    "extracao-dialog",
-    "extracao-query-dialog",
-    "violar-dialog",
-    "categorias-dialog",
-    "criados-resolvidos-dialog",
-    "distribuicao-dialog",
-    "reabertos-dialog",
     "colaboradores-dialog",
     "violados-dialog",
-    "criticos-dialog",
-    "analistas-dialog",
-    "jornada-dialog",
-    "eps-dialog",
     "report-vini-dialog",
     "tv-resolvidos-reabertos-dialog",
   ];
@@ -251,16 +230,14 @@
   // mostrar dois de uma vez.
   function hideAllResults() {
     resultsCard.classList.add("hidden");
-    $("categorias-results").classList.add("hidden");
-    $("criados-resolvidos-results").classList.add("hidden");
-    $("distribuicao-results").classList.add("hidden");
     $("colaboradores-results").classList.add("hidden");
-    $("criticos-results").classList.add("hidden");
-    $("eps-results").classList.add("hidden");
-    $("analista-detalhe").classList.add("hidden");
-    $("heatmap-block").classList.add("hidden");
     $("report-vini-results").classList.add("hidden");
     $("report-diario-results").classList.add("hidden");
+    $("cache-results").classList.add("hidden");
+    $("pareto-solar-results").classList.add("hidden");
+    $("extracao-lote-results").classList.add("hidden");
+    $("material-icg-results").classList.add("hidden");
+    $("pareto-sub-modal").classList.add("hidden");
     hideHoverPopover();
   }
 
@@ -270,16 +247,13 @@
   // elementos e recalcula sozinho sempre que algum deles muda.
   const RESULT_BLOCK_IDS = [
     "results-card",
-    "categorias-results",
-    "criados-resolvidos-results",
-    "distribuicao-results",
     "colaboradores-results",
-    "criticos-results",
-    "eps-results",
-    "analista-detalhe",
-    "heatmap-block",
     "report-vini-results",
     "report-diario-results",
+    "cache-results",
+    "pareto-solar-results",
+    "extracao-lote-results",
+    "material-icg-results",
   ];
 
   // Qual item do menu lateral corresponde a cada diálogo/resultado — usado só
@@ -289,49 +263,38 @@
   // Violados, Reabertos, Jornada), então esse caso usa "lastAction" (já
   // existe mais abaixo, pro botão "Baixar arquivo") em vez do id do bloco.
   const DIALOG_TO_NAV = {
-    "extracao-dialog": "btn-extracao-completa",
-    "extracao-query-dialog": "btn-extracao-query",
-    "violar-dialog": "btn-a-violar",
-    "categorias-dialog": "btn-categorias-encerramento",
-    "criados-resolvidos-dialog": "btn-criados-resolvidos",
-    "distribuicao-dialog": "btn-distribuicao",
-    "reabertos-dialog": "btn-reabertos",
     "colaboradores-dialog": "btn-colaboradores",
     "violados-dialog": "btn-violados",
-    "criticos-dialog": "btn-criticos",
-    "analistas-dialog": "btn-analistas-encerramento",
-    "jornada-dialog": "btn-jornada",
-    "eps-dialog": "btn-eps",
     "report-vini-dialog": "btn-report-vini",
     "tv-resolvidos-reabertos-dialog": "btn-tv-resolvidos-reabertos",
   };
 
   const RESULT_TO_NAV = {
-    "categorias-results": "btn-categorias-encerramento",
-    "criados-resolvidos-results": "btn-criados-resolvidos",
-    "distribuicao-results": "btn-distribuicao",
     "colaboradores-results": "btn-colaboradores",
-    "criticos-results": "btn-criticos",
-    "eps-results": "btn-eps",
-    "analista-detalhe": "btn-analistas-encerramento",
     "report-vini-results": "btn-report-vini",
     "report-diario-results": "btn-report-diario",
+    "cache-results": "btn-cache",
+    "pareto-solar-results": "btn-pareto-solar",
+    "extracao-lote-results": "btn-extracao-lote",
+    "material-icg-results": "btn-material-icg",
   };
 
   const LAST_ACTION_TO_NAV = {
-    "extracao-completa": "btn-extracao-completa",
-    "extracao-query": "btn-extracao-query",
-    "violar-hoje": "btn-a-violar",
-    "violar-amanha": "btn-a-violar",
-    "violar-semanal": "btn-a-violar",
     violados: "btn-violados",
-    reabertos: "btn-reabertos",
-    jornada: "btn-jornada",
   };
 
   // "btn-report-diario" não tem diálogo próprio (ação direta, sempre "hoje")
   // — não aparece em DIALOG_TO_NAV, então entra à parte aqui.
-  const NAV_ITEM_IDS = [...new Set([...Object.values(DIALOG_TO_NAV), "btn-report-diario"])];
+  const NAV_ITEM_IDS = [
+    ...new Set([
+      ...Object.values(DIALOG_TO_NAV),
+      "btn-report-diario",
+      "btn-cache",
+      "btn-pareto-solar",
+      "btn-extracao-lote",
+      "btn-material-icg",
+    ]),
+  ];
 
   function updateNavActiveState() {
     const dialogAberto = ALL_DIALOG_IDS.find((id) => $(id).classList.contains("open"));
@@ -340,7 +303,7 @@
       activeNavId = DIALOG_TO_NAV[dialogAberto];
     } else {
       const resultVisivel = RESULT_BLOCK_IDS.find(
-        (id) => id !== "results-card" && id !== "heatmap-block" && !$(id).classList.contains("hidden")
+        (id) => id !== "results-card" && !$(id).classList.contains("hidden")
       );
       if (resultVisivel) {
         activeNavId = RESULT_TO_NAV[resultVisivel] || null;
@@ -410,6 +373,48 @@
     }
   });
 
+  // Filtro de caixa (Solar/Claro Tv) do painel inteiro da home — 1
+  // seletor só, no topo de "DASHBOARDS", escondendo via CSS (ver
+  // "#home-view[data-caixa-filtro]" em style.css) todo bloco marcado com
+  // data-caixa que não bate com a escolha. Preferência de UI, mesmo
+  // padrão do recolher/expandir menu acima: persiste em localStorage, não
+  // é credencial nem dado do Jira.
+  const homeCaixaFiltroSelect = $("home-caixa-filtro-select");
+  const homeViewEl = $("home-view");
+
+  function aplicarHomeCaixaFiltro(caixa) {
+    homeViewEl.dataset.caixaFiltro = caixa;
+    homeCaixaFiltroSelect.value = caixa;
+  }
+
+  let homeCaixaFiltroSalva = "solar";
+  try {
+    homeCaixaFiltroSalva = localStorage.getItem("mops-home-caixa-filtro") || "solar";
+  } catch (e) {
+    // localStorage indisponível — segue com "solar" (padrão).
+  }
+  aplicarHomeCaixaFiltro(homeCaixaFiltroSalva);
+
+  homeCaixaFiltroSelect.addEventListener("change", () => {
+    aplicarHomeCaixaFiltro(homeCaixaFiltroSelect.value);
+    try {
+      localStorage.setItem("mops-home-caixa-filtro", homeCaixaFiltroSelect.value);
+    } catch (e) {
+      // segue sem lembrar entre recarregamentos.
+    }
+  });
+
+  // Botão geral de atualizar da home (recarrega tudo, mesma função do
+  // login) — não depende de login, então já liga desde já. O botão
+  // individual por widget (aplicarHomeReloadButtons) é ligado mais abaixo,
+  // logo depois de HOME_WIDGET_RELOAD_REGISTRO ser declarado (um "const"
+  // — chamar a função aqui em cima quebraria com "Cannot access ... before
+  // initialization", já que "const" fica em temporal dead zone até a
+  // linha da declaração rodar, diferente de function que é hoisted).
+  $("btn-home-reload-geral").addEventListener("click", () => {
+    carregarHomeDashboardsGradual();
+  });
+
   // Tooltip nativo (title) com o nome da ação em cada item do menu — só é
   // visível de fato com o menu recolhido (ícone sozinho, sem rótulo), mas
   // não atrapalha em nada com o menu expandido.
@@ -428,27 +433,13 @@
   let lastExtraBody = {};
 
   const ACTION_LABELS = {
-    "extracao-completa": "Extração completa",
-    "extracao-query": "Extração por Query",
-    "violar-hoje": "Chamados a violar hoje",
-    "violar-amanha": "Chamados a violar amanhã",
-    "violar-semanal": "Plano semanal (próximos 7 dias)",
     violados: "Chamados violados",
-    reabertos: "Chamados reabertos",
-    jornada: "Análise de Jornada",
   };
 
   // Tom de cor do card de total, de acordo com o significado da ação
   // (mesma paleta de status usada no resto do app: informativo, alerta, crítico).
   const ACTION_TONE = {
-    "extracao-completa": "tone-accent",
-    "extracao-query": "tone-accent",
-    "violar-hoje": "tone-warning",
-    "violar-amanha": "tone-warning",
-    "violar-semanal": "tone-warning",
     violados: "tone-danger",
-    reabertos: "tone-warning",
-    jornada: "tone-accent",
   };
 
   // Usa classList (não "className = ...") de propósito: setBusy() liga/
@@ -478,16 +469,8 @@
     [
       ...otherActionButtons,
       $("btn-download"),
-      $("btn-categorias-gerar"),
-      $("btn-extracao-gerar"),
-      $("btn-criados-resolvidos-gerar"),
-      $("btn-reabertos-gerar"),
       $("btn-violados-gerar"),
-      $("btn-criticos-gerar"),
       $("btn-vini-gerar"),
-      $("btn-jornada-gerar"),
-      $("btn-eps-gerar"),
-      $("btn-extracao-query-gerar"),
     ].forEach((btn) => (btn.disabled = busy));
   }
 
@@ -509,13 +492,7 @@
     return `${dia}/${mes}/${ano}`;
   }
 
-  // A janela de SLA (07:00 às 23:59) só existe de verdade em "A violar
-  // hoje/amanhã" — nas outras ações (Extração completa, Violados,
-  // Categorias de Encerramento, Plano semanal) mostrar essa janela seria
-  // enganoso, então elas ficam só com a data simples.
-  function rotuloDataResultado(action) {
-    if (action === "violar-hoje") return `Dia de hoje (07:00 às 23:59) — ${dataVigente(0)}`;
-    if (action === "violar-amanha") return `Amanhã (07:00 às 23:59) — ${dataVigente(1)}`;
+  function rotuloDataResultado() {
     return dataVigente(0);
   }
 
@@ -564,18 +541,58 @@
   // preenchendo assim que cada chamada retorna.
   async function carregarHomeDashboardsGradual() {
     const loaders = [
-      carregarHomeSlaMes,
+      carregarHomeSlaCache,
+      carregarHomeCriadosResolvidosCache,
+      carregarHomeReabertosMes,
       carregarHomeGrupoCriacao,
       carregarHomeFornecedorCriacao,
       carregarHomeCriadosMes,
-      carregarHomeColaboradoresMes,
+      carregarHomeColaboradoresCache,
       carregarHomeClassificacaoFunil,
       carregarHomeViolarSemanal,
-      carregarHomeViolados30Dias,
       carregarHomeCotiMes,
     ];
     await Promise.all(loaders.map((loader) => loader()));
   }
+
+  // Botão individual de atualizar, 1 por widget da home — injetado em
+  // cada ".home-dashboard-title-row" (em vez de repetir o <button> em
+  // cada card no index.html) a partir de um registro {container → loader}.
+  // "home-violados-abertos" e "home-violar-semanal" caem no mesmo loader
+  // (vêm da mesma chamada /api/home-violar-semanal — ver
+  // carregarHomeViolarSemanal), então os 2 cards ganham botão próprio, mas
+  // clicar em qualquer um atualiza os dois juntos.
+  const HOME_WIDGET_RELOAD_REGISTRO = [
+    ["home-sla-mes", carregarHomeSlaCache],
+    ["home-criados-resolvidos-mes", carregarHomeCriadosResolvidosCache],
+    ["home-grupo-criacao", carregarHomeGrupoCriacao],
+    ["home-fornecedor-criacao", carregarHomeFornecedorCriacao],
+    ["home-criados-mes", carregarHomeCriadosMes],
+    ["home-reabertos-mes", carregarHomeReabertosMes],
+    ["home-colaboradores-mes", carregarHomeColaboradoresCache],
+    ["home-classificacao-funil", carregarHomeClassificacaoFunil],
+    ["home-violados-abertos", carregarHomeViolarSemanal],
+    ["home-violar-semanal", carregarHomeViolarSemanal],
+    ["home-coti-mes", carregarHomeCotiMes],
+  ];
+
+  function aplicarHomeReloadButtons() {
+    HOME_WIDGET_RELOAD_REGISTRO.forEach(([containerId, loader]) => {
+      const container = document.getElementById(containerId);
+      const card = container && container.closest(".home-dashboard-card");
+      const tituloRow = card && card.querySelector(".home-dashboard-title-row");
+      if (!tituloRow || tituloRow.querySelector(".home-reload-btn")) return;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "home-reload-btn";
+      btn.title = "Atualizar";
+      btn.textContent = "↻";
+      btn.addEventListener("click", () => loader());
+      tituloRow.append(btn);
+    });
+  }
+  aplicarHomeReloadButtons();
 
   // ------------------------------------------------------------ conexão
   $("btn-connect").addEventListener("click", async () => {
@@ -636,9 +653,10 @@
     clearBanner();
     appView.classList.add("hidden");
     loginCard.classList.remove("hidden");
-    atualizarBotaoCriticos();
     atualizarBotaoReportVini();
     atualizarBotaoTvResolvidosReabertos();
+    atualizarBotaoParetoSolar();
+    atualizarBotaoMaterialIcg();
   });
 
   // Segurança extra: se o navegador restaurar a página do cache (bfcache),
@@ -649,22 +667,9 @@
   });
 
   // ------------------------------------------------------ caixa solucionadora
-  // "Chamados Críticos" (COTI) é uma classificação específica da caixa Mops
-  // Solar — não faz sentido pra Mops Tv do Futuro, então o botão some fora
-  // dela.
-  function atualizarBotaoCriticos() {
-    $("btn-criticos").classList.toggle("hidden", state.caixa !== "solar");
-  }
-
-  // O roster de "Analistas de Encerramento" é uma lista fixa de nomes da
-  // caixa Mops Solar — mesma lógica de Chamados Críticos: some fora dela.
-  function atualizarBotaoAnalistas() {
-    $("btn-analistas-encerramento").classList.toggle("hidden", state.caixa !== "solar");
-  }
-
-  // "Report Vini" é o espelho de Chamados Críticos/Analistas, mas pro outro
-  // lado: só faz sentido em Mops Tv do Futuro (usa a tag Claro Tv +/Claro
-  // Streaming Box de Categorias de Encerramento, que só existe nessa caixa).
+  // "Report Vini" só faz sentido em Mops Tv do Futuro (usa a tag Claro Tv
+  // +/Claro Streaming Box de Categorias de Encerramento, que só existe
+  // nessa caixa) — o botão some fora dela.
   function atualizarBotaoReportVini() {
     $("btn-report-vini").classList.toggle("hidden", state.caixa !== "tv");
   }
@@ -675,21 +680,24 @@
     $("btn-tv-resolvidos-reabertos").classList.toggle("hidden", state.caixa !== "tv");
   }
 
-  // "Categorias de Encerramento" em Mops Tv do Futuro usa uma consulta fixa
-  // (fetch_categoria_encerramento_tv_fixo, sem período/Top N/Encerrados-
-  // Reabertos) — some os controles que não fazem mais efeito e mostra o
-  // aviso da consulta fixa no lugar deles.
-  function atualizarDialogCategorias() {
-    const ehTv = state.caixa === "tv";
-    $("categorias-controles-padrao").classList.toggle("hidden", ehTv);
-    $("categorias-tv-fixo-hint").classList.toggle("hidden", !ehTv);
+  // "Pareto Solar" só faz sentido em Mops Solar (grupos N1/N2 fixos do
+  // lado do servidor) — mesma lógica de Report Vini, mas invertida: some
+  // fora da caixa Solar.
+  function atualizarBotaoParetoSolar() {
+    $("btn-pareto-solar").classList.toggle("hidden", state.caixa !== "solar");
   }
 
-  atualizarBotaoCriticos();
-  atualizarBotaoAnalistas();
+  // "Material ICG" também é específico de Mops Solar (metas passadas pelo
+  // usuário — SLA 95%, reabertura 4% etc. — são todas do Solar) — mesma
+  // lógica de Pareto Solar.
+  function atualizarBotaoMaterialIcg() {
+    $("btn-material-icg").classList.toggle("hidden", state.caixa !== "solar");
+  }
+
   atualizarBotaoReportVini();
   atualizarBotaoTvResolvidosReabertos();
-  atualizarDialogCategorias();
+  atualizarBotaoParetoSolar();
+  atualizarBotaoMaterialIcg();
 
   // ------------------------------------------------- dashboards da home
   // Os dois widgets abaixo mostram Solar e Claro Tv sempre juntos (não
@@ -719,6 +727,7 @@
   function homeCaixaSubbloco(caixa, conteudoEl) {
     const bloco = document.createElement("div");
     bloco.className = "home-dashboard-subblock";
+    bloco.dataset.caixa = caixa;
 
     const subtitle = document.createElement("div");
     subtitle.className = "home-dashboard-subtitle";
@@ -801,23 +810,226 @@
     return construirTabelaMesCriacao(dados, "Fornecedor Responsável", (linha) => linha.fornecedor);
   }
 
+  // Anel "dentro do prazo x fora do prazo": duas cores de status fixas
+  // (verde = dentro/bom, vermelho = fora/violado) — a cor segue o
+  // significado do estado, nunca qual fatia é maior. Técnica de 2 arcos
+  // sobrepostos via stroke-dasharray/dashoffset, com um pequeno gap (3px)
+  // entre eles pra separar os segmentos sem precisar de borda. Compartilhado
+  // pelo widget "SLA" da home e pelo Report Vini.
+  function buildPrazoDonutEl(dentro, fora, percentualDentro) {
+    const total = dentro + fora;
+    const size = 160;
+    const strokeWidth = 22;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const svgNS = "http://www.w3.org/2000/svg";
+
+    function arc(len, offset, className) {
+      const circle = document.createElementNS(svgNS, "circle");
+      circle.setAttribute("cx", size / 2);
+      circle.setAttribute("cy", size / 2);
+      circle.setAttribute("r", radius);
+      circle.setAttribute("fill", "none");
+      circle.setAttribute("stroke-width", strokeWidth);
+      circle.setAttribute("stroke-linecap", "butt");
+      circle.setAttribute("stroke-dasharray", `${Math.max(len, 0)} ${circumference}`);
+      circle.setAttribute("stroke-dashoffset", -offset);
+      circle.classList.add(className);
+      return circle;
+    }
+
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+    svg.classList.add("prazo-donut-svg");
+
+    const group = document.createElementNS(svgNS, "g");
+    group.setAttribute("transform", `rotate(-90 ${size / 2} ${size / 2})`);
+
+    if (total > 0) {
+      const dentroFull = (dentro / total) * circumference;
+      // "Fora do prazo" sempre desenhado como o anel INTEIRO por baixo (nunca
+      // como uma fatia curta isolada) — com uma fatia pequena, um arco curto
+      // com ponta arredondada fica parecendo um blob quadrado colado no anel
+      // em vez de acompanhar a curva. Desenhando o vermelho como o círculo
+      // completo e o verde por cima (só cobrindo a parte "dentro"), a
+      // transição entre as duas cores sempre fica lisa, do tamanho que for.
+      if (fora > 0) group.append(arc(circumference, 0, "prazo-donut-fora"));
+      if (dentro > 0) group.append(arc(dentroFull, 0, "prazo-donut-dentro"));
+    } else {
+      group.append(arc(circumference, 0, "prazo-donut-track"));
+    }
+    svg.append(group);
+
+    const valor = document.createElement("div");
+    valor.className = "prazo-donut-valor";
+    valor.textContent = dentro;
+    const linha = document.createElement("div");
+    linha.className = "prazo-donut-linha";
+    const pct = document.createElement("div");
+    pct.className = "prazo-donut-pct";
+    pct.textContent = `${percentualDentro}%`;
+
+    const centro = document.createElement("div");
+    centro.className = "prazo-donut-centro";
+    centro.append(valor, linha, pct);
+
+    const holder = document.createElement("div");
+    holder.className = "prazo-donut-holder";
+    holder.append(svg, centro);
+
+    function legendaItem(dotClass, texto) {
+      const item = document.createElement("span");
+      item.className = "prazo-donut-legenda-item";
+      const dot = document.createElement("span");
+      dot.className = `prazo-donut-dot ${dotClass}`;
+      item.append(dot, document.createTextNode(texto));
+      return item;
+    }
+
+    const legenda = document.createElement("div");
+    legenda.className = "prazo-donut-legenda";
+    legenda.append(
+      legendaItem("prazo-donut-dot-dentro", `Dentro do prazo (${dentro})`),
+      legendaItem("prazo-donut-dot-fora", `Fora do prazo (${fora})`)
+    );
+
+    const wrap = document.createElement("div");
+    wrap.className = "prazo-donut";
+    wrap.append(holder, legenda);
+    return wrap;
+  }
+
   // Réplica de um gadget nativo do Jira (Grupo Solucionador × mês de
   // criação, entre os chamados abertos) — um sub-bloco por caixa, carrega
   // uma vez ao logar (não precisa recarregar ao trocar de caixa, já mostra
   // as duas).
-  // "SLA — Mês atual": donut dentro/fora do prazo do começo do mês até
-  // hoje, reaproveitando o mesmo componente visual (buildPrazoDonutEl) já
-  // usado em Criados x Resolvidos/Report Vini. Um sub-bloco por caixa.
-  async function carregarHomeSlaMes() {
-    const container = $("home-sla-mes");
+  // "Reabertos do mês": % de reabertura do começo do mês até hoje. Era a
+  // mesma função/rota do "SLA" (home_sla_mes) — o pedaço de SLA virou
+  // widget à parte, histórico e 100% cache (carregarHomeSlaCache abaixo),
+  // então essa função ficou só com a parte de reabertos.
+  async function carregarHomeReabertosMes() {
     const reabertosEl = $("home-reabertos-mes");
-    homeCardErro(container, "Carregando...");
     reabertosEl.innerHTML = "";
 
     try {
       // Sem "projetos": os cards da home sempre consideram só "Central de
       // Incidentes", fixo no servidor — não seguem o painel "PROJETOS".
-      const resp = await apiCall("/api/home-sla-mes", {});
+      const resp = await apiCall("/api/home-reabertos-mes", {});
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(reabertosEl, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      data.caixas.forEach(({ caixa, percentual_reabertura: percentualReabertura, total_criados_periodo: totalCriadosPeriodo }) => {
+        const card = summaryCard(
+          `${percentualReabertura}% / ${totalCriadosPeriodo}`,
+          HOME_CAIXA_LABEL[caixa] || caixa,
+          "tone-warning"
+        );
+        card.dataset.caixa = caixa;
+        reabertosEl.append(card);
+      });
+    } catch (e) {
+      homeCardErro(reabertosEl, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  // Miniatura do anel de SLA (só a fatia verde/vermelha proporcional ao
+  // percentual + o próprio percentual no centro, sem contagem nem legenda
+  // — essas só cabem no donut grande de buildPrazoDonutEl) — usada no
+  // histórico "SLA" da home (1 anel por mês, muitos lado a lado).
+  function construirSlaMiniDonut(percentualDentro, total) {
+    const size = 54;
+    const strokeWidth = 7;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const svgNS = "http://www.w3.org/2000/svg";
+
+    function arc(len, className) {
+      const circle = document.createElementNS(svgNS, "circle");
+      circle.setAttribute("cx", size / 2);
+      circle.setAttribute("cy", size / 2);
+      circle.setAttribute("r", radius);
+      circle.setAttribute("fill", "none");
+      circle.setAttribute("stroke-width", strokeWidth);
+      circle.setAttribute("stroke-linecap", "butt");
+      circle.setAttribute("stroke-dasharray", `${Math.max(len, 0)} ${circumference}`);
+      circle.classList.add(className);
+      return circle;
+    }
+
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+    svg.classList.add("prazo-donut-svg", "prazo-donut-svg--mini");
+
+    const group = document.createElementNS(svgNS, "g");
+    group.setAttribute("transform", `rotate(-90 ${size / 2} ${size / 2})`);
+    if (total > 0) {
+      group.append(arc(circumference, "prazo-donut-fora"));
+      group.append(arc((percentualDentro / 100) * circumference, "prazo-donut-dentro"));
+    } else {
+      group.append(arc(circumference, "prazo-donut-track"));
+    }
+    svg.append(group);
+
+    const pct = document.createElement("div");
+    pct.className = "prazo-donut-mini-pct";
+    pct.textContent = total > 0 ? `${percentualDentro}%` : "—";
+
+    const holder = document.createElement("div");
+    holder.className = "prazo-donut-mini-holder";
+    holder.append(svg, pct);
+    return holder;
+  }
+
+  // 1 linha = 1 grupo (rótulo à esquerda + 1 mini anel por mês, na ordem
+  // que vier em "meses"). Reaproveitada pelas 3 linhas de Solar (N1/N2/
+  // Prod) e pela linha única de Claro Tv.
+  function construirSlaHistoricoLinha(caixaId, rotulo, meses, linhasPorMes) {
+    const porMes = Object.fromEntries(linhasPorMes.map((item) => [item.mes, item]));
+
+    const linha = document.createElement("div");
+    linha.className = "home-sla-historico-row";
+    linha.dataset.caixa = caixaId;
+
+    const label = document.createElement("div");
+    label.className = "home-sla-historico-label";
+    label.textContent = rotulo;
+    linha.append(label);
+
+    const circulos = document.createElement("div");
+    circulos.className = "home-sla-historico-circulos";
+    meses.forEach((mes) => {
+      const item = porMes[mes] || { dentro_prazo: 0, fora_prazo: 0, percentual_dentro_prazo: 0 };
+      const total = item.dentro_prazo + item.fora_prazo;
+
+      const wrap = document.createElement("div");
+      wrap.className = "home-sla-historico-item";
+      wrap.title = `${formatarMesAno(mes)} — ${item.dentro_prazo} dentro / ${item.fora_prazo} fora do prazo`;
+
+      const mesLabel = document.createElement("span");
+      mesLabel.className = "home-sla-historico-mes";
+      mesLabel.textContent = formatarMesAno(mes).split(" ")[0];
+
+      wrap.append(mesLabel, construirSlaMiniDonut(item.percentual_dentro_prazo, total));
+      circulos.append(wrap);
+    });
+    linha.append(circulos);
+
+    return linha;
+  }
+
+  // "SLA" (tag "Cacheado"): histórico de todos os meses do cache, 1 mini
+  // anel por mês — geral por caixa, sem separar por grupo (pedido
+  // explícito do usuário): Solar é N1+N2+Prod juntos, Claro Tv é N1+N2
+  // juntos (ver _cache_sla_historico em api/index.py).
+  async function carregarHomeSlaCache() {
+    const container = $("home-sla-mes");
+    homeCardErro(container, "Carregando...");
+
+    try {
+      const resp = await apiCall("/api/home-sla-cache", {});
       const data = await resp.json();
       if (!resp.ok) {
         homeCardErro(container, data.error || "Erro ao carregar.");
@@ -825,21 +1037,204 @@
       }
 
       container.innerHTML = "";
-      const row = document.createElement("div");
-      row.className = "home-sla-mes-row";
-      data.caixas.forEach(({ caixa, dentro_prazo: dentro, fora_prazo: fora, percentual_dentro_prazo: percentual }) => {
-        row.append(homeCaixaSubbloco(caixa, buildPrazoDonutEl(dentro, fora, percentual)));
-      });
-      container.append(row);
+      container.append(
+        construirSlaHistoricoLinha("solar", "Solar", data.meses, data.solar),
+        construirSlaHistoricoLinha("tv", "Claro Tv", data.meses, data.tv)
+      );
+    } catch (e) {
+      homeCardErro(container, "Não foi possível conectar ao servidor.");
+    }
+  }
 
-      data.caixas.forEach(({ caixa, percentual_reabertura: percentualReabertura, total_criados_periodo: totalCriadosPeriodo }) => {
-        reabertosEl.append(
-          summaryCard(
-            `${percentualReabertura}% / ${totalCriadosPeriodo}`,
-            HOME_CAIXA_LABEL[caixa] || caixa,
-            "tone-warning"
-          )
-        );
+  // Baselines (linha de referência amarela) do gráfico "Criados x
+  // Resolvidos por mês" — valores fixos pedidos pelo usuário.
+  const CRIADOS_RESOLVIDOS_BASELINES = [1530, 1870];
+
+  // Offset fixo (px) do "0" da escala (base das barras) até a borda de
+  // baixo de ".home-sla-chart-bars"/".home-sla-chart-eixo": padding-bottom
+  // de ".home-sla-chart-bars" (4px) + gap de ".home-sla-chart-col" (6px) +
+  // altura de ".home-sla-chart-col-mes" (line-height: 14px) = 24px. Usado
+  // igual nos dois lugares (linha e rótulo do eixo) pra garantir que
+  // fiquem exatamente na mesma altura, em vez de duas contas separadas
+  // que podiam divergir por 1px.
+  const CRIADOS_RESOLVIDOS_OFFSET_BASE = 24;
+
+  // Gráfico de coluna "Criados e Resolvidos por mês" (par de barrinhas por
+  // mês, vermelho = criados / verde = resolvidos, com o número em cima de
+  // cada barra), escala própria (maior valor entre todos os meses/
+  // criados/resolvidos/baselines = 100% da altura disponível) + linha de
+  // baseline amarela contínua (1 só elemento cobrindo a largura toda, em
+  // vez de 1 segmento por mês — não quebra nos respiros entre meses).
+  function construirCriadosResolvidosChart(meses, linhasPorMes) {
+    const porMes = Object.fromEntries(linhasPorMes.map((item) => [item.mes, item]));
+    const maior = Math.max(
+      1,
+      ...CRIADOS_RESOLVIDOS_BASELINES,
+      ...linhasPorMes.flatMap((item) => [item.criados, item.resolvidos])
+    );
+    const alturaMax = 160;
+    const bottomDoValor = (valor) => CRIADOS_RESOLVIDOS_OFFSET_BASE + (valor / maior) * alturaMax;
+
+    // Índices da malha cartesiana (ticks em cinza-claro, redondos — passo
+    // arredondado pra centena mais próxima, mirando ~5 linhas) — os
+    // baselines (amarelo) já têm seus próprios rótulos, separados.
+    const gridStep = Math.max(100, Math.round(maior / 5 / 100) * 100);
+    const gridValores = [];
+    for (let v = 0; v <= maior; v += gridStep) {
+      gridValores.push(v);
+    }
+
+    const wrap = document.createElement("div");
+    wrap.className = "home-sla-chart-inner";
+
+    const legenda = document.createElement("div");
+    legenda.className = "home-sla-chart-legenda";
+    legenda.innerHTML =
+      '<span><span class="home-sla-chart-legenda-dot home-sla-chart-legenda-dot--criados"></span>Criados</span>' +
+      '<span><span class="home-sla-chart-legenda-dot home-sla-chart-legenda-dot--resolvidos"></span>Resolvidos</span>' +
+      CRIADOS_RESOLVIDOS_BASELINES.map(
+        (v) => `<span><span class="home-sla-chart-legenda-dot home-sla-chart-legenda-dot--baseline"></span>Baseline ${v}</span>`
+      ).join("");
+    wrap.append(legenda);
+
+    const plot = document.createElement("div");
+    plot.className = "home-sla-chart-plot";
+
+    // Eixo com o valor de cada baseline à esquerda da linha pontilhada
+    // (estilo "1870 -------"), fora da área que rola na horizontal — fica
+    // sempre visível mesmo rolando os meses.
+    const eixo = document.createElement("div");
+    eixo.className = "home-sla-chart-eixo";
+    gridValores.forEach((valorGrid) => {
+      const linha = document.createElement("div");
+      linha.className = "home-sla-chart-eixo-linha home-sla-chart-eixo-linha--grid";
+      linha.style.bottom = `${bottomDoValor(valorGrid)}px`;
+      eixo.append(linha);
+
+      const rotulo = document.createElement("span");
+      rotulo.className = "home-sla-chart-eixo-valor home-sla-chart-eixo-valor--grid";
+      rotulo.style.bottom = `${bottomDoValor(valorGrid)}px`;
+      rotulo.textContent = valorGrid;
+      eixo.append(rotulo);
+    });
+    CRIADOS_RESOLVIDOS_BASELINES.forEach((valorBase) => {
+      const linha = document.createElement("div");
+      linha.className = "home-sla-chart-eixo-linha home-sla-chart-eixo-linha--baseline";
+      linha.style.bottom = `${bottomDoValor(valorBase)}px`;
+      eixo.append(linha);
+
+      const rotulo = document.createElement("span");
+      rotulo.className = "home-sla-chart-eixo-valor";
+      rotulo.style.bottom = `${bottomDoValor(valorBase)}px`;
+      rotulo.textContent = valorBase;
+      eixo.append(rotulo);
+    });
+    plot.append(eixo);
+
+    const bars = document.createElement("div");
+    bars.className = "home-sla-chart-bars";
+    meses.forEach((mes) => {
+      const item = porMes[mes] || { criados: 0, resolvidos: 0 };
+
+      const col = document.createElement("div");
+      col.className = "home-sla-chart-col";
+
+      const par = document.createElement("div");
+      par.className = "home-sla-chart-par";
+      [
+        ["criados", "Criados", item.criados],
+        ["resolvidos", "Resolvidos", item.resolvidos],
+      ].forEach(([tipo, rotuloTipo, valor]) => {
+        const bar = document.createElement("div");
+        bar.className = `home-sla-chart-bar home-sla-chart-bar--${tipo}`;
+        bar.style.height = `${Math.max((valor / maior) * alturaMax, valor ? 2 : 0)}px`;
+
+        // Popover no mousehover (mesmo padrão do Pareto, ver
+        // showParetoPopover) em vez de "title" nativo — mostra mês + tipo
+        // + quantidade exata da barra.
+        const tooltip = `${formatarMesAno(mes)} — ${rotuloTipo}: ${valor}`;
+        bar.addEventListener("mouseenter", () => {
+          cancelHoverPopoverHide();
+          showParetoPopover(bar, tooltip);
+        });
+        bar.addEventListener("mouseleave", scheduleHoverPopoverHide);
+
+        par.append(bar);
+      });
+      col.append(par);
+
+      const mesLabel = document.createElement("span");
+      mesLabel.className = "home-sla-chart-col-mes";
+      mesLabel.textContent = formatarMesAno(mes).split(" ")[0];
+      col.append(mesLabel);
+
+      bars.append(col);
+    });
+
+    // Linha de baseline contínua (1 só elemento, largura fixa em px = soma
+    // de todas as colunas de mês + os respiros entre elas — "left: 0;
+    // right: 0" não funcionaria aqui porque ".home-sla-chart-bars" rola na
+    // horizontal: o tamanho do elemento, pra um filho absoluto, é o da
+    // "viewport" visível, não o do conteúdo rolável; só largura explícita
+    // cobre o conteúdo todo e rola junto com as barras). Mesmo "bottom"
+    // (via CRIADOS_RESOLVIDOS_OFFSET_BASE) do rótulo no eixo, pra garantir
+    // que batam exatamente.
+    const larguraTotalPx = meses.length * 56 + Math.max(meses.length - 1, 0) * 16;
+
+    // Malha cartesiana (linhas cinza-claro, mesmo truque de elemento único
+    // e largura fixa da baseline acima) — desenhada antes da baseline, pra
+    // ficar por baixo dela (ordem no DOM = ordem de pintura).
+    gridValores.forEach((valorGrid) => {
+      const grade = document.createElement("div");
+      grade.className = "home-sla-chart-grid";
+      grade.style.bottom = `${bottomDoValor(valorGrid)}px`;
+      grade.style.width = `${larguraTotalPx}px`;
+      bars.append(grade);
+    });
+
+    CRIADOS_RESOLVIDOS_BASELINES.forEach((valorBase) => {
+      const baseline = document.createElement("div");
+      baseline.className = "home-sla-chart-baseline";
+      baseline.style.bottom = `${bottomDoValor(valorBase)}px`;
+      baseline.style.width = `${larguraTotalPx}px`;
+      baseline.title = `Baseline: ${valorBase}`;
+      bars.append(baseline);
+    });
+
+    plot.append(bars);
+    wrap.append(plot);
+
+    return wrap;
+  }
+
+  // "Criados x Resolvidos por mês" (tag "Cacheado"): histórico de todos os
+  // meses do cache, por caixa (Solar: N1+N2+Prod juntos; Claro Tv: N1+N2
+  // juntos — ver _cache_criados_resolvidos_historico em api/index.py). 1
+  // gráfico por caixa, cada um marcado com data-caixa — o seletor global
+  // do painel (ver aplicarHomeCaixaFiltro) esconde o que não está
+  // selecionado via CSS, igual aos outros widgets da home.
+  async function carregarHomeCriadosResolvidosCache() {
+    const container = $("home-criados-resolvidos-mes");
+    homeCardErro(container, "Carregando...");
+
+    try {
+      const resp = await apiCall("/api/home-criados-resolvidos-cache", {});
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(container, data.error || "Erro ao carregar.");
+        return;
+      }
+
+      container.innerHTML = "";
+      if (!data.meses.length) {
+        container.append(Object.assign(document.createElement("p"), { className: "hint", textContent: "Nenhum chamado nas planilhas de cache." }));
+        return;
+      }
+      Object.entries(data.caixas).forEach(([caixaId, linhas]) => {
+        const bloco = document.createElement("div");
+        bloco.dataset.caixa = caixaId;
+        bloco.append(construirCriadosResolvidosChart(data.meses, linhas));
+        container.append(bloco);
       });
     } catch (e) {
       homeCardErro(container, "Não foi possível conectar ao servidor.");
@@ -1026,13 +1421,110 @@
     return table;
   }
 
-  async function carregarHomeColaboradoresMes() {
+  // "Colaboradores" com cache: uma coluna por mês, cada uma com 3 números
+  // empilhados (Resolvidos em verde, Violados em vermelho, Reabertos em
+  // amarelo) — dados vêm só das planilhas de cache (sem consultar o Jira
+  // na hora, ver home_colaboradores_cache/_cache_colaboradores_mensal em
+  // api/index.py), daí a tag "Cacheado" no lugar de "Mês atual".
+  // Célula com os 3 números empilhados (Resolvidos/Violados/Reabertos) —
+  // reaproveitada tanto nas colunas de mês quanto na coluna "Total".
+  function construirCelulaColabMensal(dados) {
+    const cell = document.createElement("div");
+    cell.className = "home-colab-mensal-cell";
+    [
+      ["resolvidos", dados.resolvidos],
+      ["violados", dados.violados],
+      ["reabertos", dados.reabertos],
+    ].forEach(([tipo, valor]) => {
+      const span = document.createElement("span");
+      span.className = `home-colab-mensal-${tipo}`;
+      span.textContent = valor;
+      cell.append(span);
+    });
+    return cell;
+  }
+
+  function construirTabelaColaboradoresMensal(meses, colaboradores) {
+    const table = document.createElement("table");
+    table.className = "data-table home-dashboard-table home-colab-mensal-table";
+
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    const thNome = document.createElement("th");
+    thNome.textContent = "Colaborador";
+    trHead.append(thNome);
+    meses.forEach((mes) => {
+      const th = document.createElement("th");
+      th.textContent = formatarMesAno(mes);
+      trHead.append(th);
+    });
+    const thTotal = document.createElement("th");
+    thTotal.textContent = "Total";
+    thTotal.className = "home-colab-mensal-total-col";
+    trHead.append(thTotal);
+    const thSla = document.createElement("th");
+    thSla.textContent = "SLA";
+    thSla.className = "home-colab-mensal-total-col";
+    trHead.append(thSla);
+    thead.append(trHead);
+    table.append(thead);
+
+    const tbody = document.createElement("tbody");
+    if (!colaboradores.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = meses.length + 3;
+      td.className = "hint";
+      td.textContent = "Nenhum chamado resolvido nas planilhas de cache.";
+      tr.append(td);
+      tbody.append(tr);
+    }
+
+    colaboradores.forEach(({ nome, total, por_mes: porMes }) => {
+      const tr = document.createElement("tr");
+      const tdNome = document.createElement("td");
+      tdNome.textContent = nome;
+      tr.append(tdNome);
+
+      meses.forEach((mes) => {
+        const dados = porMes[mes] || { resolvidos: 0, violados: 0, reabertos: 0 };
+        const td = document.createElement("td");
+        td.append(construirCelulaColabMensal(dados));
+        tr.append(td);
+      });
+
+      const tdTotal = document.createElement("td");
+      tdTotal.className = "home-colab-mensal-total-col";
+      tdTotal.append(construirCelulaColabMensal(total || { resolvidos: 0, violados: 0, reabertos: 0 }));
+      tr.append(tdTotal);
+
+      const tdSla = document.createElement("td");
+      tdSla.className = "home-colab-mensal-total-col";
+      const pct = total && total.percentual_dentro_prazo;
+      if (pct === null || pct === undefined) {
+        tdSla.textContent = "—";
+        tdSla.classList.add("hint");
+      } else {
+        const pctWrap = document.createElement("div");
+        pctWrap.className = "home-colab-pct";
+        pctWrap.append(buildMiniPieEl(pct), document.createTextNode(`${pct}%`));
+        tdSla.append(pctWrap);
+      }
+      tr.append(tdSla);
+
+      tbody.append(tr);
+    });
+    table.append(tbody);
+
+    return table;
+  }
+
+  async function carregarHomeColaboradoresCache() {
     const container = $("home-colaboradores-mes");
     homeCardErro(container, "Carregando...");
 
     try {
-      // Sem "projetos": ver nota em carregarHomeSlaMes.
-      const resp = await apiCall("/api/home-colaboradores-mes", {});
+      const resp = await apiCall("/api/home-colaboradores-cache", {});
       const data = await resp.json();
       if (!resp.ok) {
         homeCardErro(container, data.error || "Erro ao carregar.");
@@ -1043,7 +1535,7 @@
       data.caixas.forEach(({ caixa, colaboradores }) => {
         const wrap = document.createElement("div");
         wrap.className = "table-wrap";
-        wrap.append(construirTabelaColaboradores(colaboradores));
+        wrap.append(construirTabelaColaboradoresMensal(data.meses, colaboradores));
         container.append(homeCaixaSubbloco(caixa, wrap));
       });
     } catch (e) {
@@ -1273,6 +1765,55 @@
     return container;
   }
 
+  // 1 coluna por grupo (N1/N2/PROD pra Solar, N1/N2 pra Claro Tv),
+  // separadas por divisor vertical — dentro de cada coluna, os mesmos 4
+  // cards (A violar/Violados/Aguardando Fornecedor/PDST), só que contando
+  // apenas aquele grupo (ver extra_por_grupo/fetch_*_por_grupo em
+  // api/index.py e jira_extractor.py).
+  // Ordem fixa das colunas (N1, N2, PROD) — diferente da ordem de
+  // GRUPOS_SOLUCIONADOR no backend (N2, N1, Prod, histórica/usada em
+  // vários outros lugares do app), então o reordenamento é só aqui, na
+  // hora de montar as colunas, sem mexer na constante global.
+  const HOME_VIOLADOS_ORDEM_LABEL = ["N1", "N2", "PROD"];
+
+  function construirVioladosPorGrupo(extraPorGrupo) {
+    const grid = document.createElement("div");
+    grid.className = "home-violados-grid";
+
+    const gruposComIndice = (extraPorGrupo.violados || []).map((item, index) => ({ grupo: item.grupo, index }));
+    gruposComIndice.sort((a, b) => {
+      const labelA = a.grupo ? GRUPO_LABEL_CURTO[a.grupo] || a.grupo : "Total";
+      const labelB = b.grupo ? GRUPO_LABEL_CURTO[b.grupo] || b.grupo : "Total";
+      return HOME_VIOLADOS_ORDEM_LABEL.indexOf(labelA) - HOME_VIOLADOS_ORDEM_LABEL.indexOf(labelB);
+    });
+
+    gruposComIndice.forEach(({ grupo, index }) => {
+      const valorDoGrupo = (metrica) => (extraPorGrupo[metrica] || [])[index]?.total ?? 0;
+
+      const col = document.createElement("div");
+      col.className = "home-violados-grid-col";
+
+      const titulo = document.createElement("div");
+      titulo.className = "home-violados-grid-col-titulo";
+      titulo.textContent = grupo ? GRUPO_LABEL_CURTO[grupo] || grupo : "Total";
+      col.append(titulo);
+
+      const cards = document.createElement("div");
+      cards.className = "home-violados-grid-col-cards";
+      cards.append(
+        summaryCard(valorDoGrupo("a_violar"), "A violar", "tone-warning"),
+        summaryCard(valorDoGrupo("violados"), "Violados", "tone-danger"),
+        summaryCard(valorDoGrupo("aguardando_fornecedor"), "Fornecedor", "tone-info"),
+        summaryCard(valorDoGrupo("pdst"), "PDST", "tone-neutral")
+      );
+      col.append(cards);
+
+      grid.append(col);
+    });
+
+    return grid;
+  }
+
   async function carregarHomeViolarSemanal() {
     const container = $("home-violar-semanal");
     const abertosEl = $("home-violados-abertos");
@@ -1289,160 +1830,12 @@
       }
 
       container.innerHTML = "";
-      data.caixas.forEach(({ caixa, violados_abertos_por_grupo: porGrupo, dias }) => {
-        const cardsEl = document.createElement("div");
-        cardsEl.className = "summary-cards home-violados-abertos-cards";
-        // Card "Total" só faz sentido na frente de um detalhamento de
-        // verdade (2+ grupos) — no fallback sem Grupo Solucionador,
-        // "porGrupo" já vem como um único item "Total" (grupo: null), e
-        // repetir aqui na frente seria duplicado.
-        if ((porGrupo || []).length > 1) {
-          const totalCaixa = porGrupo.reduce((soma, g) => soma + g.total, 0);
-          cardsEl.append(summaryCard(totalCaixa, "Total", "tone-danger"));
+      data.caixas.forEach(({ caixa, extra_por_grupo: extraPorGrupo, dias }) => {
+        if (extraPorGrupo) {
+          abertosEl.append(homeCaixaSubbloco(caixa, construirVioladosPorGrupo(extraPorGrupo)));
         }
-        (porGrupo || []).forEach(({ grupo, total }) => {
-          const label = grupo ? GRUPO_LABEL_CURTO[grupo] || grupo : "Total";
-          cardsEl.append(summaryCard(total, label, "tone-danger"));
-        });
-        abertosEl.append(homeCaixaSubbloco(caixa, cardsEl));
 
         container.append(homeCaixaSubbloco(caixa, construirGruposViolar(caixa, dias)));
-      });
-    } catch (e) {
-      homeCardErro(container, "Não foi possível conectar ao servidor.");
-    }
-  }
-
-  // Popover customizado (mesmo elemento flutuante compartilhado de
-  // getHoverPopover/hideHoverPopover, já usado em "Violados por dia") pra
-  // mostrar o detalhe de um dia da lista de 30 dias — aqui é só texto
-  // (resolvido/violado/previsto), sem lista de keys pra copiar.
-  function showHomeBar30Popover(anchorEl, dia) {
-    const popover = getHoverPopover();
-    popover.innerHTML = "";
-
-    const titulo = document.createElement("div");
-    titulo.className = "hover-popover-title";
-    titulo.textContent = formatarDataBR(dia.data);
-    popover.append(titulo);
-
-    const linhaResolvido = document.createElement("div");
-    linhaResolvido.className = "home-bar30-popover-row";
-    const dotResolvido = document.createElement("span");
-    dotResolvido.className = "home-bar30-legend-dot home-bar30-legend-dot--resolvido";
-    linhaResolvido.append(dotResolvido, document.createTextNode(`${dia.resolvido} resolvido${dia.resolvido === 1 ? "" : "s"} dentro do prazo`));
-    popover.append(linhaResolvido);
-
-    const linhaViolado = document.createElement("div");
-    linhaViolado.className = "home-bar30-popover-row";
-    const dotViolado = document.createElement("span");
-    dotViolado.className = "home-bar30-legend-dot home-bar30-legend-dot--violado";
-    linhaViolado.append(dotViolado, document.createTextNode(`${dia.violado} violado${dia.violado === 1 ? "" : "s"}`));
-    popover.append(linhaViolado);
-
-    const totalEl = document.createElement("div");
-    totalEl.className = "hint";
-    totalEl.style.marginTop = "6px";
-    totalEl.textContent = `Previsto no dia: ${dia.previsto}`;
-    popover.append(totalEl);
-
-    popover.classList.remove("hidden");
-
-    const anchorRect = anchorEl.getBoundingClientRect();
-    const popoverRect = popover.getBoundingClientRect();
-    let top = anchorRect.bottom + 6;
-    let left = anchorRect.left;
-    if (left + popoverRect.width > window.innerWidth - 8) {
-      left = window.innerWidth - popoverRect.width - 8;
-    }
-    if (top + popoverRect.height > window.innerHeight - 8) {
-      top = anchorRect.top - popoverRect.height - 6;
-    }
-    popover.style.top = `${Math.max(8, top)}px`;
-    popover.style.left = `${Math.max(8, left)}px`;
-  }
-
-  // "Violados — Últimos 30 dias": uma linha por dia (data + barra horizontal
-  // verde/vermelha), lista rolável — dias com previsto 0 não entram. Largura
-  // da barra proporcional ao maior "previsto pra violar" visível no período
-  // (não ao maior "violado" sozinho, senão um dia 100% verde ficaria do
-  // mesmo tamanho que um dia 100% vermelho). Passar o mouse na barra mostra
-  // o detalhe do dia num popover (mesmo componente de "Violados por dia").
-  function construirListaBarras30Dias(dias) {
-    // "dias" chega do servidor em ordem cronológica (mais antigo primeiro);
-    // a lista mostra o mais recente no topo.
-    const diasComPrevisto = dias.filter((d) => d.previsto > 0).reverse();
-
-    const lista = document.createElement("div");
-    lista.className = "home-bar30-list";
-
-    if (!diasComPrevisto.length) {
-      const vazio = document.createElement("p");
-      vazio.className = "hint";
-      vazio.textContent = "Nenhum chamado previsto pra violar no período.";
-      lista.append(vazio);
-      return lista;
-    }
-
-    const maxPrevisto = Math.max(...diasComPrevisto.map((d) => d.previsto));
-    diasComPrevisto.forEach((dia) => {
-      const row = document.createElement("div");
-      row.className = "home-bar30-row";
-
-      const dataEl = document.createElement("span");
-      dataEl.className = "home-bar30-row-date";
-      dataEl.textContent = formatarDataBR(dia.data).slice(0, 5);
-
-      const track = document.createElement("div");
-      track.className = "home-bar30-row-track";
-
-      const bar = document.createElement("div");
-      bar.className = "home-bar30-row-bar";
-      bar.style.width = `${(dia.previsto / maxPrevisto) * 100}%`;
-
-      const segResolvido = document.createElement("div");
-      segResolvido.className = "home-bar30-row-seg--resolvido";
-      segResolvido.style.width = `${(dia.resolvido / dia.previsto) * 100}%`;
-
-      const segViolado = document.createElement("div");
-      segViolado.className = "home-bar30-row-seg--violado";
-      segViolado.style.width = `${(dia.violado / dia.previsto) * 100}%`;
-
-      bar.append(segResolvido, segViolado);
-      track.append(bar);
-      track.addEventListener("mouseenter", () => {
-        cancelHoverPopoverHide();
-        showHomeBar30Popover(track, dia);
-      });
-      track.addEventListener("mouseleave", scheduleHoverPopoverHide);
-
-      const valorEl = document.createElement("span");
-      valorEl.className = "home-bar30-row-value";
-      valorEl.textContent = dia.previsto;
-
-      row.append(dataEl, track, valorEl);
-      lista.append(row);
-    });
-
-    return lista;
-  }
-
-  async function carregarHomeViolados30Dias() {
-    const container = $("home-violados-30dias");
-    homeCardErro(container, "Carregando...");
-
-    try {
-      // Sem "projetos": ver nota em carregarHomeSlaMes.
-      const resp = await apiCall("/api/home-violados-30dias", {});
-      const data = await resp.json();
-      if (!resp.ok) {
-        homeCardErro(container, data.error || "Erro ao carregar.");
-        return;
-      }
-
-      container.innerHTML = "";
-      data.caixas.forEach(({ caixa, dias }) => {
-        container.append(homeCaixaSubbloco(caixa, construirListaBarras30Dias(dias)));
       });
     } catch (e) {
       homeCardErro(container, "Não foi possível conectar ao servidor.");
@@ -1506,11 +1899,10 @@
       lastExtraBody = {};
       closeAllDialogs();
       clearBanner();
-      atualizarBotaoCriticos();
-      atualizarBotaoAnalistas();
       atualizarBotaoReportVini();
       atualizarBotaoTvResolvidosReabertos();
-      atualizarDialogCategorias();
+      atualizarBotaoParetoSolar();
+      atualizarBotaoMaterialIcg();
     });
   });
 
@@ -1534,14 +1926,7 @@
 
   // ------------------------------------------------------------- ações
   const ACTION_ENDPOINTS = {
-    "extracao-completa": "/api/extracao-completa",
-    "extracao-query": "/api/extracao-query",
-    "violar-hoje": "/api/violar-hoje",
-    "violar-amanha": "/api/violar-amanha",
-    "violar-semanal": "/api/violar-semanal",
     violados: "/api/violados",
-    reabertos: "/api/reabertos",
-    jornada: "/api/analise-jornada",
   };
 
   // --------------------------------------------------------------- violados
@@ -1630,175 +2015,205 @@
     }
   });
 
-  // ------------------------------------------------------- extração completa
-  // Diferente das outras 3 ações: abre um painel de opções (mesmo efeito do
-  // botão Categorias de Encerramento) em vez de buscar na hora — deixa
-  // escolher caixas/status/período antes de rodar.
-  $("btn-extracao-completa").addEventListener("click", () => {
-    const dialog = $("extracao-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("extracao-dialog");
-    if (!jaAberto) {
-      buildCheckboxes($("extracao-grupos-checkboxes"), CAIXA_GRUPOS[state.caixa] || [], "extracao-grupo");
-      buildCheckboxes($("extracao-status-checkboxes"), STATUS_OPTIONS, "extracao-status");
-    }
-    dialog.classList.add("open");
-  });
+  // --------------------------------------------------------- extração em lote
+  // Lista de queries (JQL + nome do arquivo), roda 1 de cada vez, em ordem
+  // — cada uma em 3 passos (preparar/lote/salvar, mesmo padrão de
+  // sincronizarCache em Cache de Chamados): preparar roda a JQL e traz as
+  // colunas base; lote preenche as 5 colunas calculadas aos poucos (até
+  // EXTRACAO_LOTE_TAMANHO chaves por vez, pra não pesar a API — pedido
+  // explícito do usuário); salvar grava o .xlsx pronto na pasta de
+  // destino. Só então segue pra próxima query da lista.
+  const EXTRACAO_LOTE_PASTA_PADRAO = "C:\\Users\\edufe\\OneDrive\\Área de Trabalho\\Cache\\TV";
+  const EXTRACAO_LOTE_COL_CHAVE = "Número do Chamado";
+  let extracaoLoteLinhas = [];
+  let extracaoLoteRodando = false;
 
-  $("btn-extracao-cancelar").addEventListener("click", () => {
-    $("extracao-dialog").classList.remove("open");
-  });
-
-  $("btn-extracao-gerar").addEventListener("click", async () => {
-    const grupos = checkedValues($("extracao-grupos-checkboxes"));
-    const status = checkedValues($("extracao-status-checkboxes"));
-    const projetos = projetosSelecionados();
-    if (!grupos.length) {
-      setBanner("Selecione ao menos uma caixa.", "error");
-      return;
-    }
-    if (!status.length) {
-      setBanner("Selecione ao menos um status.", "error");
-      return;
-    }
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    const inicio = $("extracao-input-inicio").value;
-    const fim = $("extracao-input-fim").value;
-    if ((inicio && !fim) || (!inicio && fim)) {
-      setBanner("Informe as duas datas (início e fim) ou nenhuma.", "error");
-      return;
-    }
-
-    const extraBody = { grupos, status, projetos, inicio, fim };
-
-    $("extracao-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados no Jira...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/extracao-completa", { caixa: state.caixa, ...extraBody });
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao executar a ação.", "error");
-        return;
-      }
-
-      lastAction = "extracao-completa";
-      lastCaixa = state.caixa;
-      lastExtraBody = extraBody;
-      renderResults("extracao-completa", data);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // --------------------------------------------------------- extração por query
-  // Diferente de Extração completa: não parte de nenhuma JQL pré-montada
-  // (grupo/projeto/caixa/período) — o usuário digita a JQL inteira, o
-  // servidor só valida direto no Jira. Sempre devolve as mesmas 6 colunas
-  // fixas (ver fetch_chamados_por_query em jira_extractor.py).
-  $("btn-extracao-query").addEventListener("click", () => {
-    const dialog = $("extracao-query-dialog");
-    closeAllDialogs("extracao-query-dialog");
-    dialog.classList.add("open");
-  });
-
-  $("btn-extracao-query-cancelar").addEventListener("click", () => {
-    $("extracao-query-dialog").classList.remove("open");
-  });
-
-  $("btn-extracao-query-gerar").addEventListener("click", async () => {
-    const jql = $("extracao-query-input-jql").value.trim();
-    if (!jql) {
-      setBanner("Informe a JQL.", "error");
-      return;
-    }
-
-    const extraBody = { jql };
-
-    $("extracao-query-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados no Jira...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/extracao-query", extraBody);
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao executar a ação.", "error");
-        return;
-      }
-
-      lastAction = "extracao-query";
-      lastCaixa = state.caixa;
-      lastExtraBody = extraBody;
-      renderResults("extracao-query", data);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // ------------------------------------------------------------- a violar
-  // "A violar" agora é um único botão com 3 opções: Hoje e Amanhã reusam a
-  // tela padrão de resultados (tabela + cards, igual antes); Plano semanal
-  // mostra um mapa de calor à parte (heatmap-grid), sem tabela.
-  $("btn-a-violar").addEventListener("click", () => {
-    const dialog = $("violar-dialog");
-    closeAllDialogs("violar-dialog");
-    dialog.classList.add("open");
-  });
-
-  async function runViolar(action, endpoint) {
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    $("violar-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados no Jira...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall(endpoint, { caixa: state.caixa, projetos });
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao executar a ação.", "error");
-        return;
-      }
-
-      lastAction = action;
-      lastCaixa = state.caixa;
-      lastExtraBody = { projetos };
-      renderResults(action, data);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
+  function extracaoLoteRenumerar() {
+    extracaoLoteLinhas.forEach(({ tdNum }, index) => {
+      tdNum.textContent = index + 1;
+    });
   }
 
-  $("btn-violar-hoje").addEventListener("click", () => runViolar("violar-hoje", ACTION_ENDPOINTS["violar-hoje"]));
-  $("btn-violar-amanha").addEventListener("click", () =>
-    runViolar("violar-amanha", ACTION_ENDPOINTS["violar-amanha"])
-  );
+  function extracaoLoteAtualizarRemover() {
+    const podeRemover = extracaoLoteLinhas.length > 1;
+    extracaoLoteLinhas.forEach(({ btnRemover }) => {
+      btnRemover.disabled = !podeRemover || extracaoLoteRodando;
+    });
+  }
 
-  // Tons do mapa de calor: só marca os dias com carga MAIOR em relação ao
-  // pior dia da semana visível — o resto fica na cor neutra do card, sem
-  // chamar atenção à toa (dia com 0 ou pouca coisa não precisa de destaque).
+  function criarLinhaExtracaoLote() {
+    const tr = document.createElement("tr");
+
+    const tdNum = document.createElement("td");
+    tdNum.className = "extracao-lote-col-num";
+    tr.append(tdNum);
+
+    const tdJql = document.createElement("td");
+    const jqlEl = document.createElement("textarea");
+    jqlEl.className = "extracao-lote-input-jql";
+    jqlEl.rows = 2;
+    jqlEl.placeholder = 'Ex.: "Grupo Solucionador[...]" IN (...) AND created >= "2026-01-01 00:00" AND created <= "2026-01-31 23:59"';
+    tdJql.append(jqlEl);
+    tr.append(tdJql);
+
+    const tdNome = document.createElement("td");
+    tdNome.className = "extracao-lote-col-nome";
+    const nomeEl = document.createElement("input");
+    nomeEl.type = "text";
+    nomeEl.placeholder = "jan-2026";
+    tdNome.append(nomeEl);
+    tr.append(tdNome);
+
+    const tdStatus = document.createElement("td");
+    tdStatus.className = "extracao-lote-col-status extracao-lote-status--idle";
+    tdStatus.textContent = "Aguardando";
+    tr.append(tdStatus);
+
+    const tdBtn = document.createElement("td");
+    tdBtn.className = "extracao-lote-col-acao";
+    const btnRemover = document.createElement("button");
+    btnRemover.type = "button";
+    btnRemover.className = "btn-secondary";
+    btnRemover.textContent = "✕";
+    btnRemover.title = "Remover linha";
+    btnRemover.addEventListener("click", () => {
+      extracaoLoteLinhas = extracaoLoteLinhas.filter((l) => l.tr !== tr);
+      tr.remove();
+      extracaoLoteAtualizarRemover();
+      extracaoLoteRenumerar();
+    });
+    tdBtn.append(btnRemover);
+    tr.append(tdBtn);
+
+    const linha = { tr, tdNum, jqlEl, nomeEl, tdStatus, btnRemover };
+    extracaoLoteLinhas.push(linha);
+    $("extracao-lote-table").querySelector("tbody").append(tr);
+    extracaoLoteAtualizarRemover();
+    extracaoLoteRenumerar();
+    return linha;
+  }
+
+  // "tipo": idle (aguardando, antes de iniciar) | rodando (passo atual) |
+  // ok (salvo com sucesso) | erro (parou nessa linha). Texto nunca é
+  // cortado (ver CSS, sem nowrap/ellipsis) — mensagem de erro pode ser
+  // longa (ex.: caminho do arquivo, erro do Jira) e precisa aparecer
+  // inteira, mesmo que quebre em várias linhas dentro da célula.
+  function extracaoLoteSetStatus(linha, texto, tipo) {
+    linha.tdStatus.textContent = texto;
+    linha.tdStatus.className = `extracao-lote-col-status extracao-lote-status--${tipo}`;
+  }
+
+  $("btn-extracao-lote").addEventListener("click", () => {
+    closeAllDialogs();
+    $("extracao-lote-results").classList.remove("hidden");
+    if (!$("extracao-lote-pasta").value) {
+      $("extracao-lote-pasta").value = EXTRACAO_LOTE_PASTA_PADRAO;
+    }
+    if (!extracaoLoteLinhas.length) {
+      criarLinhaExtracaoLote();
+    }
+  });
+
+  $("btn-extracao-lote-add").addEventListener("click", () => {
+    criarLinhaExtracaoLote();
+  });
+
+  $("btn-extracao-lote-iniciar").addEventListener("click", async () => {
+    if (extracaoLoteRodando) return;
+
+    const pasta = $("extracao-lote-pasta").value.trim() || EXTRACAO_LOTE_PASTA_PADRAO;
+    const formato = $("extracao-lote-formato").value || "xlsx";
+    const fila = extracaoLoteLinhas.filter((l) => l.jqlEl.value.trim() && l.nomeEl.value.trim());
+    if (!fila.length) {
+      setBanner("Preencha ao menos 1 linha com query e nome do arquivo.", "error");
+      return;
+    }
+
+    extracaoLoteRodando = true;
+    const btnIniciar = $("btn-extracao-lote-iniciar");
+    const btnAdd = $("btn-extracao-lote-add");
+    const statusEl = $("extracao-lote-status");
+    btnIniciar.disabled = true;
+    btnAdd.disabled = true;
+    $("extracao-lote-formato").disabled = true;
+    $("extracao-lote-pasta").disabled = true;
+    extracaoLoteLinhas.forEach((linha) => {
+      linha.jqlEl.disabled = true;
+      linha.nomeEl.disabled = true;
+      extracaoLoteSetStatus(linha, "Aguardando", "idle");
+    });
+    extracaoLoteAtualizarRemover();
+
+    for (let i = 0; i < fila.length; i++) {
+      const linha = fila[i];
+      const jql = linha.jqlEl.value.trim();
+      const nomeArquivo = linha.nomeEl.value.trim();
+      statusEl.textContent = `Executando ${i + 1}/${fila.length}...`;
+
+      try {
+        extracaoLoteSetStatus(linha, "Executando a query...", "rodando");
+        const prepResp = await apiCall("/api/extracao-lote/preparar", { jql });
+        const prep = await prepResp.json();
+        if (!prepResp.ok) {
+          extracaoLoteSetStatus(linha, prep.error || "Erro ao executar a query.", "erro");
+          continue;
+        }
+
+        const linhas = prep.linhas || [];
+        const porChave = Object.fromEntries(linhas.map((l) => [l[EXTRACAO_LOTE_COL_CHAVE], l]));
+        const lotes = dividirEmLotes(Object.keys(porChave), prep.lote || CACHE_SYNC_LOTE);
+
+        let falhou = false;
+        for (let b = 0; b < lotes.length; b++) {
+          extracaoLoteSetStatus(linha, `Lote ${b + 1}/${lotes.length}...`, "rodando");
+          const loteResp = await apiCall("/api/extracao-lote/lote", { chaves: lotes[b] });
+          const loteData = await loteResp.json();
+          if (!loteResp.ok) {
+            extracaoLoteSetStatus(linha, loteData.error || "Erro num lote.", "erro");
+            falhou = true;
+            break;
+          }
+          Object.entries(loteData.resultados).forEach(([chave, campos]) => {
+            if (porChave[chave]) Object.assign(porChave[chave], campos);
+          });
+        }
+        if (falhou) continue;
+
+        extracaoLoteSetStatus(linha, "Salvando o arquivo...", "rodando");
+        const salvarResp = await apiCall("/api/extracao-lote/salvar", {
+          pasta,
+          nome_arquivo: nomeArquivo,
+          linhas,
+          formato,
+        });
+        const salvarData = await salvarResp.json();
+        if (!salvarResp.ok) {
+          extracaoLoteSetStatus(linha, salvarData.error || "Erro ao salvar o arquivo.", "erro");
+          continue;
+        }
+        extracaoLoteSetStatus(linha, `${salvarData.total} chamado(s) salvos em "${salvarData.caminho}".`, "ok");
+      } catch (e) {
+        extracaoLoteSetStatus(linha, "Não foi possível conectar ao servidor.", "erro");
+      }
+    }
+
+    statusEl.textContent = "Concluído.";
+    extracaoLoteRodando = false;
+    btnIniciar.disabled = false;
+    btnAdd.disabled = false;
+    $("extracao-lote-formato").disabled = false;
+    $("extracao-lote-pasta").disabled = false;
+    extracaoLoteLinhas.forEach(({ jqlEl, nomeEl }) => {
+      jqlEl.disabled = false;
+      nomeEl.disabled = false;
+    });
+    extracaoLoteAtualizarRemover();
+  });
+
+  // Tons do mapa de calor (home dashboard "A violar"): só marca os dias com
+  // carga MAIOR em relação ao pior dia da semana visível — o resto fica na
+  // cor neutra do card, sem chamar atenção à toa (dia com 0 ou pouca coisa
+  // não precisa de destaque).
   function heatTone(total, max) {
     if (max <= 0 || total <= 0) return "";
     const proporcao = total / max;
@@ -1807,108 +2222,14 @@
     return "";
   }
 
-  function renderHeatmap(dias) {
-    const grid = $("heatmap-grid");
-    grid.innerHTML = "";
-
-    const max = dias.reduce((m, d) => Math.max(m, d.total), 0);
-
-    dias.forEach((dia) => {
-      const tile = document.createElement("div");
-      const tom = heatTone(dia.total, max);
-      tile.className = "heat-tile" + (tom ? ` ${tom}` : "");
-
-      const label = document.createElement("span");
-      label.className = "heat-tile-label";
-      label.textContent = dia.dia_semana;
-
-      const value = document.createElement("span");
-      value.className = "heat-tile-value";
-      value.textContent = dia.total;
-
-      tile.append(label, value);
-
-      // Detalhamento por caixa, bem discreto — só quando há chamados no dia
-      // (dia vazio não ganha uma linha "N1 0 / N2 0 / PROD 0" à toa). Uma
-      // linha por caixa, empilhadas, em vez de tudo junto numa linha só.
-      const porGrupoComChamados = (dia.por_grupo || []).filter((g) => g.total > 0);
-      if (porGrupoComChamados.length) {
-        const breakdown = document.createElement("div");
-        breakdown.className = "heat-tile-breakdown";
-        porGrupoComChamados.forEach((g) => {
-          const row = document.createElement("div");
-          row.className = "heat-tile-breakdown-row";
-
-          const rowLabel = document.createElement("span");
-          rowLabel.textContent = GRUPO_LABEL_CURTO[g.grupo] || g.grupo;
-
-          const rowValue = document.createElement("span");
-          rowValue.textContent = g.total;
-
-          row.append(rowLabel, rowValue);
-          breakdown.append(row);
-        });
-        tile.append(breakdown);
-      }
-
-      grid.append(tile);
-    });
-
-    $("heatmap-block").classList.remove("hidden");
-  }
-
-  $("btn-violar-semanal").addEventListener("click", async () => {
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    $("violar-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Montando o plano semanal...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/violar-semanal", { caixa: state.caixa, projetos });
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao montar o plano semanal.", "error");
-        return;
-      }
-
-      lastAction = "violar-semanal";
-      lastCaixa = state.caixa;
-      lastExtraBody = { projetos };
-
-      // Heatmap + summary + tabela, tudo dentro do MESMO card de
-      // resultados (results-card) — não chama renderResults() só porque
-      // ela não sabe mostrar o heatmap-block, mas monta o resto igual.
-      renderHeatmap(data.dias);
-      $("results-title").textContent = `RESULTADOS — ${ACTION_LABELS["violar-semanal"]}`;
-      $("results-date").textContent = rotuloDataResultado("violar-semanal");
-      renderSummary("violar-semanal", data.summary, null);
-      renderTable(data.fields, data.rows);
-      resultsCard.classList.remove("hidden");
-      resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
-
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
   // --------------------------------------------------------- resultados
   const MAX_ROWS_RENDERED = 500;
 
   function renderResults(action, data) {
     $("results-title").textContent = `RESULTADOS — ${ACTION_LABELS[action]}`;
-    $("results-date").textContent = rotuloDataResultado(action);
-    renderSummary(action, data.summary, data.por_grupo, data.por_turno);
+    $("results-date").textContent = rotuloDataResultado();
+    renderSummary(action, data.summary, data.por_turno);
     renderPorDiaViolados(data.por_dia, data.rows);
-    renderJornadaResumo(data);
     renderTable(data.fields, data.rows);
     resultsCard.classList.remove("hidden");
     resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -2021,6 +2342,47 @@
     popover.style.left = `${Math.max(8, left)}px`;
   }
 
+  // Popover flutuante do Pareto Solar — só o nome por inteiro da categoria
+  // (rótulo do eixo X vem truncado) + quantidade/%, sem reservar espaço
+  // fixo na tela: aparece ancorado na barra só enquanto o mouse está em
+  // cima (mesmo popover/posicionamento de showHomeFunilPopover acima).
+  // "texto": string (1 linha, comportamento original) ou array de strings
+  // (1 tópico com marcador por linha, pedido explícito do usuário — "em
+  // tópicos, com quebra de linha").
+  function showParetoPopover(anchorEl, texto) {
+    const popover = getHoverPopover();
+    popover.innerHTML = "";
+
+    if (Array.isArray(texto)) {
+      texto.forEach((linha) => {
+        const item = document.createElement("div");
+        item.className = "hover-popover-item";
+        item.textContent = linha;
+        popover.append(item);
+      });
+    } else {
+      const titulo = document.createElement("div");
+      titulo.className = "hover-popover-title";
+      titulo.textContent = texto;
+      popover.append(titulo);
+    }
+
+    popover.classList.remove("hidden");
+
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    let top = anchorRect.bottom + 6;
+    let left = anchorRect.left;
+    if (left + popoverRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - popoverRect.width - 8;
+    }
+    if (top + popoverRect.height > window.innerHeight - 8) {
+      top = anchorRect.top - popoverRect.height - 6;
+    }
+    popover.style.top = `${Math.max(8, top)}px`;
+    popover.style.left = `${Math.max(8, left)}px`;
+  }
+
   // Só existe em Violados — quantidade de violados por dia, dias sem nenhum
   // violado não vêm no "por_dia" (o servidor já não os inclui). "rows" (os
   // chamados completos, já disponíveis na resposta) alimenta o hover da
@@ -2101,301 +2463,6 @@
     block.classList.remove("hidden");
   }
 
-  // Tabela genérica de 2 colunas (rótulo + quantidade) a partir de uma
-  // lista [rotulo, total] — usada pelas duas tabelas de Análise de Jornada
-  // (Status e Top Analistas), que têm exatamente esse formato.
-  function preencherTabela2Col(tableId, colunas, linhas) {
-    const thead = document.querySelector(`#${tableId} thead`);
-    const tbody = document.querySelector(`#${tableId} tbody`);
-    thead.innerHTML = "";
-    tbody.innerHTML = "";
-    if (!linhas || !linhas.length) return;
-
-    const trHead = document.createElement("tr");
-    colunas.forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    linhas.forEach(([rotulo, total]) => {
-      const tr = document.createElement("tr");
-      const tdRotulo = document.createElement("td");
-      tdRotulo.textContent = rotulo;
-      const tdTotal = document.createElement("td");
-      tdTotal.textContent = total;
-      tr.append(tdRotulo, tdTotal);
-      tbody.append(tr);
-    });
-  }
-
-  function isoLocal(date) {
-    const ano = date.getFullYear();
-    const mes = String(date.getMonth() + 1).padStart(2, "0");
-    const dia = String(date.getDate()).padStart(2, "0");
-    return `${ano}-${mes}-${dia}`;
-  }
-
-  // Um dia por data entre início/fim (mesmo padrão do "calendario" que o
-  // backend devolve pra Analistas — todo dia entra, com 0 pros sem chamado
-  // criado), a partir das linhas já buscadas (sem consulta extra ao Jira).
-  function diasCriadosPorPeriodo(rows, inicio, fim) {
-    if (!inicio || !fim) return [];
-    const porDia = new Map();
-    (rows || []).forEach((row) => {
-      if (!row.created) return;
-      const dia = row.created.slice(0, 10);
-      porDia.set(dia, (porDia.get(dia) || 0) + 1);
-    });
-
-    const [anoIni, mesIni, diaIni] = inicio.split("-").map(Number);
-    const [anoFim, mesFim, diaFim] = fim.split("-").map(Number);
-    const dataAtual = new Date(anoIni, mesIni - 1, diaIni);
-    const dataFim = new Date(anoFim, mesFim - 1, diaFim);
-
-    const dias = [];
-    while (dataAtual <= dataFim) {
-      const chave = isoLocal(dataAtual);
-      dias.push({ data: chave, criados: porDia.get(chave) || 0 });
-      dataAtual.setDate(dataAtual.getDate() + 1);
-    }
-    return dias;
-  }
-
-  const CALENDARIO_CAMPOS_CRIADOS = [{ campo: "criados", prefixo: "C", classe: "calendario-dia-criados" }];
-
-  // Gráfico de barras horizontal, sem biblioteca externa — largura de cada
-  // barra proporcional ao maior valor da lista. "dados" é [rótulo, total]
-  // (mesmo formato de por_status/top_assignees), já ordenado do maior pro
-  // menor; "limite" corta em quantas barras mostrar (evita um gráfico
-  // ilegível quando a Sub-Classificação tem muitos valores distintos).
-  function construirGraficoBarras(dados, limite = 10) {
-    const container = document.createElement("div");
-    container.className = "bar-chart";
-
-    const itens = dados.slice(0, limite);
-    const maxValor = Math.max(...itens.map(([, total]) => total), 1);
-
-    itens.forEach(([rotulo, total]) => {
-      const row = document.createElement("div");
-      row.className = "bar-chart-row";
-
-      const label = document.createElement("span");
-      label.className = "bar-chart-label";
-      label.textContent = rotulo;
-      label.title = rotulo;
-
-      const track = document.createElement("div");
-      track.className = "bar-chart-track";
-      const fill = document.createElement("div");
-      fill.className = "bar-chart-fill";
-      fill.style.width = `${(total / maxValor) * 100}%`;
-      track.append(fill);
-
-      const value = document.createElement("span");
-      value.className = "bar-chart-value";
-      value.textContent = total;
-
-      row.append(label, track, value);
-      container.append(row);
-    });
-
-    return container;
-  }
-
-  // Sub-tabela de 2 colunas (Sub-Classificação | Quantidade) usada dentro
-  // da linha de detalhe de cada Classificação — mesma forma [rótulo, total]
-  // das outras tabelas simples do app.
-  function construirSubtabela(colunas, linhas) {
-    const table = document.createElement("table");
-    table.className = "data-table jornada-ranking-subtable";
-
-    const thead = document.createElement("thead");
-    const trHead = document.createElement("tr");
-    colunas.forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-    table.append(thead);
-
-    const tbody = document.createElement("tbody");
-    linhas.forEach(([rotulo, total]) => {
-      const tr = document.createElement("tr");
-      const tdRotulo = document.createElement("td");
-      tdRotulo.textContent = rotulo;
-      const tdTotal = document.createElement("td");
-      tdTotal.textContent = total;
-      tr.append(tdRotulo, tdTotal);
-      tbody.append(tr);
-    });
-    table.append(tbody);
-
-    return table;
-  }
-
-  // Ranking por Classificação (Análise de Jornada, modo "Geral") — cada
-  // linha expande (clique) uma linha de detalhe com o ranking por
-  // Sub-Classificação daquela Classificação (já vem pronto do backend, sem
-  // busca nova nenhuma — ver ranking_classificacao/ por_subclassificacao).
-  function construirTabelaRankingClassificacao(ranking) {
-    const table = document.createElement("table");
-    table.className = "data-table";
-
-    const thead = document.createElement("thead");
-    const trHead = document.createElement("tr");
-    ["Classificação", "Quantidade"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-    table.append(thead);
-
-    const tbody = document.createElement("tbody");
-    ranking.forEach(({ classificacao, total, por_subclassificacao: porSub }) => {
-      const trMain = document.createElement("tr");
-      trMain.className = "jornada-ranking-row";
-
-      const tdLabel = document.createElement("td");
-      const arrow = document.createElement("span");
-      arrow.className = "jornada-ranking-arrow";
-      arrow.textContent = "▸";
-      tdLabel.append(arrow, document.createTextNode(` ${classificacao}`));
-
-      const tdTotal = document.createElement("td");
-      tdTotal.textContent = total;
-
-      trMain.append(tdLabel, tdTotal);
-      tbody.append(trMain);
-
-      const trDetail = document.createElement("tr");
-      trDetail.className = "jornada-ranking-detail hidden";
-      const tdDetail = document.createElement("td");
-      tdDetail.colSpan = 2;
-
-      if (porSub && porSub.length) {
-        tdDetail.append(construirSubtabela(["Sub-Classificação", "Quantidade"], porSub));
-      } else {
-        const semDados = document.createElement("span");
-        semDados.className = "hint";
-        semDados.textContent = "Sem Sub-Classificação preenchida nesses chamados.";
-        tdDetail.append(semDados);
-      }
-
-      trDetail.append(tdDetail);
-      tbody.append(trDetail);
-
-      trMain.addEventListener("click", () => {
-        const abrindo = trDetail.classList.contains("hidden");
-        trDetail.classList.toggle("hidden", !abrindo);
-        trMain.classList.toggle("open", abrindo);
-      });
-    });
-    table.append(tbody);
-
-    return table;
-  }
-
-  // Só aparece em Análise de Jornada: cards "Total de chamados"/"Chamados
-  // abertos" empilhados à esquerda + tabela por status e tabela de top
-  // analistas à direita, as três colunas alinhadas na mesma linha (mesmo
-  // grupo de dados que antes ia pro #summary-cards/#top-assignees
-  // genéricos — aqui esconde os dois e monta um layout próprio); e, no
-  // lugar da tabela de linhas (#results-table), um calendário de "Chamados
-  // criados" por dia — mesmo layout/componente do calendário de Analistas
-  // de Encerramento (construirCalendario), só com outro campo de contagem.
-  // "por_status" e "summary.top_assignees" vêm do backend como lista
-  // [rótulo, total] (Counter.most_common), já ordenadas do mais pro menos
-  // frequente. "data.inicio"/"data.fim" são injetados pelo handler do
-  // botão "Gerar" antes de chamar renderResults — o calendário precisa das
-  // duas pontas do período pra preencher todos os dias, não só os com
-  // chamado criado.
-  function renderJornadaResumo(data) {
-    const block = $("jornada-resumo-block");
-    const cardsEl = $("jornada-cards");
-    cardsEl.innerHTML = "";
-
-    const temDados = data.summary && typeof data.criados === "number" && data.por_status;
-    preencherTabela2Col("jornada-status-table", ["Status", "Quantidade"], temDados ? data.por_status : null);
-    preencherTabela2Col(
-      "jornada-analistas-table",
-      ["Analista", "Quantidade"],
-      temDados ? data.summary.top_assignees : null
-    );
-
-    const calendarioBlock = $("jornada-calendario-block");
-    const calendarioEl = $("jornada-calendario");
-    const resultsTableWrap = $("results-table-wrap");
-    const subclassBlock = $("jornada-subclassificacao-block");
-    const rankingBlock = $("jornada-ranking-block");
-
-    if (!temDados) {
-      block.classList.add("hidden");
-      calendarioBlock.classList.add("hidden");
-      subclassBlock.classList.add("hidden");
-      rankingBlock.classList.add("hidden");
-      // #top-assignees e a tabela genérica não têm lógica própria de
-      // mostrar/esconder (só preenchem o innerHTML) — sem restaurar aqui,
-      // ficariam escondidos pra sempre nas ações seguintes.
-      $("top-assignees").classList.remove("hidden");
-      resultsTableWrap.classList.remove("hidden");
-      $("table-note").classList.remove("hidden");
-      return;
-    }
-
-    // Essa ação mostra os totais no layout próprio abaixo — o card genérico
-    // "Total de chamados" e o bloco "Top responsáveis" (ambos já
-    // preenchidos por renderSummary) ficam redundantes aqui.
-    $("summary-cards").classList.add("hidden");
-    $("top-assignees").classList.add("hidden");
-
-    // Mesmos rótulos/tons já usados em Criados x Resolvidos (Report Vini) —
-    // "criados" é o total já buscado (a busca principal já é escopada a
-    // "created no período"); "resolvidos" vem de uma consulta à parte
-    // (status IN Resolvido/Encerrado AND resolutiondate no período).
-    cardsEl.append(summaryCard(data.criados, "Criados no período", "tone-accent"));
-    cardsEl.append(summaryCard(data.resolvidos, "Resolvidos (Encerrado/Resolvido)", "tone-warning"));
-    cardsEl.append(summaryCard(data.saldo, "Saldo (criados − resolvidos)", data.saldo > 0 ? "tone-danger" : ""));
-
-    // Acima do calendário: no modo "Geral", o ranking por Classificação (com
-    // detalhamento por Sub-Classificação embutido, expansível por linha) —
-    // nos demais casos, o gráfico de barras achatado de Sub-Classificação
-    // de sempre. Só um dos dois aparece por vez.
-    const subclassEl = $("jornada-subclassificacao-chart");
-    const rankingEl = $("jornada-ranking");
-    subclassEl.innerHTML = "";
-    rankingEl.innerHTML = "";
-    if (data.ranking_classificacao && data.ranking_classificacao.length) {
-      rankingEl.append(construirTabelaRankingClassificacao(data.ranking_classificacao));
-      rankingBlock.classList.remove("hidden");
-      subclassBlock.classList.add("hidden");
-    } else if (data.por_subclassificacao && data.por_subclassificacao.length) {
-      subclassEl.append(construirGraficoBarras(data.por_subclassificacao));
-      subclassBlock.classList.remove("hidden");
-      rankingBlock.classList.add("hidden");
-    } else {
-      subclassBlock.classList.add("hidden");
-      rankingBlock.classList.add("hidden");
-    }
-
-    // Calendário no lugar da tabela de linhas.
-    resultsTableWrap.classList.add("hidden");
-    $("table-note").classList.add("hidden");
-    calendarioEl.innerHTML = "";
-    const dias = diasCriadosPorPeriodo(data.rows, data.inicio, data.fim);
-    if (dias.length) {
-      calendarioEl.append(construirCalendario(dias, CALENDARIO_CAMPOS_CRIADOS));
-      calendarioBlock.classList.remove("hidden");
-    } else {
-      calendarioBlock.classList.add("hidden");
-    }
-
-    block.classList.remove("hidden");
-  }
-
   function summaryCard(value, label, tone, topAssignees) {
     const card = document.createElement("div");
     card.className = "summary-card" + (tone ? ` ${tone}` : "");
@@ -2431,33 +2498,10 @@
     return card;
   }
 
-  function renderSummary(action, summary, porGrupo, porTurno) {
+  function renderSummary(action, summary, porTurno) {
     const totalCardsEl = $("summary-cards");
-    const porGrupoBlock = $("por-grupo-block");
-    const porGrupoCardsEl = $("por-grupo-cards");
     totalCardsEl.innerHTML = "";
-    porGrupoCardsEl.innerHTML = "";
-
-    const totalCard = summaryCard(summary.total, "Total de chamados", ACTION_TONE[action]);
-
-    // Quando o card por grupo já vem com o ranking próprio (top_assignees),
-    // o bloco "Top responsáveis" combinado abaixo fica redundante — some pra
-    // não repetir a mesma informação duas vezes.
-    const temTopPorGrupo = porGrupo && porGrupo.some((g) => g.top_assignees && g.top_assignees.length);
-
-    if (porGrupo && porGrupo.length) {
-      // Total desce para a mesma linha dos cards por grupo, como primeiro card.
-      porGrupoCardsEl.append(totalCard);
-      porGrupo.forEach(({ grupo, total, top_assignees }) => {
-        porGrupoCardsEl.append(summaryCard(total, GRUPO_LABEL_CURTO[grupo] || grupo, null, top_assignees));
-      });
-      porGrupoBlock.classList.remove("hidden");
-      totalCardsEl.classList.add("hidden");
-    } else {
-      totalCardsEl.append(totalCard);
-      totalCardsEl.classList.remove("hidden");
-      porGrupoBlock.classList.add("hidden");
-    }
+    totalCardsEl.append(summaryCard(summary.total, "Total de chamados", ACTION_TONE[action]));
 
     // Só existe em Violados — contagem de chamados violados por turno do dia.
     const porTurnoBlock = $("por-turno-block");
@@ -2474,7 +2518,7 @@
 
     const assigneesEl = $("top-assignees");
     assigneesEl.innerHTML = "";
-    if (!temTopPorGrupo && summary.top_assignees && summary.top_assignees.length) {
+    if (summary.top_assignees && summary.top_assignees.length) {
       const title = document.createElement("div");
       title.className = "top-assignees-title";
       title.textContent = "Top responsáveis";
@@ -2565,1256 +2609,13 @@
     }
   });
 
-  // -------------------------------------------- categorias de encerramento
-  $("btn-categorias-encerramento").addEventListener("click", () => {
-    const dialog = $("categorias-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("categorias-dialog");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      $("cat-input-inicio").value = hoje;
-      $("cat-input-fim").value = hoje;
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-categorias-cancelar").addEventListener("click", () => {
-    $("categorias-dialog").classList.remove("open");
-  });
-
-  // Busca Ofensor e Extração Geral compartilham o mesmo molde: tabela
-  // paginada, checkboxes Ativo/Inativo, "Categoria Ativa?" checada em
-  // lotes pequenos enquanto carrega (a API do Jira Assets é uma chamada
-  // por chamado — pra uma Funcionalidade grande, tipo "PME" com 424, ou
-  // pro projeto inteiro na Extração Geral, com mais de 7 mil, verificar
-  // tudo de uma vez trava a tela). criarBuscaPaginadaChamados(prefixo)
-  // monta esse comportamento uma vez só, reaproveitado pelas duas telas —
-  // cada uma só entra com a chamada de API específica (por Funcionalidade
-  // ou pelo projeto inteiro).
-  const CHAMADOS_LOTE_TAMANHO = 25;
-  const CHAMADOS_PAGINA_TAMANHO = 20;
-
-  function criarBuscaPaginadaChamados(prefixo) {
-    // buscaId invalida lotes de uma busca anterior ainda em voo quando o
-    // usuário dispara uma busca nova no meio do carregamento — mesma
-    // lógica da race condition já corrigida em Analistas de Encerramento
-    // (buscarDetalheAnalista terminando depois de "Fechar").
-    let buscaId = 0;
-    let chamadosBrutos = [];
-    let indiceProximoLote = 0;
-    let statusCache = {};
-    let atreladosCache = {};
-    let chamadosFiltrados = [];
-    let paginaAtual = 0;
-
-    function filtroPassa(categoriaStatus) {
-      if (categoriaStatus === "Ativo") return $(`${prefixo}-check-ativo`).checked;
-      if (categoriaStatus === "Inativo") return $(`${prefixo}-check-inativo`).checked;
-      return false;
-    }
-
-    function recomputarFiltrados() {
-      const processados = chamadosBrutos.slice(0, indiceProximoLote);
-      chamadosFiltrados = processados.filter((c) => filtroPassa(c.categoria_status));
-    }
-
-    function renderPaginaAtual() {
-      const wrap = $(`${prefixo}-chamados-wrap`);
-      const tbody = document.querySelector(`#${prefixo}-chamados-table tbody`);
-      tbody.innerHTML = "";
-
-      const inicio = paginaAtual * CHAMADOS_PAGINA_TAMANHO;
-      const pagina = chamadosFiltrados.slice(inicio, inicio + CHAMADOS_PAGINA_TAMANHO);
-
-      pagina.forEach((chamado) => {
-        const tr = document.createElement("tr");
-        [
-          chamado.key,
-          chamado.summary,
-          chamado.status,
-          chamado.created ? chamado.created.slice(0, 10).split("-").reverse().join("/") : "",
-          chamado.assignee,
-          chamado.categoria_status || "—",
-          typeof chamado.chamados_atrelados === "number" ? chamado.chamados_atrelados : "—",
-        ].forEach((valor) => {
-          const td = document.createElement("td");
-          td.textContent = escapeText(valor);
-          tr.append(td);
-        });
-        tbody.append(tr);
-      });
-      wrap.classList.toggle("hidden", chamadosFiltrados.length === 0);
-
-      const totalPaginas = Math.max(1, Math.ceil(chamadosFiltrados.length / CHAMADOS_PAGINA_TAMANHO));
-      $(`${prefixo}-pagina-label`).textContent =
-        `Página ${paginaAtual + 1} de ${totalPaginas} (${chamadosFiltrados.length} no filtro)`;
-      $(`${prefixo}-pagina-anterior`).disabled = paginaAtual === 0;
-      $(`${prefixo}-pagina-proxima`).disabled = inicio + CHAMADOS_PAGINA_TAMANHO >= chamadosFiltrados.length;
-      $(`${prefixo}-paginacao`).classList.toggle("hidden", chamadosFiltrados.length === 0);
-    }
-
-    function atualizarProgresso(concluido) {
-      const el = $(`${prefixo}-progresso`);
-      const totalBruto = chamadosBrutos.length;
-      if (!totalBruto) {
-        el.classList.add("hidden");
-        return;
-      }
-      el.classList.remove("hidden");
-      el.classList.toggle("is-loading", !concluido);
-      el.textContent = concluido
-        ? `Categoria verificada em ${totalBruto} chamado${totalBruto === 1 ? "" : "s"} — ${chamadosFiltrados.length} no filtro atual.`
-        : `Verificando categorias... ${indiceProximoLote} de ${totalBruto} chamados (${chamadosFiltrados.length} no filtro até agora).`;
-    }
-
-    async function processarProximoLote(id) {
-      if (id !== buscaId) return;
-      if (indiceProximoLote >= chamadosBrutos.length) {
-        atualizarProgresso(true);
-        return;
-      }
-
-      const lote = chamadosBrutos.slice(indiceProximoLote, indiceProximoLote + CHAMADOS_LOTE_TAMANHO);
-      const nomesParaBuscar = [...new Set(lote.map((c) => c.summary).filter((n) => n && !(n in statusCache)))];
-
-      if (nomesParaBuscar.length) {
-        try {
-          const resp = await apiCall("/api/categoria-status-lote", { nomes: nomesParaBuscar });
-          if (id !== buscaId) return;
-          const data = await resp.json();
-          if (resp.ok) {
-            Object.assign(statusCache, data.status);
-            Object.assign(atreladosCache, data.atrelados);
-          }
-        } catch (e) {
-          if (id !== buscaId) return;
-        }
-      }
-
-      if (id !== buscaId) return;
-
-      lote.forEach((chamado) => {
-        chamado.categoria_status = Object.prototype.hasOwnProperty.call(statusCache, chamado.summary)
-          ? statusCache[chamado.summary]
-          : null;
-        chamado.chamados_atrelados = Object.prototype.hasOwnProperty.call(atreladosCache, chamado.summary)
-          ? atreladosCache[chamado.summary]
-          : null;
-      });
-      indiceProximoLote += lote.length;
-
-      recomputarFiltrados();
-      renderPaginaAtual();
-      atualizarProgresso(false);
-
-      processarProximoLote(id);
-    }
-
-    function reiniciarFiltroEExibir() {
-      paginaAtual = 0;
-      recomputarFiltrados();
-      renderPaginaAtual();
-    }
-
-    $(`${prefixo}-check-ativo`).addEventListener("change", reiniciarFiltroEExibir);
-    $(`${prefixo}-check-inativo`).addEventListener("change", reiniciarFiltroEExibir);
-
-    $(`${prefixo}-pagina-anterior`).addEventListener("click", () => {
-      if (paginaAtual > 0) {
-        paginaAtual -= 1;
-        renderPaginaAtual();
-      }
-    });
-    $(`${prefixo}-pagina-proxima`).addEventListener("click", () => {
-      const inicio = (paginaAtual + 1) * CHAMADOS_PAGINA_TAMANHO;
-      if (inicio < chamadosFiltrados.length) {
-        paginaAtual += 1;
-        renderPaginaAtual();
-      }
-    });
-
-    // "carregar" faz a validação + chamada de API específica de cada tela
-    // e devolve { resp, data, mensagemTotal(total) } — ou null se decidiu
-    // abortar (ex.: nenhuma Funcionalidade escolhida), já deixando a
-    // mensagem certa no status.
-    async function buscar(carregar) {
-      buscaId += 1;
-      const id = buscaId;
-
-      chamadosBrutos = [];
-      indiceProximoLote = 0;
-      statusCache = {};
-      atreladosCache = {};
-      chamadosFiltrados = [];
-      paginaAtual = 0;
-      $(`${prefixo}-progresso`).classList.add("hidden");
-      $(`${prefixo}-paginacao`).classList.add("hidden");
-      $(`${prefixo}-filtro-status`).classList.add("hidden");
-      $(`${prefixo}-chamados-wrap`).classList.add("hidden");
-
-      const resultado = await carregar();
-      if (id !== buscaId) return;
-      if (!resultado) return;
-
-      const { resp, data, mensagemTotal } = resultado;
-      const statusEl = $(`${prefixo}-status`);
-      if (!resp.ok) {
-        statusEl.textContent = data.error || "Erro ao buscar chamados.";
-        return;
-      }
-      const total = data.chamados.length;
-      statusEl.textContent = mensagemTotal(total);
-
-      chamadosBrutos = data.chamados;
-      if (total) {
-        $(`${prefixo}-filtro-status`).classList.remove("hidden");
-        processarProximoLote(id);
-      }
-    }
-
-    return { buscar };
-  }
-
-  // Busca Ofensor: não usa Data início/fim nem os checkboxes da ação
-  // principal. Escolher uma opção no dropdown "Funcionalidade Ofensores"
-  // (mesmo campo/opções nativas do Jira, customfield_26645) já dispara a
-  // busca nos chamados de "Gestão de Problemas" (base de chamados normal,
-  // não o catálogo do Jira Assets) filtrando por esse campo.
-  $("btn-ofensor").addEventListener("click", () => {
-    const painel = $("ofensor-panel");
-    const abrindo = !painel.classList.contains("open");
-    painel.classList.toggle("open", abrindo);
-    if (abrindo) {
-      $("ofensor-funcionalidade").focus();
-    }
-  });
-
-  const buscaOfensor = criarBuscaPaginadaChamados("ofensor");
-
-  function ofensorCampoBuscaSelecionado() {
-    return document.querySelector('input[name="ofensor-campo-busca"]:checked').value;
-  }
-
-  function dispararBuscaOfensor() {
-    const funcionalidade = $("ofensor-funcionalidade").value;
-    const campoBusca = ofensorCampoBuscaSelecionado();
-    const termo = $("ofensor-termo-busca").value.trim();
-
-    buscaOfensor.buscar(async () => {
-      if (!funcionalidade) {
-        $("ofensor-status").textContent = "Selecione uma Funcionalidade Ofensores pra buscar.";
-        $("ofensor-filtro-extra").classList.add("hidden");
-        return null;
-      }
-      $("ofensor-filtro-extra").classList.remove("hidden");
-      const rotulo = termo ? `${funcionalidade} + ${campoBusca === "alm" ? "ALM" : "Nome"} "${termo}"` : funcionalidade;
-      $("ofensor-status").textContent = `Buscando chamados de "${rotulo}" em Gestão de Problemas...`;
-      try {
-        const resp = await apiCall("/api/chamados-ofensor", { funcionalidade, campo_busca: campoBusca, termo });
-        const data = await resp.json();
-        return {
-          resp,
-          data,
-          mensagemTotal: (total) =>
-            total
-              ? `${total} chamado${total === 1 ? "" : "s"} de "${rotulo}" em Gestão de Problemas.`
-              : `Nenhum chamado de "${rotulo}" em Gestão de Problemas.`,
-        };
-      } catch (e) {
-        $("ofensor-status").textContent = "Não foi possível conectar ao servidor.";
-        return null;
-      }
-    });
-  }
-
-  $("ofensor-funcionalidade").addEventListener("change", () => {
-    $("ofensor-termo-busca").value = "";
-    dispararBuscaOfensor();
-  });
-
-  let ofensorTermoTimer = null;
-  $("ofensor-termo-busca").addEventListener("input", () => {
-    clearTimeout(ofensorTermoTimer);
-    ofensorTermoTimer = setTimeout(dispararBuscaOfensor, 300);
-  });
-
-  document.querySelectorAll('input[name="ofensor-campo-busca"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      if ($("ofensor-termo-busca").value.trim()) {
-        dispararBuscaOfensor();
-      }
-    });
-  });
-
-  // Extração Geral: NÃO mostra tabela em tela — baixa direto um Excel com
-  // os chamados da Funcionalidade Ofensores escolhida (exige Funcionalidade,
-  // não deixa exportar "Gestão de Problemas" inteiro sem filtro nenhum),
-  // cada linha já com "Categoria Ativa?" checada. Só dispara quando o
-  // usuário clica em "Gerar Excel" (nunca sozinho ao trocar a Funcionalidade
-  // ou ao abrir o painel) — e como a checagem roda inteira antes de
-  // responder, pode demorar bastante numa Funcionalidade grande.
-  $("btn-ofgeral").addEventListener("click", () => {
-    const painel = $("ofgeral-panel");
-    const abrindo = !painel.classList.contains("open");
-    painel.classList.toggle("open", abrindo);
-    if (abrindo) {
-      $("ofgeral-funcionalidade").focus();
-    }
-  });
-
-  function ofgeralCampoBuscaSelecionado() {
-    return document.querySelector('input[name="ofgeral-campo-busca"]:checked').value;
-  }
-
-  $("btn-ofgeral-buscar").addEventListener("click", async () => {
-    const funcionalidade = $("ofgeral-funcionalidade").value;
-    const campoBusca = ofgeralCampoBuscaSelecionado();
-    const termo = $("ofgeral-termo-busca").value.trim();
-    const statusEl = $("ofgeral-status");
-
-    if (!funcionalidade) {
-      statusEl.textContent = "Selecione uma Funcionalidade Ofensores pra gerar o Excel.";
-      return;
-    }
-
-    const rotulo = termo ? `${funcionalidade} + ${campoBusca === "alm" ? "ALM" : "Nome"} "${termo}"` : funcionalidade;
-    const botao = $("btn-ofgeral-buscar");
-
-    statusEl.textContent = `Gerando Excel de "${rotulo}" em Gestão de Problemas...`;
-    statusEl.classList.add("is-loading");
-    botao.disabled = true;
-
-    try {
-      const resp = await apiCall("/api/chamados-geral", { funcionalidade, campo_busca: campoBusca, termo });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        statusEl.textContent = data.error || "Erro ao gerar o Excel.";
-        return;
-      }
-
-      const contentType = resp.headers.get("Content-Type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await resp.json();
-        statusEl.textContent = data.message || "Nenhum chamado encontrado.";
-        return;
-      }
-
-      const blob = await resp.blob();
-      const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), "extracao_geral_gestao_problemas.xlsx");
-      triggerDownload(blob, filename);
-      statusEl.textContent = `Excel gerado: ${filename}`;
-    } catch (e) {
-      statusEl.textContent = "Não foi possível conectar ao servidor.";
-    } finally {
-      statusEl.classList.remove("is-loading");
-      botao.disabled = false;
-    }
-  });
-
-  // "secao" pode vir no formato "chato" (Mops Solar: {categorias,
-  // total_chamados, total_categorizados}) ou dividido por APP/BOX (Mops Tv
-  // do Futuro: {app, box, outros?}) — buildCategoriaTableEl trata os dois
-  // (é a mesma função usada pelo Report Vini).
-  function renderCategoriaTable(prefixo, secao, titulo) {
-    const bloco = $(`categorias-${prefixo}-block`);
-    bloco.innerHTML = "";
-
-    if (!secao) {
-      bloco.classList.add("hidden");
-      return;
-    }
-
-    bloco.append(buildCategoriaTableEl(titulo, secao));
-    bloco.classList.remove("hidden");
-  }
-
-  // Mops Tv do Futuro: tabela única "Categoria / Issues (Chamados) / %" +
-  // gráfico de barras (mesmo componente de Sub-Classificação em Análise de
-  // Jornada) — dados vêm da consulta fixa fetch_categoria_encerramento_tv_fixo,
-  // sem período/Top N (mostra TODAS as categorias encontradas).
-  function renderCategoriaTvFixo(secao) {
-    const bloco = $("categorias-tv-fixo-block");
-    bloco.innerHTML = "";
-
-    if (!secao) {
-      bloco.classList.add("hidden");
-      return;
-    }
-
-    const holder = document.createElement("div");
-
-    const headerRow = document.createElement("div");
-    headerRow.style.display = "flex";
-    headerRow.style.alignItems = "center";
-    headerRow.style.justifyContent = "space-between";
-    headerRow.style.gap = "10px";
-
-    const h = document.createElement("div");
-    h.className = "top-assignees-title";
-    h.textContent = `Categorias de Encerramento — ${secao.total_chamados} chamados`;
-    headerRow.append(h);
-
-    if (secao.categorias.length) {
-      const botoesEl = document.createElement("div");
-      botoesEl.style.display = "flex";
-      botoesEl.style.gap = "8px";
-
-      const btnExcel = document.createElement("button");
-      btnExcel.type = "button";
-      btnExcel.className = "btn-secondary";
-      btnExcel.textContent = "📥 Baixar Excel";
-      btnExcel.addEventListener("click", () => baixarCategoriasTvExcel(false));
-
-      const btnAnalitico = document.createElement("button");
-      btnAnalitico.type = "button";
-      btnAnalitico.className = "btn-secondary";
-      btnAnalitico.textContent = "📄 Baixar Analítico";
-      btnAnalitico.title = "Uma linha por chamado: Número do Chamado, Data Criação, Classificação e Categoria de Encerramento";
-      btnAnalitico.addEventListener("click", () => baixarCategoriasTvExcel(true));
-
-      botoesEl.append(btnExcel, btnAnalitico);
-      headerRow.append(botoesEl);
-    }
-
-    holder.append(headerRow);
-
-    if (secao.categorias.length) {
-      const chart = construirGraficoBarras(
-        secao.categorias.map((c) => [c.categoria, c.quantidade]),
-        secao.categorias.length
-      );
-      chart.style.margin = "10px 0 14px";
-      holder.append(chart);
-    }
-
-    const wrap = document.createElement("div");
-    wrap.className = "table-wrap";
-    const table = document.createElement("table");
-    table.className = "data-table data-table--categorias";
-    const thead = document.createElement("thead");
-    const tbody = document.createElement("tbody");
-
-    const trHead = document.createElement("tr");
-    ["Categoria", "Issues (Chamados)", "%"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    if (!secao.categorias.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 3;
-      td.textContent = "Nenhum chamado encontrado.";
-      tr.append(td);
-      tbody.append(tr);
-    } else {
-      secao.categorias.forEach(({ categoria, quantidade, percentual }) => {
-        const tr = document.createElement("tr");
-        const tdCategoria = document.createElement("td");
-        tdCategoria.textContent = categoria;
-        const tdQuantidade = document.createElement("td");
-        tdQuantidade.textContent = quantidade;
-        const tdPercentual = document.createElement("td");
-        tdPercentual.textContent = `${percentual}%`;
-        tr.append(tdCategoria, tdQuantidade, tdPercentual);
-        tbody.append(tr);
-      });
-    }
-
-    table.append(thead, tbody);
-    wrap.append(table);
-    holder.append(wrap);
-
-    bloco.append(holder);
-    bloco.classList.remove("hidden");
-  }
-
-  // Excel de Mops Tv do Futuro — mesmo endpoint da busca em tela, só que
-  // com "format: excel" (o servidor devolve o arquivo pronto em vez do
-  // JSON — ver _is_download/_send_rows em api/index.py). "analitico"
-  // troca a tabela "Categoria / Issues (Chamados) / %" agregada por uma
-  // linha por chamado (Número do Chamado/Data Criação/Categoria/Categoria
-  // de Encerramento — ver fetch_categoria_encerramento_tv_fixo_analitico).
-  async function baixarCategoriasTvExcel(analitico) {
-    setBusy(true);
-    setBanner("Gerando arquivo...", "info");
-    try {
-      const resp = await apiCall("/api/categorias-encerramento", {
-        caixa: state.caixa,
-        format: "excel",
-        analitico: !!analitico,
-      });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        setBanner(data.error || "Erro ao gerar arquivo.", "error");
-        return;
-      }
-
-      const contentType = resp.headers.get("Content-Type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await resp.json();
-        setBanner(data.message || "Nenhum resultado encontrado.", "info");
-        return;
-      }
-
-      const blob = await resp.blob();
-      const nomePadrao = analitico ? "categorias_encerramento_tv_analitico.xlsx" : "categorias_encerramento_tv.xlsx";
-      const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), nomePadrao);
-      triggerDownload(blob, filename);
-      setBanner(`Arquivo gerado: ${filename}`, "success");
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  $("btn-categorias-gerar").addEventListener("click", async () => {
-    if (state.caixa === "tv") {
-      $("categorias-dialog").classList.remove("open");
-      setBusy(true);
-      setBanner("Buscando categorias de encerramento...", "info");
-      try {
-        const resp = await apiCall("/api/categorias-encerramento", { caixa: state.caixa });
-        const data = await resp.json();
-        if (!resp.ok) {
-          setBanner(data.error || "Erro ao buscar categorias de encerramento.", "error");
-          return;
-        }
-        renderCategoriaTable("encerrados", null, "Encerrados");
-        renderCategoriaTable("reabertos", null, "Reabertos");
-        renderCategoriaTvFixo(data.tv_fixo);
-        $("categorias-date").textContent = dataVigente();
-        $("categorias-results").classList.remove("hidden");
-        clearBanner();
-      } catch (e) {
-        setBanner("Não foi possível conectar ao servidor.", "error");
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-
-    const inicio = $("cat-input-inicio").value;
-    const fim = $("cat-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    const encerrados = $("cat-check-encerrados").checked;
-    const reabertos = $("cat-check-reabertos").checked;
-    if (!encerrados && !reabertos) {
-      setBanner('Selecione ao menos "Encerrados" ou "Reabertos".', "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    const topN = Number($("cat-top-n").value);
-
-    $("categorias-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando categorias de encerramento...", "info");
-    try {
-      const resp = await apiCall("/api/categorias-encerramento", {
-        inicio,
-        fim,
-        encerrados,
-        reabertos,
-        top_n: topN,
-        caixa: state.caixa,
-        projetos,
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao buscar categorias de encerramento.", "error");
-        return;
-      }
-      renderCategoriaTable("encerrados", data.encerrados, "Encerrados");
-      renderCategoriaTable("reabertos", data.reabertos, "Reabertos");
-      renderCategoriaTvFixo(null);
-      $("categorias-date").textContent = dataVigente();
-      $("categorias-results").classList.remove("hidden");
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // -------------------------------------------------- criados x resolvidos
-  $("btn-criados-resolvidos").addEventListener("click", () => {
-    const dialog = $("criados-resolvidos-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("criados-resolvidos-dialog");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      $("cr-input-inicio").value = hoje;
-      $("cr-input-fim").value = hoje;
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-criados-resolvidos-cancelar").addEventListener("click", () => {
-    $("criados-resolvidos-dialog").classList.remove("open");
-  });
-
-  // Seta de tendência do dia: resolvidos > criados (backlog encolhendo) sobe,
-  // resolvidos < criados (backlog crescendo) desce.
-  function setaTendencia(criados, resolvidos) {
-    if (resolvidos > criados) return "▲";
-    if (resolvidos < criados) return "▼";
-    return "–";
-  }
-
-  function setaTendenciaClasse(criados, resolvidos) {
-    if (resolvidos > criados) return "cr-seta-up";
-    if (resolvidos < criados) return "cr-seta-down";
-    return "cr-seta-neutro";
-  }
-
-  // Anel "dentro do prazo x fora do prazo": duas cores de status fixas
-  // (verde = dentro/bom, vermelho = fora/violado) — a cor segue o
-  // significado do estado, nunca qual fatia é maior. Técnica de 2 arcos
-  // sobrepostos via stroke-dasharray/dashoffset, com um pequeno gap (3px)
-  // entre eles pra separar os segmentos sem precisar de borda.
-  function buildPrazoDonutEl(dentro, fora, percentualDentro) {
-    const total = dentro + fora;
-    const size = 160;
-    const strokeWidth = 22;
-    const radius = (size - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const svgNS = "http://www.w3.org/2000/svg";
-
-    function arc(len, offset, className) {
-      const circle = document.createElementNS(svgNS, "circle");
-      circle.setAttribute("cx", size / 2);
-      circle.setAttribute("cy", size / 2);
-      circle.setAttribute("r", radius);
-      circle.setAttribute("fill", "none");
-      circle.setAttribute("stroke-width", strokeWidth);
-      circle.setAttribute("stroke-linecap", "butt");
-      circle.setAttribute("stroke-dasharray", `${Math.max(len, 0)} ${circumference}`);
-      circle.setAttribute("stroke-dashoffset", -offset);
-      circle.classList.add(className);
-      return circle;
-    }
-
-    const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
-    svg.classList.add("prazo-donut-svg");
-
-    const group = document.createElementNS(svgNS, "g");
-    group.setAttribute("transform", `rotate(-90 ${size / 2} ${size / 2})`);
-
-    if (total > 0) {
-      const dentroFull = (dentro / total) * circumference;
-      // "Fora do prazo" sempre desenhado como o anel INTEIRO por baixo (nunca
-      // como uma fatia curta isolada) — com uma fatia pequena, um arco curto
-      // com ponta arredondada fica parecendo um blob quadrado colado no anel
-      // em vez de acompanhar a curva. Desenhando o vermelho como o círculo
-      // completo e o verde por cima (só cobrindo a parte "dentro"), a
-      // transição entre as duas cores sempre fica lisa, do tamanho que for.
-      if (fora > 0) group.append(arc(circumference, 0, "prazo-donut-fora"));
-      if (dentro > 0) group.append(arc(dentroFull, 0, "prazo-donut-dentro"));
-    } else {
-      group.append(arc(circumference, 0, "prazo-donut-track"));
-    }
-    svg.append(group);
-
-    const valor = document.createElement("div");
-    valor.className = "prazo-donut-valor";
-    valor.textContent = dentro;
-    const linha = document.createElement("div");
-    linha.className = "prazo-donut-linha";
-    const pct = document.createElement("div");
-    pct.className = "prazo-donut-pct";
-    pct.textContent = `${percentualDentro}%`;
-
-    const centro = document.createElement("div");
-    centro.className = "prazo-donut-centro";
-    centro.append(valor, linha, pct);
-
-    const holder = document.createElement("div");
-    holder.className = "prazo-donut-holder";
-    holder.append(svg, centro);
-
-    function legendaItem(dotClass, texto) {
-      const item = document.createElement("span");
-      item.className = "prazo-donut-legenda-item";
-      const dot = document.createElement("span");
-      dot.className = `prazo-donut-dot ${dotClass}`;
-      item.append(dot, document.createTextNode(texto));
-      return item;
-    }
-
-    const legenda = document.createElement("div");
-    legenda.className = "prazo-donut-legenda";
-    legenda.append(
-      legendaItem("prazo-donut-dot-dentro", `Dentro do prazo (${dentro})`),
-      legendaItem("prazo-donut-dot-fora", `Fora do prazo (${fora})`)
-    );
-
-    const wrap = document.createElement("div");
-    wrap.className = "prazo-donut";
-    wrap.append(holder, legenda);
-    return wrap;
-  }
-
-  // Card por grupo (N1/N2/PROD) de "Criados x Resolvidos": contador de
-  // encerrados no período + média diária (total ÷ dias do período
-  // selecionado) + TMA aproximado (16h de expediente ÷ média diária — não é
-  // o tempo real em "Em atendimento", é só uma estimativa a partir do volume).
-  // Valor principal em formato "criados/resolvidos" (ex.: "20/10") — pedido
-  // explícito do usuário pra ver os dois números do grupo num relance só,
-  // em vez de só o total resolvido.
-  function criadosResolvidosGrupoCard(grupo, criados, total, mediaDiaria, tmaHoras) {
-    const card = document.createElement("div");
-    card.className = "summary-card";
-
-    const valueEl = document.createElement("div");
-    valueEl.className = "summary-value";
-    valueEl.textContent = `${criados}/${total}`;
-
-    const labelEl = document.createElement("div");
-    labelEl.className = "summary-label";
-    labelEl.textContent = GRUPO_LABEL_CURTO[grupo] || grupo;
-
-    const descricaoEl = document.createElement("div");
-    descricaoEl.className = "summary-label";
-    descricaoEl.style.marginTop = "2px";
-    descricaoEl.textContent = "Criados / Resolvidos";
-
-    const mediaEl = document.createElement("div");
-    mediaEl.className = "summary-label";
-    mediaEl.style.marginTop = "2px";
-    mediaEl.textContent = `Média: ${mediaDiaria}/dia`;
-
-    card.append(valueEl, labelEl, descricaoEl, mediaEl);
-
-    if (typeof tmaHoras === "number") {
-      const tmaEl = document.createElement("div");
-      tmaEl.className = "summary-label";
-      tmaEl.style.marginTop = "2px";
-      tmaEl.textContent = `TMA: ${tmaHoras}h`;
-      card.append(tmaEl);
-    }
-
-    return card;
-  }
-
-  function renderCriadosResolvidos(data, inicio, fim) {
-    const saldo = data.total_criados - data.total_resolvidos;
-
-    const cardsEl = $("cr-summary-cards");
-    cardsEl.innerHTML = "";
-    cardsEl.append(summaryCard(data.total_criados, "Criados no período", "tone-accent"));
-    cardsEl.append(summaryCard(data.total_resolvidos, "Resolvidos (Encerrado/Resolvido)", "tone-warning"));
-    cardsEl.append(summaryCard(saldo, "Saldo (criados − resolvidos)", saldo > 0 ? "tone-danger" : ""));
-
-    const donutEl = $("cr-prazo-donut");
-    donutEl.innerHTML = "";
-    if (typeof data.percentual_dentro_prazo === "number") {
-      donutEl.append(
-        buildPrazoDonutEl(data.resolvidos_dentro_prazo, data.resolvidos_fora_prazo, data.percentual_dentro_prazo)
-      );
-      donutEl.classList.remove("hidden");
-    } else {
-      donutEl.classList.add("hidden");
-    }
-
-    const porGrupoBlock = $("cr-por-grupo-block");
-    const porGrupoCardsEl = $("cr-por-grupo-cards");
-    porGrupoCardsEl.innerHTML = "";
-    if (data.por_grupo && data.por_grupo.length) {
-      data.por_grupo.forEach(({ grupo, criados, total, media_diaria, tma_horas }) => {
-        porGrupoCardsEl.append(criadosResolvidosGrupoCard(grupo, criados, total, media_diaria, tma_horas));
-      });
-      porGrupoBlock.classList.remove("hidden");
-    } else {
-      porGrupoBlock.classList.add("hidden");
-    }
-
-    const thead = document.querySelector("#cr-table thead");
-    const tbody = document.querySelector("#cr-table tbody");
-    thead.innerHTML = "";
-    tbody.innerHTML = "";
-
-    const trHead = document.createElement("tr");
-    ["Data", "Criados", "Resolvidos", "Seta"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    (data.dias || []).forEach((dia) => {
-      const tr = document.createElement("tr");
-      const tdData = document.createElement("td");
-      tdData.textContent = formatarDataBR(dia.data);
-      const tdCriados = document.createElement("td");
-      tdCriados.textContent = dia.criados;
-      const tdResolvidos = document.createElement("td");
-      tdResolvidos.textContent = dia.resolvidos;
-      const tdSeta = document.createElement("td");
-      tdSeta.textContent = setaTendencia(dia.criados, dia.resolvidos);
-      tdSeta.className = setaTendenciaClasse(dia.criados, dia.resolvidos);
-      tr.append(tdData, tdCriados, tdResolvidos, tdSeta);
-      tbody.append(tr);
-    });
-
-    $("cr-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-    $("criados-resolvidos-results").classList.remove("hidden");
-  }
-
-  $("btn-criados-resolvidos-gerar").addEventListener("click", async () => {
-    const inicio = $("cr-input-inicio").value;
-    const fim = $("cr-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    $("criados-resolvidos-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados criados x resolvidos...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/criados-resolvidos", { inicio, fim, caixa: state.caixa, projetos });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao buscar criados x resolvidos.", "error");
-        return;
-      }
-      renderCriadosResolvidos(data, inicio, fim);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // ------------------------------------------------------------ distribuição
-  // Uma barra EMPILHADA por dia do período: dentro de cada barra, a
-  // repartição do dia entre Convencional/Priorizado/COTI (resolvidos) +
-  // PDST (criados) — mesma ideia de um gráfico de barras 100% empilhadas,
-  // só que em contagem absoluta (a altura total da barra já é o total do
-  // dia, não sempre 100%). Escala (altura máxima) é o maior TOTAL entre os
-  // dias do período, pra dar pra comparar dias entre si.
-  const DISTRIBUICAO_CATEGORIAS = [
-    { chave: "convencional", classe: "convencional", label: "Convencional" },
-    { chave: "priorizado", classe: "priorizado", label: "Priorizado" },
-    { chave: "coti", classe: "coti", label: "COTI" },
-    { chave: "pdst_criados", classe: "pdst", label: "PDST (criados no dia)" },
-  ];
-
-  function totalDiaDistribuicao(dia) {
-    return DISTRIBUICAO_CATEGORIAS.reduce((soma, cat) => soma + (dia[cat.chave] || 0), 0);
-  }
-
-  const DISTRIBUICAO_BAR_MAX_PX = 170;
-  const DISTRIBUICAO_BAR_MIN_PX = 4;
-  const DISTRIBUICAO_SEGMENT_MIN_PX = 6;
-
-  // Reparte "alturaAlvoPx" entre as categorias com valor > 0, dando um piso
-  // mínimo (minPx) pra cada fatia — sem isso, uma fatia pequena ao lado de
-  // uma bem maior (ex.: 2 de um total de 80) sai com menos de 1px, invisível.
-  // Categorias abaixo do mínimo são "fixadas" nele e o restante da altura é
-  // reproporcionalizado só entre as que sobram, repetindo até estabilizar
-  // (no máximo 4 categorias, então poucas iterações). Se nem os mínimos
-  // couberem na altura alvo, a barra final cresce pra caber todo mundo (ver
-  // "alturaFinal" no chamador) — prioriza visibilidade sobre a escala exata.
-  function distribuirAlturasSegmentos(categorias, alturaAlvoPx, minPx) {
-    let pendentes = categorias.slice();
-    let alturaDisponivel = alturaAlvoPx;
-    const alturas = {};
-
-    let mudou = true;
-    while (mudou && pendentes.length) {
-      mudou = false;
-      const totalPendente = pendentes.reduce((s, c) => s + c.valor, 0);
-      const proximaPendente = [];
-      pendentes.forEach((cat) => {
-        const alturaProporcional = (cat.valor / totalPendente) * alturaDisponivel;
-        if (alturaProporcional < minPx) {
-          alturas[cat.chave] = minPx;
-          alturaDisponivel = Math.max(0, alturaDisponivel - minPx);
-          mudou = true;
-        } else {
-          proximaPendente.push(cat);
-        }
-      });
-      pendentes = proximaPendente;
-    }
-
-    const totalRestante = pendentes.reduce((s, c) => s + c.valor, 0);
-    pendentes.forEach((cat) => {
-      alturas[cat.chave] = (cat.valor / totalRestante) * alturaDisponivel;
-    });
-
-    return alturas;
-  }
-
-  // Popover customizado (mesmo elemento flutuante compartilhado de
-  // getHoverPopover/hideHoverPopover, já usado em "Violados — Últimos 30
-  // dias") pra mostrar a repartição exata do dia no mouseover da barra.
-  function showDistribuicaoPopover(anchorEl, dia) {
-    const popover = getHoverPopover();
-    popover.innerHTML = "";
-
-    const titulo = document.createElement("div");
-    titulo.className = "hover-popover-title";
-    titulo.textContent = formatarDataBR(dia.data);
-    popover.append(titulo);
-
-    DISTRIBUICAO_CATEGORIAS.forEach((cat) => {
-      const linha = document.createElement("div");
-      linha.className = "home-funil-popover-row";
-      const nomeEl = document.createElement("span");
-      const dot = document.createElement("span");
-      dot.className = `distribuicao-legend-dot ${cat.classe}`;
-      nomeEl.append(dot, document.createTextNode(` ${cat.label}`));
-      const valorEl = document.createElement("span");
-      valorEl.textContent = dia[cat.chave] || 0;
-      linha.append(nomeEl, valorEl);
-      popover.append(linha);
-    });
-
-    const totalEl = document.createElement("div");
-    totalEl.className = "hint";
-    totalEl.style.marginTop = "6px";
-    totalEl.textContent = `Total do dia: ${totalDiaDistribuicao(dia)}`;
-    popover.append(totalEl);
-
-    popover.classList.remove("hidden");
-
-    const anchorRect = anchorEl.getBoundingClientRect();
-    const popoverRect = popover.getBoundingClientRect();
-    let top = anchorRect.top - popoverRect.height - 8;
-    let left = anchorRect.left + anchorRect.width / 2 - popoverRect.width / 2;
-    if (top < 8) top = anchorRect.bottom + 8;
-    if (left + popoverRect.width > window.innerWidth - 8) left = window.innerWidth - popoverRect.width - 8;
-    popover.style.top = `${Math.max(8, top)}px`;
-    popover.style.left = `${Math.max(8, left)}px`;
-  }
-
-  function construirGraficoDistribuicao(dias) {
-    const wrap = document.createElement("div");
-
-    const maxTotal = Math.max(1, ...dias.map(totalDiaDistribuicao));
-
-    const chart = document.createElement("div");
-    chart.className = "distribuicao-chart";
-
-    dias.forEach((dia) => {
-      const totalDia = totalDiaDistribuicao(dia);
-      const categoriasComValor = DISTRIBUICAO_CATEGORIAS.filter((cat) => (dia[cat.chave] || 0) > 0).map((cat) => ({
-        ...cat,
-        valor: dia[cat.chave] || 0,
-      }));
-
-      const group = document.createElement("div");
-      group.className = "distribuicao-chart-group";
-
-      const bars = document.createElement("div");
-      bars.className = "distribuicao-chart-bars";
-
-      const stack = document.createElement("div");
-      stack.className = "distribuicao-bar-stack";
-
-      if (totalDia > 0) {
-        const alturaAlvo = Math.max((totalDia / maxTotal) * DISTRIBUICAO_BAR_MAX_PX, DISTRIBUICAO_BAR_MIN_PX);
-        const alturas = distribuirAlturasSegmentos(categoriasComValor, alturaAlvo, DISTRIBUICAO_SEGMENT_MIN_PX);
-
-        categoriasComValor.forEach((cat) => {
-          const segment = document.createElement("div");
-          segment.className = `distribuicao-bar-segment ${cat.classe}`;
-          segment.style.height = `${alturas[cat.chave]}px`;
-          stack.append(segment);
-        });
-
-        const alturaFinal = Object.values(alturas).reduce((a, b) => a + b, 0);
-        stack.style.height = `${alturaFinal}px`;
-
-        stack.addEventListener("mouseenter", () => {
-          cancelHoverPopoverHide();
-          showDistribuicaoPopover(stack, dia);
-        });
-        stack.addEventListener("mouseleave", scheduleHoverPopoverHide);
-      } else {
-        stack.style.height = "2px";
-      }
-
-      const valueEl = document.createElement("span");
-      valueEl.className = "distribuicao-bar-value";
-      valueEl.textContent = totalDia;
-      stack.append(valueEl);
-
-      bars.append(stack);
-
-      const label = document.createElement("div");
-      label.className = "distribuicao-chart-group-label";
-      label.textContent = formatarDataBR(dia.data).slice(0, 5);
-
-      group.append(bars, label);
-      chart.append(group);
-    });
-
-    const legend = document.createElement("div");
-    legend.className = "distribuicao-legend";
-    DISTRIBUICAO_CATEGORIAS.forEach((cat) => {
-      const item = document.createElement("span");
-      item.className = "distribuicao-legend-item";
-      const dot = document.createElement("span");
-      dot.className = `distribuicao-legend-dot ${cat.classe}`;
-      item.append(dot, document.createTextNode(cat.label));
-      legend.append(item);
-    });
-
-    wrap.append(chart, legend);
-    return wrap;
-  }
-
-  // Pré-análise textual (não cards) do período — pensada pra ajudar a
-  // justificar violação de SLA: mostra a composição dos tratados
-  // (Convencional/Priorizado/COTI) e o TMA comparativo, deixando claro
-  // quanto do período fugiu do fluxo padrão e se isso demorou mais.
-  function distribuicaoPct(parte, total) {
-    return total > 0 ? Math.round((parte / total) * 1000) / 10 : 0;
-  }
-
-  function distribuicaoFormatarHoras(horas) {
-    return typeof horas === "number" ? `${horas}h` : "sem dado suficiente";
-  }
-
-  function distribuicaoVariacaoTexto(valor, base) {
-    if (typeof valor !== "number" || typeof base !== "number" || !base) return "";
-    const variacao = Math.round(((valor - base) / base) * 1000) / 10;
-    const sinal = variacao > 0 ? "+" : "";
-    return ` (${sinal}${variacao}% vs. Convencional)`;
-  }
-
-  function construirAnaliseDistribuicao(data) {
-    const wrap = document.createElement("div");
-
-    const totais = data.totais || {};
-    const tma = data.tma_horas || {};
-    const convencional = totais.convencional || 0;
-    const priorizado = totais.priorizado || 0;
-    const coti = totais.coti || 0;
-    const pdstCriados = totais.pdst_criados || 0;
-    const totalResolvido = convencional + priorizado + coti;
-    // "Fora do fluxo padrão" = tudo que não é Convencional: Priorizado/COTI
-    // (dentre os tratados de Central de Incidentes) + PDST (Abertura de
-    // Chamados é, por si só, um fluxo à parte do atendimento convencional).
-    const foraPadrao = priorizado + coti + pdstCriados;
-
-    if (!totalResolvido && !pdstCriados) {
-      const vazio = document.createElement("p");
-      vazio.className = "hint";
-      vazio.textContent = "Nenhum chamado tratado no período selecionado.";
-      wrap.append(vazio);
-      return wrap;
-    }
-
-    if (totalResolvido > 0) {
-      const p1 = document.createElement("p");
-      p1.innerHTML =
-        `No período, foram tratados <strong>${totalResolvido}</strong> chamados (Central de Incidentes): ` +
-        `<strong>${convencional}</strong> convencionais (${distribuicaoPct(convencional, totalResolvido)}%), ` +
-        `<strong>${priorizado}</strong> priorizados (${distribuicaoPct(priorizado, totalResolvido)}%) e ` +
-        `<strong>${coti}</strong> COTI (${distribuicaoPct(coti, totalResolvido)}%).`;
-      wrap.append(p1);
-    } else {
-      const p1 = document.createElement("p");
-      p1.textContent = "Nenhum chamado Convencional/Priorizado/COTI resolvido no período.";
-      wrap.append(p1);
-    }
-
-    const p2 = document.createElement("p");
-    p2.innerHTML =
-      `Somando Priorizado + COTI (Central de Incidentes) com PDST (Abertura de Chamados) — um fluxo à parte do ` +
-      `atendimento convencional —, o período teve <strong>${foraPadrao}</strong> chamados fora do fluxo padrão: ` +
-      `<strong>${priorizado}</strong> priorizados, <strong>${coti}</strong> COTI e <strong>${pdstCriados}</strong> ` +
-      `PDST (criado${pdstCriados === 1 ? "" : "s"} no período).`;
-    wrap.append(p2);
-
-    const p3 = document.createElement("p");
-    p3.innerHTML =
-      `<strong>Tempo médio de atendimento</strong> — Convencional: ${distribuicaoFormatarHoras(tma.convencional)} · ` +
-      `Priorizado: ${distribuicaoFormatarHoras(tma.priorizado)}${distribuicaoVariacaoTexto(tma.priorizado, tma.convencional)} · ` +
-      `COTI: ${distribuicaoFormatarHoras(tma.coti)}${distribuicaoVariacaoTexto(tma.coti, tma.convencional)} · ` +
-      `PDST: ${distribuicaoFormatarHoras(tma.pdst)}${distribuicaoVariacaoTexto(tma.pdst, tma.convencional)}.`;
-    wrap.append(p3);
-
-    return wrap;
-  }
-
-  function renderDistribuicao(data, inicio, fim) {
-    $("distribuicao-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-
-    const chartWrap = $("distribuicao-chart-wrap");
-    chartWrap.innerHTML = "";
-    if (data.dias && data.dias.length) {
-      chartWrap.append(construirGraficoDistribuicao(data.dias));
-    } else {
-      chartWrap.textContent = "Nenhum dia no período selecionado.";
-    }
-
-    const analiseEl = $("distribuicao-analise");
-    analiseEl.innerHTML = "";
-    analiseEl.append(construirAnaliseDistribuicao(data));
-
-    $("distribuicao-results").classList.remove("hidden");
-  }
-
-  $("btn-distribuicao").addEventListener("click", () => {
-    const dialog = $("distribuicao-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("distribuicao-dialog");
-    if (!jaAberto) {
-      buildCheckboxes($("distribuicao-grupos-checkboxes"), CAIXA_GRUPOS[state.caixa] || [], "distribuicao-grupo");
-      if (!$("distribuicao-input-inicio").value || !$("distribuicao-input-fim").value) {
-        const hoje = new Date().toISOString().slice(0, 10);
-        $("distribuicao-input-inicio").value = hoje;
-        $("distribuicao-input-fim").value = hoje;
-      }
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-distribuicao-cancelar").addEventListener("click", () => {
-    $("distribuicao-dialog").classList.remove("open");
-  });
-
-  $("btn-distribuicao-gerar").addEventListener("click", async () => {
-    const grupos = checkedValues($("distribuicao-grupos-checkboxes"));
-    if (!grupos.length) {
-      setBanner("Selecione ao menos uma caixa.", "error");
-      return;
-    }
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-    const inicio = $("distribuicao-input-inicio").value;
-    const fim = $("distribuicao-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas (início e fim).", "error");
-      return;
-    }
-
-    $("distribuicao-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando distribuição de chamados tratados...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/distribuicao", { caixa: state.caixa, grupos, inicio, fim, projetos });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao buscar distribuição.", "error");
-        return;
-      }
-      renderDistribuicao(data, inicio, fim);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // ---------------------------------------------------------------- reabertos
-  // Diferente de Criados x Resolvidos: o resultado é uma lista de chamados
-  // (fields/rows/summary, igual Violados/Extração completa), então reaproveita
-  // a mesma tela de RESULTADOS (renderResults) em vez de uma tabela própria.
-  $("btn-reabertos").addEventListener("click", () => {
-    const dialog = $("reabertos-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("reabertos-dialog");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      $("reabertos-input-inicio").value = hoje;
-      $("reabertos-input-fim").value = hoje;
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-reabertos-cancelar").addEventListener("click", () => {
-    $("reabertos-dialog").classList.remove("open");
-  });
-
-  $("btn-reabertos-gerar").addEventListener("click", async () => {
-    const inicio = $("reabertos-input-inicio").value;
-    const fim = $("reabertos-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    const extraBody = { inicio, fim, projetos };
-
-    $("reabertos-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados no Jira...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/reabertos", { caixa: state.caixa, ...extraBody });
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao executar a ação.", "error");
-        return;
-      }
-
-      lastAction = "reabertos";
-      lastCaixa = state.caixa;
-      lastExtraBody = extraBody;
-      renderResults("reabertos", data);
-      $("results-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-      if (typeof data.percentual_reabertura === "number") {
-        $("summary-cards").append(
-          summaryCard(
-            `${data.percentual_reabertura}%`,
-            `dos ${data.total_criados_periodo} criados no período`,
-            "tone-warning"
-          )
-        );
-      }
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
   // ------------------------------------------------------------ colaboradores
-  // Mesma tabela do widget "Colaboradores" da home (construirTabelaColaboradores),
-  // mas só da caixa/projetos selecionados no momento (não as duas caixas
-  // juntas) e com período escolhido pelo usuário em vez do mês atual fixo.
+  // Tabela por colaborador (Resolvidos/Violados/Reabertos/% — construirTabelaColaboradores)
+  // de um único período, consultando o Jira na hora — diferente do widget
+  // "Colaboradores" da home (tag "Cacheado"), que não consulta o Jira e
+  // mostra uma coluna por mês a partir das planilhas de cache. Aqui é só
+  // da caixa/projetos selecionados no momento (não as duas caixas juntas)
+  // e com período escolhido pelo usuário.
   $("btn-colaboradores").addEventListener("click", () => {
     const dialog = $("colaboradores-dialog");
     const jaAberto = dialog.classList.contains("open");
@@ -3873,333 +2674,6 @@
     }
   });
 
-  // ------------------------------------------------------ análise de jornada
-  // Mesmo esquema de busca de Analistas de Encerramento (data início/fim +
-  // um parâmetro categórico), mas com um dropdown simples em vez de
-  // combobox de texto — e disponível nas duas caixas, não só Solar. A lista
-  // de opções do dropdown é reconstruída a cada abertura do painel, porque
-  // muda conforme a caixa selecionada (CLASSIFICACAO_OPCOES).
-  $("btn-jornada").addEventListener("click", () => {
-    const dialog = $("jornada-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("jornada-dialog");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      if (!$("jornada-input-inicio").value) $("jornada-input-inicio").value = hoje;
-      if (!$("jornada-input-fim").value) $("jornada-input-fim").value = hoje;
-
-      const select = $("jornada-classificacao");
-      const valorAtual = select.value;
-      const opcoes = CLASSIFICACAO_OPCOES[state.caixa] || [];
-      select.innerHTML = `<option value="">Selecione...</option><option value="${JORNADA_GERAL}">Geral (todas as classificações)</option>`;
-      opcoes.forEach((valor) => {
-        const option = document.createElement("option");
-        option.value = valor;
-        option.textContent = valor;
-        select.append(option);
-      });
-      if (valorAtual === JORNADA_GERAL || opcoes.includes(valorAtual)) select.value = valorAtual;
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-jornada-cancelar").addEventListener("click", () => {
-    $("jornada-dialog").classList.remove("open");
-  });
-
-  $("btn-jornada-gerar").addEventListener("click", async () => {
-    const inicio = $("jornada-input-inicio").value;
-    const fim = $("jornada-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    const classificacao = $("jornada-classificacao").value;
-    if (!classificacao) {
-      setBanner("Selecione uma Classificação.", "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    const extraBody = { inicio, fim, classificacao, projetos };
-
-    $("jornada-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados no Jira...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/analise-jornada", { caixa: state.caixa, ...extraBody });
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao executar a ação.", "error");
-        return;
-      }
-
-      lastAction = "jornada";
-      lastCaixa = state.caixa;
-      lastExtraBody = extraBody;
-      // Usados por renderJornadaResumo pra preencher todos os dias do
-      // calendário (não só os com chamado criado).
-      data.inicio = inicio;
-      data.fim = fim;
-      renderResults("jornada", data);
-      $("results-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // -------------------------------------------------------- análise de eps
-  $("btn-eps").addEventListener("click", () => {
-    const dialog = $("eps-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("eps-dialog");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      if (!$("eps-input-inicio").value) $("eps-input-inicio").value = hoje;
-      if (!$("eps-input-fim").value) $("eps-input-fim").value = hoje;
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-eps-cancelar").addEventListener("click", () => {
-    $("eps-dialog").classList.remove("open");
-  });
-
-  function renderAnaliseEps(data, inicio, fim) {
-    $("eps-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-    $("eps-top-abertos").replaceChildren(construirFunilEps(data.top_abertos));
-    $("eps-top-resolvidos").replaceChildren(construirFunilEps(data.top_resolvidos));
-    $("eps-top-reabertos").replaceChildren(construirFunilEps(data.top_reabertos));
-    $("eps-results").classList.remove("hidden");
-  }
-
-  $("btn-eps-gerar").addEventListener("click", async () => {
-    const inicio = $("eps-input-inicio").value;
-    const fim = $("eps-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    $("eps-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados por EPS...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/analise-eps", { inicio, fim, caixa: state.caixa, projetos });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao buscar Análise de EPS.", "error");
-        return;
-      }
-      renderAnaliseEps(data, inicio, fim);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // ---------------------------------------------------------------- críticos
-  $("btn-criticos").addEventListener("click", () => {
-    const dialog = $("criticos-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("criticos-dialog");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      if (!$("criticos-input-inicio").value) $("criticos-input-inicio").value = hoje;
-      if (!$("criticos-input-fim").value) $("criticos-input-fim").value = hoje;
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-criticos-cancelar").addEventListener("click", () => {
-    $("criticos-dialog").classList.remove("open");
-  });
-
-  // Grupo 1 de 3 (COTI): mesmos dados de sempre, agora num único bloco
-  // inline — sem a separação em "ANALÍTICO"/"NEGÓCIO". Grupos 2 e 3 entram
-  // depois, como blocos próprios dentro de #criticos-results.
-  function renderChamadosCriticos(data, inicio, fim) {
-    const cotiEl = $("criticos-coti-cards");
-    cotiEl.innerHTML = "";
-    cotiEl.append(
-      summaryCard(data.total_criticos_abertos, "Total de COTI Abertos (WAS P0/P1/P2)", "tone-accent")
-    );
-    cotiEl.append(
-      summaryCard(data.total_criticos_atual, "Total real de COTI (IN P0/P1/P2 atualmente)", "tone-danger")
-    );
-    cotiEl.append(
-      summaryCard(
-        `${data.total_pontuais} (${data.percentual_pontuais}%)`,
-        "Pontuais (abertos − atual)",
-        "tone-warning"
-      )
-    );
-    cotiEl.append(
-      summaryCard(
-        `${data.percentual_criticos}%`,
-        `COTI sobre ${data.total_criados} chamados criados no período`,
-        "tone-accent"
-      )
-    );
-
-    // Grupo 2 de 3 (Chamados Clarinha): Frame 1 = contador, Frame 2 = tabela
-    // por nível — campo "Nível de Escalonamento".
-    const frame1 = $("criticos-clarinha-frame1");
-    frame1.innerHTML = "";
-    frame1.append(
-      summaryCard(data.total_escalonados, "Chamados escalonados (Nível de Escalonamento preenchido)", "tone-warning")
-    );
-    frame1.append(
-      summaryCard(
-        data.total_escalonados_abertos,
-        "Chamados abertos ainda (fora de Cancelado/Resolvido/Encerrado)",
-        "tone-danger"
-      )
-    );
-
-    const clarinhaThead = document.querySelector("#criticos-clarinha-table thead");
-    const clarinhaTbody = document.querySelector("#criticos-clarinha-table tbody");
-    clarinhaThead.innerHTML = "";
-    clarinhaTbody.innerHTML = "";
-
-    const clarinhaTrHead = document.createElement("tr");
-    ["Nível", "Quantidade"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      clarinhaTrHead.append(th);
-    });
-    clarinhaThead.append(clarinhaTrHead);
-
-    if (!data.por_nivel || !data.por_nivel.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 2;
-      td.textContent = "Nenhum chamado escalonado categorizado no período.";
-      tr.append(td);
-      clarinhaTbody.append(tr);
-    } else {
-      data.por_nivel.forEach(({ nivel, total }) => {
-        const tr = document.createElement("tr");
-        const tdNivel = document.createElement("td");
-        tdNivel.textContent = nivel;
-        const tdTotal = document.createElement("td");
-        tdTotal.textContent = total;
-        tr.append(tdNivel, tdTotal);
-        clarinhaTbody.append(tr);
-      });
-    }
-
-    // Grupo 3 de 3 (Escalonamento Informal): uma linha por "Responsável pela
-    // Solicitação MOPS", com o total de chamados priorizados e quantos já
-    // foram resolvidos — mais uma linha de totais somados no fim.
-    const informalThead = document.querySelector("#criticos-informal-table thead");
-    const informalTbody = document.querySelector("#criticos-informal-table tbody");
-    informalThead.innerHTML = "";
-    informalTbody.innerHTML = "";
-
-    const informalTrHead = document.createElement("tr");
-    ["Responsável pela Solicitação MOPS", "Chamados priorizados", "Chamados resolvidos"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      informalTrHead.append(th);
-    });
-    informalThead.append(informalTrHead);
-
-    const escalonamentoInformal = data.escalonamento_informal || [];
-    if (!escalonamentoInformal.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 3;
-      td.textContent = "Nenhum chamado com esse campo preenchido no período.";
-      tr.append(td);
-      informalTbody.append(tr);
-    } else {
-      let somaPriorizados = 0;
-      let somaResolvidos = 0;
-      escalonamentoInformal.forEach(({ responsavel, priorizados, resolvidos }) => {
-        somaPriorizados += priorizados;
-        somaResolvidos += resolvidos;
-        const tr = document.createElement("tr");
-        const tdNome = document.createElement("td");
-        tdNome.textContent = responsavel;
-        const tdPriorizados = document.createElement("td");
-        tdPriorizados.textContent = priorizados;
-        const tdResolvidos = document.createElement("td");
-        tdResolvidos.textContent = resolvidos;
-        tr.append(tdNome, tdPriorizados, tdResolvidos);
-        informalTbody.append(tr);
-      });
-
-      const trTotal = document.createElement("tr");
-      trTotal.className = "data-table-total-row";
-      const tdTotalLabel = document.createElement("td");
-      tdTotalLabel.textContent = "Total";
-      const tdTotalPriorizados = document.createElement("td");
-      tdTotalPriorizados.textContent = somaPriorizados;
-      const tdTotalResolvidos = document.createElement("td");
-      tdTotalResolvidos.textContent = somaResolvidos;
-      trTotal.append(tdTotalLabel, tdTotalPriorizados, tdTotalResolvidos);
-      informalTbody.append(trTotal);
-    }
-
-    $("criticos-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-    $("criticos-results").classList.remove("hidden");
-  }
-
-  $("btn-criticos-gerar").addEventListener("click", async () => {
-    const inicio = $("criticos-input-inicio").value;
-    const fim = $("criticos-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    $("criticos-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados críticos...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/chamados-criticos", { inicio, fim, caixa: state.caixa, projetos });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao buscar chamados críticos.", "error");
-        return;
-      }
-      renderChamadosCriticos(data, inicio, fim);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
   // ---------------------------------------------------------- report vini
   $("btn-report-vini").addEventListener("click", () => {
     const dialog = $("report-vini-dialog");
@@ -4221,6 +2695,48 @@
   let lastViniData = null;
   let lastViniInicio = null;
   let lastViniFim = null;
+
+  // Card por grupo (N1/N2/PROD) de "Criados x Resolvidos" — usado pelo
+  // Report Vini: contador de encerrados no período + média diária (total ÷
+  // dias do período selecionado) + TMA aproximado (16h de expediente ÷
+  // média diária — não é o tempo real em "Em atendimento", é só uma
+  // estimativa a partir do volume). Valor principal em formato
+  // "criados/resolvidos" (ex.: "20/10") — pra ver os dois números do grupo
+  // num relance só, em vez de só o total resolvido.
+  function criadosResolvidosGrupoCard(grupo, criados, total, mediaDiaria, tmaHoras) {
+    const card = document.createElement("div");
+    card.className = "summary-card";
+
+    const valueEl = document.createElement("div");
+    valueEl.className = "summary-value";
+    valueEl.textContent = `${criados}/${total}`;
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "summary-label";
+    labelEl.textContent = GRUPO_LABEL_CURTO[grupo] || grupo;
+
+    const descricaoEl = document.createElement("div");
+    descricaoEl.className = "summary-label";
+    descricaoEl.style.marginTop = "2px";
+    descricaoEl.textContent = "Criados / Resolvidos";
+
+    const mediaEl = document.createElement("div");
+    mediaEl.className = "summary-label";
+    mediaEl.style.marginTop = "2px";
+    mediaEl.textContent = `Média: ${mediaDiaria}/dia`;
+
+    card.append(valueEl, labelEl, descricaoEl, mediaEl);
+
+    if (typeof tmaHoras === "number") {
+      const tmaEl = document.createElement("div");
+      tmaEl.className = "summary-label";
+      tmaEl.style.marginTop = "2px";
+      tmaEl.textContent = `TMA: ${tmaHoras}h`;
+      card.append(tmaEl);
+    }
+
+    return card;
+  }
 
   function renderReportVini(data, inicio, fim) {
     lastViniData = data;
@@ -4508,435 +3024,2516 @@
     }
   });
 
-  // ---------------------------------------------------- analistas de encerramento
-  // Time fixo (roster), não depende de período nem de nova busca no Jira —
-  // fica disponível assim que o painel abre. Escolher um nome + o período em
-  // Data início/Data fim é que dispara a busca de verdade (buscarDetalheAnalista).
-  const ANALISTAS_ENCERRAMENTO_ROSTER = [
-    "CRISTIAN SARAIVA BETTUCI",
-    "DANIEL DOS SANTOS REIS",
-    "DIEGHO MORAES BISTRATINI",
-    "DIEGO VERGA TEIXEIRA",
-    "EDUARDO MARTINS DOS SANTOS",
-    "EURICO ALEXANDRE RAMOS DA SILVA",
-    "FILIPI DA SILVA SOUZA",
-    "GUILHERME BONDEZAN YONAMINE",
-    "HUMBERTO SANTOS DIAS",
-    "JOAO PEDRO VILLAS BOAS DE CARVALHO",
-    "JOAO VITOR FALBI",
-    "JONATAS DA SILVA PEREIRA",
-    "JULIA OLIVEIRA LONGHI",
-    "LEONARDO CHIMINELLI",
-    "LETICIA NOVARINO BRITTO",
-    "MAURICIO JOSE PRADO CHINI",
-    "MICHELLE CRISTINA DA SILVA RICARDO",
-    "PAULO MARCELO MELO GOMES",
-    "TAMIRES COSTA SANTOS",
-    "THIAGO BORGHI LOPES GALVAO",
-    "VINICIUS SOARES PEREIRA MARTINS DE MOURA",
-  ];
-  let analistasAtuais = ANALISTAS_ENCERRAMENTO_ROSTER;
-  let analistasIndiceAtivo = -1;
-
-  // Remove acentos pra busca tolerante ("jose" encontra "JOSE"/"José").
-  function normalizarBusca(texto) {
-    return texto
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .toLowerCase();
+  // -------------------------------------------------------- cache de chamados
+  // Lista as planilhas .xlsx da pasta de cache local (uma por mês, ver
+  // CACHE_DIR em api/index.py) — ação direta, sem diálogo, igual Report
+  // Diário. A planilha do mês corrente é criada sozinha (sem botão, sem
+  // avisar) assim que a tela carrega com o usuário logado — ver
+  // _cache_garantir_mes_atual em api/index.py. Cada linha mostra quantos
+  // chamados daquela planilha ainda estão em aberto (Status fora de
+  // Encerrado/Resolvido/Cancelado/Reprovado/Arquivado —
+  // CACHE_STATUS_FECHADOS em api/index.py) e tem um botão "Sincronizar"
+  // que (1) consulta esses chamados no Jira e sobrescreve a célula
+  // "Status" de quem mudou e (2) busca quem foi criado depois da "data
+  // corte" (chamado mais recente já na planilha) e acrescenta como linha
+  // nova (/api/cache/sincronizar).
+  function formatarDataHoraBR(isoString) {
+    if (!isoString) return null;
+    const data = new Date(isoString);
+    if (Number.isNaN(data.getTime())) return null;
+    const dd = String(data.getDate()).padStart(2, "0");
+    const mm = String(data.getMonth() + 1).padStart(2, "0");
+    const hh = String(data.getHours()).padStart(2, "0");
+    const min = String(data.getMinutes()).padStart(2, "0");
+    return `${dd}/${mm} ${hh}:${min}`;
   }
 
-  function analistasFiltrados(busca) {
-    const termo = normalizarBusca(busca.trim());
-    if (!termo) return analistasAtuais;
-    return analistasAtuais.filter((nome) => normalizarBusca(nome).includes(termo));
+  function cacheStatusTexto(sincronizadoEm) {
+    const formatado = formatarDataHoraBR(sincronizadoEm);
+    return formatado ? `Sincronizado em ${formatado}` : "Nunca sincronizado";
   }
 
-  // Destaca o trecho batido (só quando o match é direto, sem acento
-  // envolvido — mais simples que mapear posições através da normalização).
-  function destacarTrecho(nome, termo) {
-    if (!termo) return document.createTextNode(nome);
-    const idx = nome.toLowerCase().indexOf(termo.toLowerCase());
-    if (idx === -1) return document.createTextNode(nome);
-    const frag = document.createDocumentFragment();
-    frag.append(document.createTextNode(nome.slice(0, idx)));
-    const mark = document.createElement("mark");
-    mark.textContent = nome.slice(idx, idx + termo.length);
-    frag.append(mark);
-    frag.append(document.createTextNode(nome.slice(idx + termo.length)));
-    return frag;
+  // Espelha CAIXAS em api/index.py — ordem/colunas fixas da tabela de
+  // Cache (uma coluna por caixa, em vez de empilhar tudo numa célula só).
+  // "prod" sai separado de "solar" (pedido explícito — ver CACHE_GRUPO_
+  // PARA_CAIXA no servidor); "outros" (chamados cujo Grupo Solucionador
+  // não bate com nenhuma caixa conhecida) é best-effort, normalmente 0.
+  const CACHE_CAIXA_COLUNAS = ["solar", "prod", "tv", "outros"];
+
+  // Preenche as 4 células de caixa de uma linha — "abertosPorCaixa" vem do
+  // servidor já sem chaves zeradas (CACHE_GRUPO_PARA_CAIXA só soma quem
+  // tem pelo menos 1 aberto), então toda caixa ausente vira 0 aqui.
+  function preencherCelulasCaixas(tds, abertosPorCaixa) {
+    CACHE_CAIXA_COLUNAS.forEach((caixaId) => {
+      const valor = abertosPorCaixa ? abertosPorCaixa[caixaId] || 0 : null;
+      tds[caixaId].textContent = valor === null ? "—" : valor;
+      // Destaca (negrito + cor de alerta) quem tem pelo menos 1 chamado em
+      // aberto naquela caixa — bate o olho em vez de precisar ler número
+      // por número.
+      tds[caixaId].classList.toggle("cache-valor-positivo", Boolean(valor));
+    });
   }
 
-  const CALENDARIO_MESES = [
-    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+  // "Seções" de cache: 1 por pasta registrada na tela (pedido explícito do
+  // usuário: "tenho mais de uma pasta de cache" — ver AskUserQuestion
+  // respondida com "Várias seções empilhadas, 1 por pasta"). Cada seção é
+  // {id, label, caixa, pasta} — "caixa" decide a JQL usada pra achar
+  // chamados novos (Solar/Tv, ver CACHE_PARTICOES em api/index.py),
+  // "pasta" é o caminho de verdade lido/gravado (vazio = usa a pasta
+  // padrão da caixa, decidida pelo servidor). Preferência de UI local (não
+  // é credencial nem dado do Jira), então persiste em localStorage — mesmo
+  // padrão do recolher de menu lá em cima. Começa com Solar + Tv (as 2
+  // partições que já existem hoje); o usuário pode adicionar outras pastas
+  // (ex.: uma cópia/backup) ou remover as padrão.
+  const CACHE_SECOES_STORAGE_KEY = "mops-cache-secoes";
+  const CACHE_SECOES_PADRAO = [
+    { id: "solar", label: "Cache Solar", caixa: "solar", pasta: "" },
+    { id: "tv", label: "Cache Tv", caixa: "tv", pasta: "" },
   ];
-  const CALENDARIO_DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
-  // Config padrão (Analistas de Encerramento): "E n" (encerrados/resolvidos)
-  // + "R n" (reabertos) dentro do quadrado do dia.
-  const CALENDARIO_CAMPOS_PADRAO = [
-    { campo: "encerrados_resolvidos", prefixo: "E", classe: "calendario-dia-encerrados" },
-    { campo: "reabertos", prefixo: "R", classe: "calendario-dia-reabertos" },
-  ];
+  function carregarSecoesCacheSalvas() {
+    try {
+      const bruto = localStorage.getItem(CACHE_SECOES_STORAGE_KEY);
+      if (!bruto) return CACHE_SECOES_PADRAO.map((s) => ({ ...s }));
+      const lista = JSON.parse(bruto);
+      if (Array.isArray(lista) && lista.length) return lista;
+    } catch (e) {
+      // localStorage indisponível/corrompido — segue com o padrão (Solar + Tv).
+    }
+    return CACHE_SECOES_PADRAO.map((s) => ({ ...s }));
+  }
 
-  // Um mini-calendário por mês tocado pelo período — dias fora do período
-  // (mas dentro do mesmo mês) aparecem esmaecidos; os "buracos" de
-  // alinhamento antes do dia 1 ficam totalmente em branco. "camposInfo"
-  // controla quais contadores aparecem dentro de cada quadrado (label +
-  // classe de cor) — outros usos (Análise de Jornada) passam sua própria
-  // config em vez do padrão E/R de Analistas.
-  function construirCalendario(dias, camposInfo = CALENDARIO_CAMPOS_PADRAO) {
-    const porMes = new Map();
-    dias.forEach((dia) => {
-      const chaveMes = dia.data.slice(0, 7);
-      if (!porMes.has(chaveMes)) porMes.set(chaveMes, []);
-      porMes.get(chaveMes).push(dia);
+  function salvarSecoesCache(secoes) {
+    try {
+      localStorage.setItem(
+        CACHE_SECOES_STORAGE_KEY,
+        JSON.stringify(secoes.map(({ id, label, caixa, pasta }) => ({ id, label, caixa, pasta })))
+      );
+    } catch (e) {
+      // segue sem lembrar entre recarregamentos.
+    }
+  }
+
+  let cacheSecoes = carregarSecoesCacheSalvas();
+
+  // Monta o card de 1 seção (cabeçalho com nome editável + remover,
+  // toolbar com Caixa/Pasta/Sincronizar tudo/Recarregar, status e tabela
+  // própria) — tudo isolado em "secao.el" (nunca IDs globais), pra dar pra
+  // ter várias seções na tela ao mesmo tempo sem uma pisar na outra.
+  function construirSecaoCache(secao) {
+    const card = document.createElement("div");
+    card.className = "card cache-secao";
+
+    const header = document.createElement("div");
+    header.className = "cache-secao-header";
+
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.className = "cache-secao-label-input";
+    labelInput.value = secao.label;
+    labelInput.addEventListener("change", () => {
+      secao.label = labelInput.value.trim() || secao.label;
+      labelInput.value = secao.label;
+      salvarSecoesCache(cacheSecoes);
     });
 
-    const container = document.createElement("div");
+    const btnRemover = document.createElement("button");
+    btnRemover.type = "button";
+    btnRemover.className = "btn-secondary cache-secao-remover";
+    btnRemover.textContent = "✕ Remover";
+    btnRemover.title = "Remover esta seção da tela (não apaga a pasta nem os arquivos)";
+    btnRemover.addEventListener("click", () => {
+      cacheSecoes = cacheSecoes.filter((s) => s.id !== secao.id);
+      salvarSecoesCache(cacheSecoes);
+      renderCacheSecoes();
+    });
 
-    Array.from(porMes.keys())
-      .sort()
-      .forEach((chaveMes) => {
-        const porData = new Map(porMes.get(chaveMes).map((d) => [d.data, d]));
-        const [ano, mes] = chaveMes.split("-").map(Number);
+    header.append(labelInput, btnRemover);
 
-        const bloco = document.createElement("div");
-        bloco.className = "calendario-mes";
+    const toolbar = document.createElement("div");
+    toolbar.className = "results-header cache-toolbar";
+    toolbar.style.marginBottom = "10px";
 
-        const titulo = document.createElement("div");
-        titulo.className = "calendario-mes-titulo";
-        titulo.textContent = `${CALENDARIO_MESES[mes - 1]} de ${ano}`;
-        bloco.append(titulo);
+    const caixaLabel = document.createElement("label");
+    caixaLabel.className = "cache-particao-label";
+    caixaLabel.append("Caixa: ");
+    const caixaSelect = document.createElement("select");
+    caixaSelect.className = "cache-caixa-select";
+    [
+      { id: "solar", nome: "Solar" },
+      { id: "tv", nome: "Tv" },
+    ].forEach(({ id, nome }) => {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = nome;
+      caixaSelect.append(opt);
+    });
+    caixaSelect.value = secao.caixa;
+    caixaLabel.append(caixaSelect);
 
-        const grid = document.createElement("div");
-        grid.className = "calendario-grid";
+    const pastaField = document.createElement("div");
+    pastaField.className = "field cache-pasta-field";
+    pastaField.style.marginBottom = "0";
+    const pastaLabelEl = document.createElement("label");
+    pastaLabelEl.textContent = "Pasta de origem";
+    const pastaInputRow = document.createElement("div");
+    pastaInputRow.className = "cache-pasta-input-row";
+    const pastaInput = document.createElement("input");
+    pastaInput.type = "text";
+    pastaInput.value = secao.pasta || "";
+    const btnEscolherPasta = document.createElement("button");
+    btnEscolherPasta.type = "button";
+    btnEscolherPasta.className = "btn-secondary";
+    btnEscolherPasta.title = "Escolher pasta";
+    btnEscolherPasta.textContent = "📁";
+    pastaInputRow.append(pastaInput, btnEscolherPasta);
+    pastaField.append(pastaLabelEl, pastaInputRow);
 
-        CALENDARIO_DOW.forEach((label) => {
-          const dow = document.createElement("div");
-          dow.className = "calendario-dow";
-          dow.textContent = label;
-          grid.append(dow);
-        });
+    const botoes = document.createElement("div");
+    botoes.className = "cache-toolbar-botoes";
+    const btnSincronizarTudo = document.createElement("button");
+    btnSincronizarTudo.type = "button";
+    btnSincronizarTudo.className = "btn-primary";
+    btnSincronizarTudo.textContent = "⟳ Sincronizar tudo";
+    const btnRecarregar = document.createElement("button");
+    btnRecarregar.type = "button";
+    btnRecarregar.className = "btn-secondary";
+    btnRecarregar.textContent = "↻ Recarregar";
+    botoes.append(btnSincronizarTudo, btnRecarregar);
 
-        // getDay(): 0=Dom...6=Sáb — converte pra semana começando na Segunda.
-        const primeiroDoMes = new Date(ano, mes - 1, 1);
-        const offsetSemana = (primeiroDoMes.getDay() + 6) % 7;
-        for (let i = 0; i < offsetSemana; i++) {
-          const vazio = document.createElement("div");
-          vazio.className = "calendario-dia vazio";
-          grid.append(vazio);
-        }
+    toolbar.append(caixaLabel, pastaField, botoes);
 
-        const totalDiasMes = new Date(ano, mes, 0).getDate();
-        for (let dia = 1; dia <= totalDiasMes; dia++) {
-          const chaveDia = `${chaveMes}-${String(dia).padStart(2, "0")}`;
-          const info = porData.get(chaveDia);
+    const statusEl = document.createElement("div");
+    statusEl.className = "hint";
+    statusEl.style.marginBottom = "10px";
 
-          const celula = document.createElement("div");
-          celula.className = "calendario-dia" + (info ? "" : " vazio");
-
-          const numero = document.createElement("div");
-          numero.className = "calendario-dia-numero";
-          numero.textContent = dia;
-          celula.append(numero);
-
-          const camposComValor = info ? camposInfo.filter((c) => info[c.campo]) : [];
-          if (camposComValor.length) {
-            const infoEl = document.createElement("div");
-            infoEl.className = "calendario-dia-info";
-            camposComValor.forEach(({ campo, prefixo, classe }) => {
-              const linha = document.createElement("span");
-              linha.className = classe;
-              linha.textContent = `${prefixo} ${info[campo]}`;
-              infoEl.append(linha);
-            });
-            celula.append(infoEl);
-          }
-
-          grid.append(celula);
-        }
-
-        bloco.append(grid);
-        container.append(bloco);
-      });
-
-    return container;
-  }
-
-  function renderAnalistaDetalhe(data, analista, inicio, fim) {
-    // O título usa .section-label (text-transform: uppercase) — sem o
-    // .date-badge aqui, o "a" do intervalo de datas vira "A" maiúsculo.
-    const tituloEl = $("analista-detalhe-titulo");
-    tituloEl.textContent = "";
-    tituloEl.append(`${analista} — `);
-    const dataBadge = document.createElement("span");
-    dataBadge.className = "date-badge";
-    dataBadge.textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-    tituloEl.append(dataBadge);
-
-    const cardsEl = $("analista-detalhe-cards");
-    cardsEl.innerHTML = "";
-    cardsEl.append(
-      summaryCard(data.total_encerrados_resolvidos, "Chamados Encerrados/Resolvidos", "tone-accent")
-    );
-    cardsEl.append(
-      summaryCard(
-        `${data.total_reabertos} (${data.percentual_reabertos}%)`,
-        `Reabertos no período — % sobre ${data.total_resolvidos_gerais} resolvidos gerais`,
-        "tone-warning"
-      )
-    );
-
-    const fThead = document.querySelector("#analista-fornecedor-table thead");
-    const fTbody = document.querySelector("#analista-fornecedor-table tbody");
-    fThead.innerHTML = "";
-    fTbody.innerHTML = "";
-    const fTrHead = document.createElement("tr");
-    ["Fornecedor Responsável", "Quantidade"].forEach((label) => {
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "table-wrap cache-table-wrap";
+    const table = document.createElement("table");
+    table.className = "data-table";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    ["Planilha", "Status", "Solar", "Prod", "Claro Tv", "Outros", ""].forEach((titulo) => {
       const th = document.createElement("th");
-      th.textContent = label;
-      fTrHead.append(th);
+      th.textContent = titulo;
+      headRow.append(th);
     });
-    fThead.append(fTrHead);
+    thead.append(headRow);
+    const tbody = document.createElement("tbody");
+    table.append(thead, tbody);
+    tableWrap.append(table);
 
-    const porFornecedor = data.por_fornecedor || [];
-    if (!porFornecedor.length) {
+    card.append(header, toolbar, statusEl, tableWrap);
+
+    secao.el = { card, labelInput, caixaSelect, pastaInput, btnEscolherPasta, btnSincronizarTudo, btnRecarregar, statusEl, tbody };
+    secao.linhas = [];
+    secao.pastasPadrao = {};
+
+    // Trocar de caixa troca também a pasta exibida pra pasta PADRÃO
+    // daquela caixa (o usuário ainda pode editar o campo depois, antes de
+    // "Recarregar", se quiser apontar pra outro lugar).
+    caixaSelect.addEventListener("change", () => {
+      secao.caixa = caixaSelect.value;
+      if (secao.pastasPadrao[secao.caixa]) {
+        pastaInput.value = secao.pastasPadrao[secao.caixa];
+        secao.pasta = pastaInput.value;
+      }
+      salvarSecoesCache(cacheSecoes);
+      carregarSecaoCache(secao);
+    });
+
+    pastaInput.addEventListener("change", () => {
+      secao.pasta = pastaInput.value.trim();
+      salvarSecoesCache(cacheSecoes);
+    });
+
+    // Abre um seletor de pasta NATIVO do sistema operacional (tkinter, no
+    // desktop de quem roda o servidor — só funciona localmente, ver
+    // /api/cache/escolher-pasta em api/index.py) — preenche o campo com o
+    // caminho escolhido e já recarrega a tabela. Cancelar o diálogo não
+    // faz nada (pasta vem vazia, campo não é mexido).
+    btnEscolherPasta.addEventListener("click", async () => {
+      btnEscolherPasta.disabled = true;
+      const textoOriginal = btnEscolherPasta.textContent;
+      btnEscolherPasta.textContent = "...";
+      statusEl.textContent = "Abrindo seletor de pasta (verifique a janela do servidor)...";
+      try {
+        const resp = await apiCall("/api/cache/escolher-pasta", { pasta: pastaInput.value.trim() });
+        const data = await resp.json();
+        if (!resp.ok) {
+          statusEl.textContent = data.error || "Erro ao abrir o seletor de pasta.";
+          return;
+        }
+        if (data.pasta) {
+          pastaInput.value = data.pasta;
+          secao.pasta = data.pasta;
+          salvarSecoesCache(cacheSecoes);
+          carregarSecaoCache(secao);
+        } else {
+          statusEl.textContent = "";
+        }
+      } catch (e) {
+        statusEl.textContent = "Não foi possível conectar ao servidor.";
+      } finally {
+        btnEscolherPasta.disabled = false;
+        btnEscolherPasta.textContent = textoOriginal;
+      }
+    });
+
+    btnRecarregar.addEventListener("click", () => carregarSecaoCache(secao));
+    btnSincronizarTudo.addEventListener("click", () => sincronizarTudoSecao(secao));
+
+    return card;
+  }
+
+  function renderCacheTableSecao(secao, arquivos) {
+    const { tbody } = secao.el;
+    tbody.innerHTML = "";
+    secao.linhas = [];
+
+    if (!arquivos.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 2;
-      td.textContent = "Nenhum chamado aguardando fornecedor no período.";
+      td.colSpan = 7;
+      td.className = "hint";
+      td.textContent = "Nenhuma planilha encontrada na pasta de cache.";
       tr.append(td);
-      fTbody.append(tr);
-    } else {
-      let somaFornecedor = 0;
-      porFornecedor.forEach(({ fornecedor, total }) => {
-        somaFornecedor += total;
-        const tr = document.createElement("tr");
-        const tdNome = document.createElement("td");
-        tdNome.textContent = fornecedor;
-        const tdTotal = document.createElement("td");
-        tdTotal.textContent = total;
-        tr.append(tdNome, tdTotal);
-        fTbody.append(tr);
-      });
-      const trTotal = document.createElement("tr");
-      trTotal.className = "data-table-total-row";
-      const tdLabel = document.createElement("td");
-      tdLabel.textContent = "Total";
-      const tdSoma = document.createElement("td");
-      tdSoma.textContent = somaFornecedor;
-      trTotal.append(tdLabel, tdSoma);
-      fTbody.append(trTotal);
-    }
-
-    const cThead = document.querySelector("#analista-categorias-table thead");
-    const cTbody = document.querySelector("#analista-categorias-table tbody");
-    cThead.innerHTML = "";
-    cTbody.innerHTML = "";
-    const cTrHead = document.createElement("tr");
-    ["Categoria de Encerramento", "Quantidade"].forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      cTrHead.append(th);
-    });
-    cThead.append(cTrHead);
-
-    const topCategorias = data.top_categorias || [];
-    if (!topCategorias.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 2;
-      td.textContent = "Nenhum chamado categorizado no período.";
-      tr.append(td);
-      cTbody.append(tr);
-    } else {
-      topCategorias.forEach(({ categoria, total }) => {
-        const tr = document.createElement("tr");
-        const tdNome = document.createElement("td");
-        tdNome.textContent = categoria;
-        const tdTotal = document.createElement("td");
-        tdTotal.textContent = total;
-        tr.append(tdNome, tdTotal);
-        cTbody.append(tr);
-      });
-    }
-
-    const calEl = $("analista-calendario");
-    calEl.innerHTML = "";
-    calEl.append(construirCalendario(data.calendario || []));
-
-    $("analista-detalhe").classList.remove("hidden");
-  }
-
-  async function buscarDetalheAnalista(analista) {
-    const inicio = $("analistas-input-inicio").value;
-    const fim = $("analistas-input-fim").value;
-    if (!inicio || !fim) return;
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
+      tbody.append(tr);
       return;
     }
 
-    $("analista-detalhe").classList.add("hidden");
-    setBusy(true);
-    setBanner(`Buscando dados de ${analista}...`, "info");
-    try {
-      const resp = await apiCall("/api/analista-detalhe", {
-        analista,
-        inicio,
-        fim,
-        caixa: state.caixa,
-        projetos,
+    arquivos.forEach((arquivo) => {
+      const tr = document.createElement("tr");
+
+      const tdNome = document.createElement("td");
+      tdNome.textContent = arquivo.nome;
+
+      const tdStatus = document.createElement("td");
+      tdStatus.textContent = cacheStatusTexto(arquivo.sincronizado_em);
+
+      const tdsCaixas = {};
+      CACHE_CAIXA_COLUNAS.forEach((caixaId) => {
+        tdsCaixas[caixaId] = document.createElement("td");
       });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao buscar dados do analista.", "error");
-        return;
-      }
-      // A busca é lenta (pode passar de 1 minuto) e "Fechar"/trocar de caixa
-      // continuam clicáveis nesse meio tempo — se o painel foi fechado
-      // enquanto isso, reabre aqui, senão o resultado chega mas fica
-      // escondido atrás do "collapse" do painel.
-      $("analistas-dialog").classList.add("open");
-      renderAnalistaDetalhe(data, analista, inicio, fim);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  }
+      preencherCelulasCaixas(tdsCaixas, arquivo.abertos === null || arquivo.abertos === undefined ? null : arquivo.abertos_por_caixa);
 
-  function selecionarAnalista(nome) {
-    $("analistas-busca").value = nome;
-    fecharAnalistasDropdown();
-    buscarDetalheAnalista(nome);
-  }
+      const tdAcao = document.createElement("td");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-secondary";
+      btn.textContent = "Sincronizar";
+      btn.addEventListener("click", () => sincronizarSecaoCache(secao, arquivo.nome, tdStatus, tdsCaixas, btn));
+      tdAcao.append(btn);
 
-  function fecharAnalistasDropdown() {
-    $("analistas-dropdown").classList.add("hidden");
-    $("analistas-busca").setAttribute("aria-expanded", "false");
-    analistasIndiceAtivo = -1;
-  }
+      tr.append(tdNome, tdStatus, ...CACHE_CAIXA_COLUNAS.map((c) => tdsCaixas[c]), tdAcao);
+      tbody.append(tr);
 
-  function marcarIndiceAtivo(dropdown, indice) {
-    dropdown.querySelectorAll(".combobox-option").forEach((el, i) => {
-      const ativo = i === indice;
-      el.classList.toggle("active", ativo);
-      if (ativo) el.scrollIntoView({ block: "nearest" });
+      secao.linhas.push({ nome: arquivo.nome, tdStatus, tdsCaixas, btn });
     });
   }
 
-  function abrirAnalistasDropdown() {
-    const dropdown = $("analistas-dropdown");
-    const termo = $("analistas-busca").value.trim();
-    const filtrados = analistasFiltrados(termo);
-    dropdown.innerHTML = "";
-    analistasIndiceAtivo = -1;
-
-    if (!filtrados.length) {
-      const vazio = document.createElement("div");
-      vazio.className = "combobox-empty";
-      vazio.textContent = "Nenhum analista encontrado.";
-      dropdown.append(vazio);
-    } else {
-      filtrados.forEach((nome) => {
-        const opt = document.createElement("div");
-        opt.className = "combobox-option";
-        opt.setAttribute("role", "option");
-        opt.append(destacarTrecho(nome, termo));
-        // mousedown (não click) dispara antes do blur do input, senão o
-        // dropdown já teria fechado quando o clique "chegasse".
-        opt.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          selecionarAnalista(nome);
-        });
-        dropdown.append(opt);
-      });
-    }
-
-    dropdown.classList.remove("hidden");
-    $("analistas-busca").setAttribute("aria-expanded", "true");
-  }
-
-  $("analistas-busca").addEventListener("input", abrirAnalistasDropdown);
-  $("analistas-busca").addEventListener("focus", abrirAnalistasDropdown);
-  $("analistas-busca").addEventListener("blur", () => {
-    setTimeout(fecharAnalistasDropdown, 120);
-  });
-
-  $("analistas-busca").addEventListener("keydown", (e) => {
-    const dropdown = $("analistas-dropdown");
-    if (dropdown.classList.contains("hidden")) return;
-    const opcoesEls = dropdown.querySelectorAll(".combobox-option");
-    if (!opcoesEls.length) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      analistasIndiceAtivo = Math.min(analistasIndiceAtivo + 1, opcoesEls.length - 1);
-      marcarIndiceAtivo(dropdown, analistasIndiceAtivo);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      analistasIndiceAtivo = Math.max(analistasIndiceAtivo - 1, 0);
-      marcarIndiceAtivo(dropdown, analistasIndiceAtivo);
-    } else if (e.key === "Enter") {
-      if (analistasIndiceAtivo >= 0) {
-        e.preventDefault();
-        const filtrados = analistasFiltrados($("analistas-busca").value.trim());
-        if (filtrados[analistasIndiceAtivo]) selecionarAnalista(filtrados[analistasIndiceAtivo]);
+  async function carregarSecaoCache(secao) {
+    const { statusEl, pastaInput } = secao.el;
+    statusEl.classList.add("is-loading");
+    statusEl.textContent = "Carregando planilhas...";
+    try {
+      const pasta = pastaInput.value.trim();
+      const resp = await apiCall("/api/cache/arquivos", { caixa: secao.caixa, pasta });
+      const data = await resp.json();
+      statusEl.classList.remove("is-loading");
+      if (!resp.ok) {
+        statusEl.textContent = data.error || "Erro ao listar a pasta de cache.";
+        secao.el.tbody.innerHTML = "";
+        return;
       }
-    } else if (e.key === "Escape") {
-      fecharAnalistasDropdown();
+      (data.caixas || []).forEach(({ id, pasta_padrao: pastaPadrao }) => {
+        secao.pastasPadrao[id] = pastaPadrao;
+      });
+      if (!pastaInput.value) {
+        pastaInput.value = data.pasta;
+      }
+      secao.pasta = pastaInput.value;
+      salvarSecoesCache(cacheSecoes);
+      renderCacheTableSecao(secao, data.arquivos || []);
+      statusEl.textContent = "";
+    } catch (e) {
+      statusEl.classList.remove("is-loading");
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
     }
-  });
-
-  // Data início, Data fim e Analista ficam numa linha só, sempre visíveis. O
-  // dropdown mostra o roster fixo assim que o painel abre (sem chamada ao
-  // Jira pra montar a lista); escolher um nome com o período preenchido é
-  // que dispara a busca de verdade (buscarDetalheAnalista).
-  function prepararAnalistasDropdown() {
-    analistasAtuais = ANALISTAS_ENCERRAMENTO_ROSTER;
-    $("analistas-busca").value = "";
-    $("analistas-busca").disabled = false;
-    fecharAnalistasDropdown();
-    $("analista-detalhe").classList.add("hidden");
-    $("analistas-status").textContent =
-      `${ANALISTAS_ENCERRAMENTO_ROSTER.length} analistas disponíveis — selecione um nome com o período preenchido.`;
   }
 
-  $("btn-analistas-encerramento").addEventListener("click", () => {
-    const dialog = $("analistas-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("analistas-dialog");
-    dialog.classList.add("open");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      if (!$("analistas-input-inicio").value) $("analistas-input-inicio").value = hoje;
-      if (!$("analistas-input-fim").value) $("analistas-input-fim").value = hoje;
-      hideAllResults();
-      prepararAnalistasDropdown();
+  function renderCacheSecoes() {
+    const container = $("cache-secoes");
+    container.innerHTML = "";
+    cacheSecoes.forEach((secao) => {
+      container.append(construirSecaoCache(secao));
+      carregarSecaoCache(secao);
+    });
+  }
+
+  // Espelha CACHE_SYNC_LOTE em api/index.py — nº de chamados (sempre pelo
+  // número do chamado, INC-xxxxxx/PDST-xxxxxx, nunca a planilha inteira de
+  // uma vez) por chamada a /api/cache/sincronizar-lote, pra não pesar a
+  // API do Jira. Quem decide o tamanho de fato é o servidor (devolvido por
+  // sincronizar-preparar); isso aqui é só o valor esperado, pra montar os
+  // lotes do mesmo tamanho sem precisar de mais uma ida ao servidor.
+  const CACHE_SYNC_LOTE = 150;
+
+  function dividirEmLotes(itens, tamanho) {
+    const lotes = [];
+    for (let i = 0; i < itens.length; i += tamanho) {
+      lotes.push(itens.slice(i, i + tamanho));
+    }
+    return lotes;
+  }
+
+  // Sincronização em lotes, pra não jogar uma planilha inteira (pode
+  // passar de 1500 chamados) numa única requisição pesada: 1) preparar
+  // devolve a lista de chamados que precisam de alguma consulta ao Jira
+  // (status/Violado/Já foi Reaberto/Data de Resolução) e já migra as
+  // colunas se faltarem;
+  // 2) um lote de cada vez (sincronizar-lote) processa até CACHE_SYNC_LOTE
+  // chamados, e o botão da própria linha mostra o progresso (ex.: "03/10")
+  // conforme cada lote volta; 3) finalizar busca os chamados novos criados
+  // desde a última sincronização e fecha a planilha.
+  // "pularSeVazio": usado só pelo "Sincronizar tudo" (ver sincronizarTudo)
+  // — se "preparar" devolver 0 entradas pendentes (nenhum chamado bate com
+  // a regra de conferência: nem aberto, nem fechado há pouco, nem
+  // faltando Violado/Reaberto/Resolução), pula esse arquivo inteiro (nem
+  // o passo "finalizar" roda), sem gastar tempo/chamadas de API num mês
+  // que não tem nada pra conferir. O botão individual "Sincronizar" de
+  // cada linha continua sempre rodando os 3 passos (inclusive buscar
+  // chamados novos), mesmo com 0 pendentes — só "Sincronizar tudo" pula.
+  async function sincronizarSecaoCache(secao, nome, tdStatus, tdsCaixas, btn, pularSeVazio = false) {
+    btn.disabled = true;
+    const textoOriginal = btn.textContent;
+    const statusEl = secao.el.statusEl;
+    const pasta = secao.el.pastaInput.value.trim();
+    statusEl.textContent = `Preparando "${nome}"...`;
+    btn.textContent = "Preparando...";
+
+    try {
+      const prepResp = await apiCall("/api/cache/sincronizar-preparar", { nome, caixa: secao.caixa, pasta });
+      const prep = await prepResp.json();
+      if (!prepResp.ok) {
+        statusEl.textContent = prep.error || `Erro ao preparar "${nome}".`;
+        return;
+      }
+
+      if (pularSeVazio && prep.entradas.length === 0) {
+        statusEl.textContent = `"${nome}": nada dentro da regra de conferência, pulado.`;
+        return;
+      }
+
+      const lotes = dividirEmLotes(prep.entradas, prep.lote || CACHE_SYNC_LOTE);
+      const totalPasso = lotes.length + 1; // +1 do passo "finalizar"
+      const digitos = String(totalPasso).length;
+      const rotuloPasso = (atual) => `${String(atual).padStart(digitos, "0")}/${totalPasso}`;
+
+      let atualizados = 0;
+      for (let i = 0; i < lotes.length; i++) {
+        btn.textContent = rotuloPasso(i + 1);
+        statusEl.textContent = `Sincronizando "${nome}": lote ${rotuloPasso(i + 1)}...`;
+        const resp = await apiCall("/api/cache/sincronizar-lote", {
+          nome,
+          entradas: lotes[i],
+          caixa: secao.caixa,
+          pasta,
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          statusEl.textContent = data.error || `Erro ao sincronizar "${nome}".`;
+          return;
+        }
+        atualizados += data.atualizados;
+      }
+
+      btn.textContent = rotuloPasso(totalPasso);
+      statusEl.textContent = `Sincronizando "${nome}": buscando chamados novos...`;
+      const finalResp = await apiCall("/api/cache/sincronizar-finalizar", { nome, caixa: secao.caixa, pasta });
+      const data = await finalResp.json();
+      if (!finalResp.ok) {
+        statusEl.textContent = data.error || `Erro ao sincronizar "${nome}".`;
+        return;
+      }
+
+      tdStatus.textContent = cacheStatusTexto(data.sincronizado_em);
+      preencherCelulasCaixas(tdsCaixas, data.abertos_por_caixa);
+      statusEl.textContent = `"${nome}": ${prep.entradas.length} verificado(s), ${atualizados} atualizado(s), ${data.novos} novo(s).`;
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  }
+
+  // "Sincronizar tudo" (de 1 seção): roda sincronizarSecaoCache de cada
+  // planilha DAQUELA seção, uma de cada vez — espera o arquivo atual
+  // terminar (3 passos: preparar, cada lote, finalizar) antes de começar o
+  // próximo, nunca em paralelo (pedido explícito do usuário: "respeitando
+  // a execução de cada um"). Desabilita o botão "Sincronizar" de toda
+  // linha da seção enquanto roda, pra evitar um clique avulso disparar a
+  // mesma planilha 2 vezes ao mesmo tempo. "pularSeVazio" (ver
+  // sincronizarSecaoCache): só processa de verdade os meses com pelo
+  // menos 1 chamado dentro da regra de conferência — os demais são
+  // pulados (nem passam pelo "finalizar"). Cada seção tem seu próprio
+  // botão/estado — sincronizar uma não afeta as outras.
+  async function sincronizarTudoSecao(secao) {
+    const btnTudo = secao.el.btnSincronizarTudo;
+    const textoOriginal = btnTudo.textContent;
+    const linhas = secao.linhas;
+    if (!linhas.length) return;
+
+    btnTudo.disabled = true;
+    linhas.forEach(({ btn }) => {
+      btn.disabled = true;
+    });
+
+    for (let i = 0; i < linhas.length; i++) {
+      const { nome, tdStatus, tdsCaixas, btn } = linhas[i];
+      btnTudo.textContent = `Sincronizando ${i + 1}/${linhas.length}...`;
+      await sincronizarSecaoCache(secao, nome, tdStatus, tdsCaixas, btn, true);
+    }
+
+    btnTudo.disabled = false;
+    btnTudo.textContent = textoOriginal;
+  }
+
+  $("btn-cache").addEventListener("click", () => {
+    closeAllDialogs();
+    $("cache-results").classList.remove("hidden");
+    renderCacheSecoes();
+  });
+
+  // "+ Adicionar pasta": registra uma nova seção vazia (Solar por padrão,
+  // sem pasta própria ainda — o usuário edita o nome/caixa/pasta direto no
+  // card recém-criado) e persiste a lista inteira.
+  $("btn-cache-adicionar-secao").addEventListener("click", () => {
+    cacheSecoes.push({
+      id: `secao-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      label: "Nova pasta",
+      caixa: "solar",
+      pasta: "",
+    });
+    salvarSecoesCache(cacheSecoes);
+    renderCacheSecoes();
+  });
+
+  // "Pareto Solar": diagrama de Pareto clássico (barras de frequência +
+  // linha de % acumulado em 2º eixo) — modelo pedido explicitamente pelo
+  // usuário (imagem de referência). Em SVG puro (sem lib de gráfico: é só
+  // barra + linha + 2 eixos, não justifica uma dependência nova).
+
+  // Arredonda o teto do eixo esquerdo (frequência) pra um valor "redondo"
+  // (1/2/5 × potência de 10) — mesma lógica de qualquer lib de gráfico,
+  // senão a grade fica em números quebrados tipo 0/73.4/146.8/....
+  function paretoEixoMax(valor) {
+    if (valor <= 0) return 10;
+    const grandeza = Math.pow(10, Math.floor(Math.log10(valor)));
+    const normalizado = valor / grandeza;
+    let passo;
+    if (normalizado <= 1) passo = 1;
+    else if (normalizado <= 2) passo = 2;
+    else if (normalizado <= 5) passo = 5;
+    else passo = 10;
+    return passo * grandeza;
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  function svgEl(tag, attrs) {
+    const node = document.createElementNS(SVG_NS, tag);
+    Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+    return node;
+  }
+
+  // Nome completo só aparece no hover da barra (popover flutuante, ver
+  // showParetoPopover) — o rótulo do eixo X é sempre truncado num tamanho
+  // fixo de caracteres pra caber no slot sem invadir o vizinho (categoria
+  // pode ter nome bem longo).
+  const PARETO_X_LABEL_MAX_CHARS = 18;
+
+  function truncarCategoria(nome) {
+    if (!nome || nome.length <= PARETO_X_LABEL_MAX_CHARS) return nome || "";
+    return `${nome.slice(0, PARETO_X_LABEL_MAX_CHARS - 1)}…`;
+  }
+
+  function construirParetoChart(categorias, onBarClick) {
+    const holder = document.createElement("div");
+    holder.className = "pareto-chart-holder";
+
+    if (!categorias.length) {
+      const vazio = document.createElement("span");
+      vazio.className = "hint";
+      vazio.textContent = "Nenhum chamado classificado no período.";
+      holder.append(vazio);
+      return holder;
+    }
+
+    const n = categorias.length;
+    const slotW = 92;
+    const marginLeft = 50;
+    const marginRight = 50;
+    const marginTop = 24;
+    const marginBottom = 96;
+    const chartW = n * slotW;
+    const chartH = 240;
+    const width = marginLeft + chartW + marginRight;
+    const height = marginTop + chartH + marginBottom;
+
+    // "Outros" pode ser maior que a 1ª categoria individual (soma de
+    // dezenas delas) — não dá pra assumir categorias[0] como o maior.
+    const eixoMax = paretoEixoMax(Math.max(...categorias.map((c) => c.quantidade)));
+    const yEsq = (qtd) => marginTop + chartH - (qtd / eixoMax) * chartH;
+    const yDir = (pct) => marginTop + chartH - (Math.min(pct, 100) / 100) * chartH;
+
+    const svg = svgEl("svg", {
+      viewBox: `0 0 ${width} ${height}`,
+      width,
+      height,
+      class: "pareto-chart-svg",
+    });
+
+    // Grade horizontal + rótulos dos 2 eixos (esquerdo: frequência,
+    // direito: % acumulado), sempre nas mesmas 5 faixas (0/20/40/60/80/100%
+    // do teto de cada eixo).
+    const PASSOS = 5;
+    for (let i = 0; i <= PASSOS; i++) {
+      const frac = i / PASSOS;
+      const y = marginTop + chartH - frac * chartH;
+      svg.append(svgEl("line", { x1: marginLeft, x2: marginLeft + chartW, y1: y, y2: y, class: "pareto-grid-line" }));
+
+      const labelEsq = svgEl("text", { x: marginLeft - 8, y: y + 4, class: "pareto-axis-label", "text-anchor": "end" });
+      labelEsq.textContent = Math.round(eixoMax * frac);
+      svg.append(labelEsq);
+
+      const labelDir = svgEl("text", { x: marginLeft + chartW + 8, y: y + 4, class: "pareto-axis-label" });
+      labelDir.textContent = `${Math.round(frac * 100)}%`;
+      svg.append(labelDir);
+    }
+
+    // Barras (frequência), rótulo da quantidade em cima de cada uma, e os
+    // pontos da linha de % acumulado (desenhada depois, por cima das
+    // barras — mesma ordem do modelo de referência).
+    const pontosLinha = [];
+    const barLabelYs = [];
+    categorias.forEach((item, i) => {
+      const cx = marginLeft + i * slotW + slotW / 2;
+      const barW = slotW * 0.62;
+      const barY = yEsq(item.quantidade);
+      const tooltip = `${item.categoria} — ${item.quantidade} (${item.percentual}%)`;
+
+      const barEl = svgEl("rect", {
+        x: cx - barW / 2,
+        y: barY,
+        width: barW,
+        height: marginTop + chartH - barY,
+        class: "pareto-bar",
+      });
+      barEl.addEventListener("mouseenter", () => {
+        cancelHoverPopoverHide();
+        showParetoPopover(barEl, tooltip);
+      });
+      barEl.addEventListener("mouseleave", scheduleHoverPopoverHide);
+      if (onBarClick) {
+        barEl.addEventListener("click", () => onBarClick(item));
+      }
+      svg.append(barEl);
+
+      const labelQtdY = barY - 6;
+      barLabelYs.push(labelQtdY);
+      const labelQtd = svgEl("text", { x: cx, y: labelQtdY, class: "pareto-bar-label", "text-anchor": "middle" });
+      labelQtd.textContent = item.quantidade;
+      svg.append(labelQtd);
+
+      pontosLinha.push([cx, yDir(item.percentual_acumulado)]);
+
+      // Nome da categoria rotacionado, truncado (nome completo só na
+      // barra, via "tooltip" acima) — sem truncar, nome grande passava por
+      // cima do slot vizinho.
+      const labelX = svgEl("text", {
+        x: cx,
+        y: marginTop + chartH + 16,
+        class: "pareto-x-label",
+        "text-anchor": "end",
+        transform: `rotate(-40 ${cx} ${marginTop + chartH + 16})`,
+      });
+      labelX.textContent = truncarCategoria(item.categoria);
+      svg.append(labelX);
+    });
+
+    const pathD = pontosLinha.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x},${y}`).join(" ");
+    svg.append(svgEl("path", { d: pathD, class: "pareto-line" }));
+    categorias.forEach((item, i) => {
+      const [x, y] = pontosLinha[i];
+      svg.append(svgEl("circle", { cx: x, cy: y, r: 4, class: "pareto-line-dot" }));
+      // O ponto da linha (eixo da direita) pode cair bem na altura do
+      // rótulo da barra daquele mesmo slot (eixo da esquerda) — são
+      // escalas independentes, a coincidência é normal. Quando chega
+      // perto, desce o rótulo do % pra baixo do ponto em vez de cima,
+      // senão os dois textos ficam um em cima do outro.
+      const labelPctYAcima = y - 10;
+      const colide = Math.abs(labelPctYAcima - barLabelYs[i]) < 14;
+      const labelPctY = colide ? y + 14 : labelPctYAcima;
+      const labelPct = svgEl("text", { x, y: labelPctY, class: "pareto-line-label", "text-anchor": "middle" });
+      labelPct.textContent = `${item.percentual_acumulado}%`;
+      svg.append(labelPct);
+    });
+
+    svg.append(
+      svgEl("line", {
+        x1: marginLeft,
+        x2: marginLeft + chartW,
+        y1: marginTop + chartH,
+        y2: marginTop + chartH,
+        class: "pareto-axis-line",
+      })
+    );
+
+    const scrollWrap = document.createElement("div");
+    scrollWrap.className = "table-wrap pareto-chart-scroll";
+    scrollWrap.append(svg);
+    holder.append(scrollWrap);
+
+    const legend = document.createElement("div");
+    legend.className = "pareto-legend";
+    legend.innerHTML =
+      '<span class="pareto-legend-item"><span class="pareto-legend-swatch pareto-legend-swatch--bar"></span>Frequência</span>' +
+      '<span class="pareto-legend-item"><span class="pareto-legend-swatch pareto-legend-swatch--line"></span>Acumulado</span>';
+    holder.append(legend);
+
+    return holder;
+  }
+
+  // Seletor de mês (<select> + conteúdo do mês escolhido, dentro de um
+  // único ".card" estático no HTML — ver pareto-*-mes-select/-track em
+  // index.html) — reaproveitado pelos 4 gráficos do Pareto Solar
+  // (Classificação, Categoria de Encerramento, Categoria de Encerramento
+  // só reabertos, Fornecedor Responsável), cada um com seu próprio
+  // <select>/card (fechado nesta factory, não precisa de 4 jogos de
+  // variável solto no escopo do módulo). "obterTitulo"/"obterCardsEl"/
+  // "onBarClick" de cada chamada ficam guardados aqui (via closure) pra
+  // reaproveitar na troca do <select> sem precisar passar tudo de novo.
+  //
+  // O <select> é irmão de "track" dentro do ".card" (não filho) —
+  // "track.innerHTML = ''" abaixo só limpa o conteúdo do mês anterior,
+  // nunca toca no <select> (ele precisa sobreviver a cada re-render pra
+  // não perder o listener de "change").
+  function criarParetoSeletorMes(ids) {
+    const track = $(ids.track);
+    const selectEl = $(ids.select);
+    let meses = [];
+    let obterTitulo = null;
+    let obterCardsEl = null;
+    let onBarClick = null;
+
+    // "ids.titulo" (nome da seção — "Classificação", "Categoria de
+    // Encerramento" etc.) é o título grande; o que antes era o título
+    // (mês/total) sai pequeno, no canto esquerdo (pedido explícito do
+    // usuário).
+    function renderizarSlide() {
+      track.innerHTML = "";
+      const mesPayload = meses[selectEl.selectedIndex];
+      if (!mesPayload) return;
+
+      const slide = document.createElement("div");
+      slide.className = "pareto-carousel-slide";
+
+      const tituloSecao = document.createElement("div");
+      tituloSecao.className = "pareto-titulo-destaque";
+      tituloSecao.textContent = ids.titulo;
+      slide.append(tituloSecao);
+
+      const subtitle = document.createElement("div");
+      subtitle.className = "pareto-subtitulo-info";
+      subtitle.textContent = obterTitulo(mesPayload);
+      slide.append(subtitle);
+
+      const chart = construirParetoChart(
+        mesPayload.categorias,
+        onBarClick ? (item) => onBarClick(mesPayload, item) : null
+      );
+      if (obterCardsEl) {
+        const row = document.createElement("div");
+        row.className = "pareto-slide-row";
+        row.append(obterCardsEl(mesPayload), chart);
+        slide.append(row);
+      } else {
+        slide.append(chart);
+      }
+      track.append(slide);
+    }
+
+    selectEl.addEventListener("change", renderizarSlide);
+
+    // "obterTitulo" monta o texto do subtítulo (varia o que entre
+    // parênteses: "classificados" vs. "categorizados"). "obterCardsEl" é
+    // opcional — só "Categoria de Encerramento (só reabertos)" usa, pra
+    // colocar os cards de Quantidade/Percentual de abertura do lado
+    // esquerdo do gráfico. "onBarClick" é opcional — só "Classificação"
+    // usa, pro drill-down de Sub-Classificação (popup) ao clicar numa
+    // barra. Mês mais recente (último do array) começa selecionado.
+    function renderizar(novosMeses, novoObterTitulo, novoObterCardsEl, novoOnBarClick) {
+      meses = novosMeses;
+      obterTitulo = novoObterTitulo;
+      obterCardsEl = novoObterCardsEl;
+      onBarClick = novoOnBarClick;
+
+      selectEl.innerHTML = "";
+      meses.forEach((mesPayload, i) => {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = formatarMesAno(mesPayload.mes);
+        selectEl.append(option);
+      });
+      selectEl.selectedIndex = meses.length - 1;
+      renderizarSlide();
+    }
+
+    return { renderizar };
+  }
+
+  const paretoClassificacaoCarousel = criarParetoSeletorMes({
+    track: "pareto-solar-track",
+    select: "pareto-solar-mes-select",
+    titulo: "Classificação",
+  });
+  const paretoCategoriaCarousel = criarParetoSeletorMes({
+    track: "pareto-categoria-track",
+    select: "pareto-categoria-mes-select",
+    titulo: "Categoria de Encerramento",
+  });
+  const paretoReabertoCarousel = criarParetoSeletorMes({
+    track: "pareto-reaberto-track",
+    select: "pareto-reaberto-mes-select",
+    titulo: "Categoria de Encerramento (Só Reabertos)",
+  });
+  const paretoFornecedorCarousel = criarParetoSeletorMes({
+    track: "pareto-fornecedor-track",
+    select: "pareto-fornecedor-mes-select",
+    titulo: "Fornecedor Responsável (Aguardando Fornecedor)",
+  });
+
+  function paretoTituloMes(sufixo) {
+    return (mesPayload) =>
+      `${formatarMesAno(mesPayload.mes)} — ${mesPayload.total_chamados} encerrados` +
+      ` (${mesPayload.total_categorizados} ${sufixo})`;
+  }
+
+  // "Fornecedor Responsável" não é sobre encerrados — é quem está
+  // ATUALMENTE "Aguardando Fornecedor", então o subtítulo é outro (sem
+  // "encerrados"/"categorizados", que não fazem sentido aqui).
+  function paretoTituloMesFornecedor(mesPayload) {
+    return `${formatarMesAno(mesPayload.mes)} — ${mesPayload.total_chamados} aguardando fornecedor`;
+  }
+
+  // Cards do lado esquerdo do carrossel "Categoria de Encerramento (só
+  // reabertos)" — "Quantidade Total" é todo chamado CRIADO naquele mês
+  // (INC, N1/N2 Solar, resolvido ou não: os 100% da conta); "Reabertos" é
+  // o subconjunto que já foi reaberto em algum momento; "Percentual de
+  // abertura" é esse subconjunto sobre os 100% acima (não sobre os
+  // encerrados/categorizados do gráfico ao lado).
+  function construirParetoReabertoCards(mesPayload) {
+    const wrap = document.createElement("div");
+    wrap.className = "summary-cards pareto-slide-cards";
+    wrap.append(
+      summaryCard(mesPayload.criados_no_mes, "Quantidade Total", "tone-accent"),
+      summaryCard(mesPayload.reabertos_no_mes, "Reabertos", "tone-danger"),
+      summaryCard(`${mesPayload.percentual_reabertura}%`, "Percentual de abertura", "tone-warning")
+    );
+    return wrap;
+  }
+
+  // Popup de drill-down — clicar numa barra do gráfico "Classificação"
+  // abre um Pareto só daquela Classificação, no mesmo mês, com um
+  // carrossel de 3 cards (mesma Classificação/mês, só troca o que conta
+  // como barra) — espelha PARETO_SOLAR_DRILLDOWN_CAMPOS no backend. Os 3
+  // já são buscados em paralelo na abertura (dado pequeno, 1 Classificação
+  // só) — diferente do carrossel de mês da tela de trás, que troca de
+  // requisição a cada navegação.
+  const PARETO_SUB_MODAL_CAMPOS = [
+    { campo: "subclassificacao", label: "Sub-Classificação" },
+    { campo: "eps", label: "PROP_Site" },
+    { campo: "categoria", label: "Categoria de Encerramento" },
+  ];
+
+  let paretoSubModalIndex = 0;
+
+  function atualizarParetoSubModalCarousel() {
+    const track = $("pareto-sub-modal-track");
+    const total = track.children.length;
+    track.style.transform = `translateX(-${paretoSubModalIndex * 100}%)`;
+    $("pareto-sub-modal-prev").disabled = paretoSubModalIndex === 0;
+    $("pareto-sub-modal-next").disabled = paretoSubModalIndex >= total - 1;
+    Array.from($("pareto-sub-modal-dots").children).forEach((dot, i) => {
+      dot.classList.toggle("active", i === paretoSubModalIndex);
+    });
+  }
+
+  $("pareto-sub-modal-prev").addEventListener("click", () => {
+    if (paretoSubModalIndex > 0) {
+      paretoSubModalIndex -= 1;
+      atualizarParetoSubModalCarousel();
+    }
+  });
+  $("pareto-sub-modal-next").addEventListener("click", () => {
+    if (paretoSubModalIndex < $("pareto-sub-modal-track").children.length - 1) {
+      paretoSubModalIndex += 1;
+      atualizarParetoSubModalCarousel();
     }
   });
 
-  $("btn-analistas-cancelar").addEventListener("click", () => {
-    $("analistas-dialog").classList.remove("open");
+  async function abrirParetoSubModal(mesPayload, item) {
+    const mes = mesPayload.mes;
+    const classificacao = item.categoria;
+    const track = $("pareto-sub-modal-track");
+    const dotsEl = $("pareto-sub-modal-dots");
+    const statusEl = $("pareto-sub-modal-status");
+
+    $("pareto-sub-modal-title").textContent = `Classificação: ${classificacao} (${formatarMesAno(mes)})`;
+    track.innerHTML = "";
+    dotsEl.innerHTML = "";
+    statusEl.textContent = "Carregando...";
+    $("pareto-sub-modal").classList.remove("hidden");
+
+    try {
+      const respostas = await Promise.all(
+        PARETO_SUB_MODAL_CAMPOS.map(({ campo }) => apiCall("/api/pareto-solar-subclassificacao", { mes, classificacao, campo }))
+      );
+      const dados = await Promise.all(respostas.map((resp) => resp.json()));
+
+      const comErro = respostas.findIndex((resp) => !resp.ok);
+      if (comErro !== -1) {
+        statusEl.textContent = dados[comErro].error || "Erro ao carregar.";
+        return;
+      }
+      statusEl.textContent = "";
+
+      PARETO_SUB_MODAL_CAMPOS.forEach(({ label }, i) => {
+        const data = dados[i];
+        const slide = document.createElement("div");
+        slide.className = "pareto-sub-modal-slide";
+
+        const titulo = document.createElement("div");
+        titulo.className = "pareto-titulo-destaque";
+        titulo.textContent = label;
+        slide.append(titulo);
+
+        const info = document.createElement("div");
+        info.className = "pareto-subtitulo-info";
+        info.textContent = `${data.total_chamados} chamados (${data.total_categorizados} com ${label})`;
+        slide.append(info, construirParetoChart(data.categorias));
+        track.append(slide);
+
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.className = "pareto-sub-modal-dot";
+        dot.setAttribute("aria-label", label);
+        dot.addEventListener("click", () => {
+          paretoSubModalIndex = i;
+          atualizarParetoSubModalCarousel();
+        });
+        dotsEl.append(dot);
+      });
+
+      paretoSubModalIndex = 0;
+      atualizarParetoSubModalCarousel();
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+    }
+  }
+
+  function fecharParetoSubModal() {
+    $("pareto-sub-modal").classList.add("hidden");
+  }
+
+  $("btn-pareto-sub-modal-fechar").addEventListener("click", fecharParetoSubModal);
+  $("pareto-sub-modal").addEventListener("click", (e) => {
+    if (e.target.id === "pareto-sub-modal") fecharParetoSubModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("pareto-sub-modal").classList.contains("hidden")) fecharParetoSubModal();
   });
 
-  // Trocar de data não mexe no roster (é fixo) — só limpa o detalhe já
-  // mostrado, já que os números eram do período anterior.
-  $("analistas-input-inicio").addEventListener("change", () => $("analista-detalhe").classList.add("hidden"));
-  $("analistas-input-fim").addEventListener("change", () => $("analista-detalhe").classList.add("hidden"));
+  async function carregarParetoSolar() {
+    const statusEl = $("pareto-solar-status");
+    statusEl.textContent = "Carregando...";
+
+    try {
+      const resp = await apiCall("/api/pareto-solar", {});
+      const data = await resp.json();
+      if (!resp.ok) {
+        statusEl.textContent = data.error || "Erro ao carregar.";
+        return;
+      }
+      statusEl.textContent = "";
+      paretoClassificacaoCarousel.renderizar(
+        data.classificacao.meses,
+        paretoTituloMes("classificados"),
+        null,
+        abrirParetoSubModal
+      );
+      paretoCategoriaCarousel.renderizar(data.categoria.meses, paretoTituloMes("categorizados"));
+      paretoReabertoCarousel.renderizar(
+        data.categoria_reaberto.meses,
+        paretoTituloMes("categorizados"),
+        construirParetoReabertoCards
+      );
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+    }
+  }
+
+  // Único dos 4 carrosséis que consulta o Jira na hora (precisa saber quem
+  // está ATUALMENTE "Aguardando Fornecedor" — não dá pra reconstruir do
+  // cache) — status/erro à parte dos outros 3, pra uma falha aqui (ou
+  // demora) não travar/confundir com o restante, que é só cache local.
+  async function carregarParetoSolarFornecedor() {
+    const statusEl = $("pareto-fornecedor-status");
+    statusEl.textContent = "Carregando...";
+
+    try {
+      const resp = await apiCall("/api/pareto-solar-fornecedor", {});
+      const data = await resp.json();
+      if (!resp.ok) {
+        statusEl.textContent = data.error || "Erro ao carregar.";
+        return;
+      }
+      statusEl.textContent = "";
+      paretoFornecedorCarousel.renderizar(data.meses, paretoTituloMesFornecedor);
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+    }
+  }
+
+  $("btn-pareto-solar").addEventListener("click", () => {
+    closeAllDialogs();
+    $("pareto-solar-results").classList.remove("hidden");
+    carregarParetoSolar();
+    carregarParetoSolarFornecedor();
+  });
+
+  $("btn-pareto-solar-recarregar").addEventListener("click", () => {
+    carregarParetoSolar();
+    carregarParetoSolarFornecedor();
+  });
+
+  // ------------------------------------------------------- Material ICG
+  // FCA's (Fato/Causa/Ação) — pedido explícito do usuário: lista alternada
+  // de "dias de apresentação"; abrindo um dia, adiciona-se 1 FCA por
+  // indicador, e cada FCA é uma ÁRVORE (Fato -> Causas -> Ações). Tudo
+  // salvo no SQLite local (ver MATERIAL_ICG_FCA_DB em api/index.py): criar
+  // e excluir redesenham a lista com a resposta do servidor; o texto de
+  // cada nó é salvo ao sair do campo, sem redesenhar (não perde o foco).
+  const ICG_DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const ICG_FCA_TIPOS = {
+    fato: { rotulo: "Fato", filho: "causa" },
+    causa: { rotulo: "Causa", filho: "acao" },
+    acao: { rotulo: "Ação", filho: null },
+  };
+  let icgFcaIndicadores = {};
+  const icgFcaMesesAbertos = new Set();
+  const icgFcaDiasAbertos = new Set();
+  // Saves de texto em andamento — criar/excluir espera eles terminarem,
+  // senão a lista redesenhada podia vir do servidor sem o texto recém-
+  // digitado (blur dispara o save, o clique logo em seguida o redesenho).
+  let icgFcaSalvamentosPendentes = Promise.resolve();
+
+  async function icgFcaChamar(path, body) {
+    const statusEl = $("material-icg-fca-status");
+    try {
+      const resp = await apiCall(path, body);
+      const data = await resp.json();
+      if (!resp.ok) {
+        statusEl.textContent = data.error || "Erro ao salvar o FCA.";
+        return null;
+      }
+      statusEl.textContent = "";
+      return data;
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+      return null;
+    }
+  }
+
+  async function icgFcaMutar(path, body) {
+    await icgFcaSalvamentosPendentes;
+    const data = await icgFcaChamar(path, body);
+    if (data) renderizarIcgFcas(data);
+  }
+
+  async function carregarIcgFcas() {
+    const data = await icgFcaChamar("/api/material-icg/fca/listar", {});
+    if (data) renderizarIcgFcas(data);
+  }
+
+  function icgFcaRotuloDia(dataIso) {
+    const [ano, mes, dia] = dataIso.split("-").map(Number);
+    return `${formatarDataBR(dataIso)} — ${ICG_DIAS_SEMANA[new Date(ano, mes - 1, dia).getDay()]}`;
+  }
+
+  function icgFcaBotao(texto, classe, titulo, aoClicar) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = classe;
+    btn.textContent = texto;
+    if (titulo) btn.title = titulo;
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      aoClicar();
+    });
+    return btn;
+  }
+
+  function renderizarIcgFcas(dados) {
+    icgFcaIndicadores = dados.indicadores || {};
+    const lista = $("material-icg-fca-lista");
+    lista.innerHTML = "";
+    if (!dados.meses.length) {
+      const vazio = document.createElement("p");
+      vazio.className = "hint";
+      vazio.textContent = "Nenhum mês ainda — escolha o mês acima e clique em \"Adicionar mês\".";
+      lista.append(vazio);
+      return;
+    }
+    dados.meses.forEach((mes) => lista.append(construirIcgFcaMes(mes)));
+  }
+
+  // Nível "Mês" (pedido explícito do usuário: Mês -> Dia -> FCA's). Abre
+  // igual ao dia; dentro, "Dia da apresentação" (só datas desse mês) +
+  // a lista alternada dos dias.
+  function construirIcgFcaMes(mes) {
+    const item = document.createElement("div");
+    item.className = "icg-fca-dia icg-fca-mes";
+    item.classList.toggle("aberto", icgFcaMesesAbertos.has(mes.id));
+
+    const cabecalho = document.createElement("div");
+    cabecalho.className = "icg-fca-dia-cabecalho";
+    const titulo = document.createElement("span");
+    titulo.className = "icg-fca-dia-titulo";
+    titulo.textContent = formatarMesAno(mes.mes);
+    const contagem = document.createElement("span");
+    contagem.className = "icg-fca-dia-contagem";
+    const qtd = mes.apresentacoes.length;
+    contagem.textContent = qtd === 1 ? "1 dia" : `${qtd} dias`;
+    const excluir = icgFcaBotao("Excluir mês", "icg-fca-btn-excluir", "Excluir o mês e tudo dentro dele", () => {
+      if (!window.confirm(`Excluir ${formatarMesAno(mes.mes)} com todos os dias e FCA's dele?`)) return;
+      icgFcaMesesAbertos.delete(mes.id);
+      icgFcaMutar("/api/material-icg/fca/mes/excluir", { id: mes.id });
+    });
+    cabecalho.append(titulo, contagem, excluir);
+    cabecalho.addEventListener("click", () => {
+      const abrindo = !item.classList.contains("aberto");
+      item.classList.toggle("aberto", abrindo);
+      if (abrindo) icgFcaMesesAbertos.add(mes.id);
+      else icgFcaMesesAbertos.delete(mes.id);
+    });
+
+    const corpo = document.createElement("div");
+    corpo.className = "icg-fca-dia-corpo";
+
+    const adicionar = document.createElement("div");
+    adicionar.className = "icg-fca-adicionar";
+    const rotuloData = document.createElement("label");
+    rotuloData.className = "home-caixa-filtro-label";
+    rotuloData.textContent = "Dia da apresentação";
+    const inputData = document.createElement("input");
+    inputData.type = "date";
+    inputData.className = "icg-fca-input-data";
+    const [ano, mesNum] = mes.mes.split("-").map(Number);
+    inputData.min = `${mes.mes}-01`;
+    inputData.max = `${mes.mes}-${String(new Date(ano, mesNum, 0).getDate()).padStart(2, "0")}`;
+    const btnAdicionar = icgFcaBotao("Adicionar dia", "btn-secondary", null, async () => {
+      if (!inputData.value) {
+        $("material-icg-fca-status").textContent = "Escolha o dia da apresentação.";
+        return;
+      }
+      await icgFcaSalvamentosPendentes;
+      const data = await icgFcaChamar("/api/material-icg/fca/apresentacao/criar", { mes_id: mes.id, data: inputData.value });
+      if (!data) return;
+      // Já abre o dia recém-criado, pronto pra adicionar FCA.
+      const mesAtualizado = data.meses.find((m) => m.id === mes.id);
+      const criado = mesAtualizado && mesAtualizado.apresentacoes.find((a) => a.data === inputData.value);
+      if (criado) icgFcaDiasAbertos.add(criado.id);
+      renderizarIcgFcas(data);
+    });
+    adicionar.append(rotuloData, inputData, btnAdicionar);
+    corpo.append(adicionar);
+
+    if (mes.apresentacoes.length) {
+      const dias = document.createElement("div");
+      dias.className = "icg-fca-lista";
+      mes.apresentacoes.forEach((apresentacao) => dias.append(construirIcgFcaDia(apresentacao)));
+      corpo.append(dias);
+    } else {
+      const vazio = document.createElement("p");
+      vazio.className = "hint icg-fca-vazio";
+      vazio.textContent = "Nenhum dia nesse mês ainda.";
+      corpo.append(vazio);
+    }
+
+    item.append(cabecalho, corpo);
+    return item;
+  }
+
+  function construirIcgFcaDia(apresentacao) {
+    const dia = document.createElement("div");
+    dia.className = "icg-fca-dia";
+    dia.classList.toggle("aberto", icgFcaDiasAbertos.has(apresentacao.id));
+
+    const cabecalho = document.createElement("div");
+    cabecalho.className = "icg-fca-dia-cabecalho";
+    const titulo = document.createElement("span");
+    titulo.className = "icg-fca-dia-titulo";
+    titulo.textContent = icgFcaRotuloDia(apresentacao.data);
+    const contagem = document.createElement("span");
+    contagem.className = "icg-fca-dia-contagem";
+    const qtd = apresentacao.fcas.length;
+    contagem.textContent = qtd === 1 ? "1 FCA" : `${qtd} FCA's`;
+    const excluir = icgFcaBotao("Excluir dia", "icg-fca-btn-excluir", "Excluir o dia e todos os FCA's dele", () => {
+      if (!window.confirm(`Excluir o dia ${formatarDataBR(apresentacao.data)} e todos os FCA's dele?`)) return;
+      icgFcaDiasAbertos.delete(apresentacao.id);
+      icgFcaMutar("/api/material-icg/fca/apresentacao/excluir", { id: apresentacao.id });
+    });
+    cabecalho.append(titulo, contagem, excluir);
+    cabecalho.addEventListener("click", () => {
+      const abrindo = !dia.classList.contains("aberto");
+      dia.classList.toggle("aberto", abrindo);
+      if (abrindo) icgFcaDiasAbertos.add(apresentacao.id);
+      else icgFcaDiasAbertos.delete(apresentacao.id);
+    });
+
+    const corpo = document.createElement("div");
+    corpo.className = "icg-fca-dia-corpo";
+
+    // "Adicionar FCA": só os indicadores que esse dia ainda não tem (o
+    // backend também barra duplicado).
+    const usados = new Set(apresentacao.fcas.map((f) => f.indicador));
+    const livres = Object.entries(icgFcaIndicadores).filter(([chave]) => !usados.has(chave));
+    const adicionar = document.createElement("div");
+    adicionar.className = "icg-fca-adicionar";
+    const select = document.createElement("select");
+    select.className = "home-caixa-filtro-select";
+    livres.forEach(([chave, rotulo]) => {
+      const option = document.createElement("option");
+      option.value = chave;
+      option.textContent = rotulo;
+      select.append(option);
+    });
+    const btnAdicionar = icgFcaBotao("Adicionar FCA", "btn-secondary", null, () => {
+      icgFcaMutar("/api/material-icg/fca/criar", { apresentacao_id: apresentacao.id, indicador: select.value });
+    });
+    if (!livres.length) {
+      select.disabled = true;
+      btnAdicionar.disabled = true;
+      const option = document.createElement("option");
+      option.textContent = "Todos os indicadores já têm FCA";
+      select.append(option);
+    }
+    adicionar.append(select, btnAdicionar);
+    corpo.append(adicionar);
+
+    apresentacao.fcas.forEach((fca) => corpo.append(construirIcgFcaBloco(fca)));
+
+    dia.append(cabecalho, corpo);
+    return dia;
+  }
+
+  function construirIcgFcaBloco(fca) {
+    const bloco = document.createElement("div");
+    bloco.className = "icg-fca-bloco";
+
+    const cabecalho = document.createElement("div");
+    cabecalho.className = "icg-fca-bloco-cabecalho";
+    const titulo = document.createElement("span");
+    titulo.className = "icg-fca-bloco-titulo";
+    titulo.textContent = icgFcaIndicadores[fca.indicador] || fca.indicador;
+    const addFato = icgFcaBotao("+ Fato", "icg-fca-btn-add", "Adicionar fato", () => {
+      icgFcaMutar("/api/material-icg/fca/item/criar", { fca_id: fca.id, tipo: "fato" });
+    });
+    const excluir = icgFcaBotao("Excluir FCA", "icg-fca-btn-excluir", null, () => {
+      if (!window.confirm(`Excluir o FCA "${titulo.textContent}" e tudo dentro dele?`)) return;
+      icgFcaMutar("/api/material-icg/fca/excluir", { id: fca.id });
+    });
+    cabecalho.append(titulo, addFato, excluir);
+    bloco.append(cabecalho);
+
+    if (!fca.itens.length) {
+      const vazio = document.createElement("p");
+      vazio.className = "hint icg-fca-vazio";
+      vazio.textContent = "Sem fatos ainda — clique em \"+ Fato\".";
+      bloco.append(vazio);
+    } else {
+      const arvore = document.createElement("ul");
+      arvore.className = "icg-fca-arvore";
+      fca.itens.forEach((item) => arvore.append(construirIcgFcaNo(fca.id, item)));
+      bloco.append(arvore);
+    }
+    return bloco;
+  }
+
+  function construirIcgFcaNo(fcaId, item) {
+    const tipo = ICG_FCA_TIPOS[item.tipo];
+    const no = document.createElement("li");
+    no.className = `icg-fca-no icg-fca-no--${item.tipo}`;
+
+    const linha = document.createElement("div");
+    linha.className = "icg-fca-no-linha";
+    const rotulo = document.createElement("span");
+    rotulo.className = "icg-fca-no-rotulo";
+    rotulo.textContent = tipo.rotulo;
+
+    const texto = document.createElement("textarea");
+    texto.className = "icg-fca-no-texto";
+    texto.rows = 2;
+    texto.value = item.texto;
+    texto.placeholder = `Descreva ${tipo.rotulo.toLowerCase()}...`;
+    let salvo = item.texto;
+    texto.addEventListener("blur", () => {
+      const valor = texto.value.trim();
+      if (valor === salvo) return;
+      salvo = valor;
+      icgFcaSalvamentosPendentes = icgFcaSalvamentosPendentes.then(() =>
+        icgFcaChamar("/api/material-icg/fca/item/atualizar", { id: item.id, texto: valor })
+      );
+    });
+
+    linha.append(rotulo, texto);
+    if (tipo.filho) {
+      const rotuloFilho = ICG_FCA_TIPOS[tipo.filho].rotulo;
+      linha.append(
+        icgFcaBotao(`+ ${rotuloFilho}`, "icg-fca-btn-add", `Adicionar ${rotuloFilho.toLowerCase()}`, () => {
+          icgFcaMutar("/api/material-icg/fca/item/criar", { fca_id: fcaId, tipo: tipo.filho, parent_id: item.id });
+        })
+      );
+    }
+    linha.append(
+      icgFcaBotao("×", "icg-fca-btn-remover", `Excluir ${tipo.rotulo.toLowerCase()}`, () => {
+        if (item.filhos.length && !window.confirm(`Excluir ${tipo.rotulo.toLowerCase()} e tudo abaixo dele?`)) return;
+        icgFcaMutar("/api/material-icg/fca/item/excluir", { id: item.id });
+      })
+    );
+    no.append(linha);
+
+    if (item.filhos.length) {
+      const filhos = document.createElement("ul");
+      filhos.className = "icg-fca-arvore";
+      item.filhos.forEach((filho) => filhos.append(construirIcgFcaNo(fcaId, filho)));
+      no.append(filhos);
+    }
+    return no;
+  }
+
+  $("btn-material-icg-fca-add-mes").addEventListener("click", async () => {
+    const mes = $("material-icg-fca-mes").value;
+    if (!mes) {
+      $("material-icg-fca-status").textContent = "Escolha o mês.";
+      return;
+    }
+    await icgFcaSalvamentosPendentes;
+    const data = await icgFcaChamar("/api/material-icg/fca/mes/criar", { mes });
+    if (!data) return;
+    // Já abre o mês recém-criado, pronto pra adicionar dia.
+    const criado = data.meses.find((m) => m.mes === mes);
+    if (criado) icgFcaMesesAbertos.add(criado.id);
+    renderizarIcgFcas(data);
+  });
+
+  // Barra de SLA (verde/vermelha) pro card "SLA DO MÊS ATUAL" — pedido do
+  // usuário: trocar o donut por uma barra, com o percentual em cima.
+  // Função própria desta tela (não mexe em buildPrazoDonutEl, que
+  // continua sendo o donut usado em Violados/Report Vini). % grande no
+  // topo, barra cheia (100% da largura) dividida entre dentro/fora do
+  // prazo com um respiro de 2px (cor do card) entre os 2 segmentos, e a
+  // mesma legenda do donut grande (prazo-donut-legenda*), só em linha.
+  // Meta de SLA (baseline marcado na barra, linha tracejada) — confirmada
+  // com o usuário: 95%.
+  const ICG_SLA_META_PERCENTUAL = 95;
+
+  function construirIcgSlaBarra(dentro, fora, percentualDentro) {
+    const total = dentro + fora;
+
+    const wrap = document.createElement("div");
+    wrap.className = "icg-sla-barra-wrap";
+
+    const barra = document.createElement("div");
+    barra.className = "icg-sla-barra";
+    if (total > 0) {
+      const pctDentro = (dentro / total) * 100;
+      if (dentro > 0) {
+        const seg = document.createElement("div");
+        seg.className = "icg-sla-barra-seg icg-sla-barra-seg--dentro";
+        seg.style.width = fora > 0 ? `${pctDentro}%` : "100%";
+        barra.append(seg);
+      }
+      if (fora > 0) {
+        const seg = document.createElement("div");
+        seg.className = "icg-sla-barra-seg icg-sla-barra-seg--fora";
+        seg.style.width = dentro > 0 ? `${100 - pctDentro}%` : "100%";
+        barra.append(seg);
+      }
+    } else {
+      barra.classList.add("icg-sla-barra--vazia");
+    }
+
+    // Pedido do usuário: o percentual deve aparecer DENTRO da barra (não
+    // mais acima dela) — sobreposto aos segmentos verde/vermelho.
+    const valorEl = document.createElement("div");
+    valorEl.className = "icg-sla-barra-valor";
+    valorEl.textContent = `${percentualDentro}%`;
+    barra.append(valorEl);
+
+    // Dentro/Fora do prazo também no hover da barra (pedido explícito do
+    // usuário), além da legenda estática abaixo.
+    const tooltipSla = [`Dentro do prazo: ${dentro}`, `Fora do prazo: ${fora}`];
+    barra.addEventListener("mouseenter", () => {
+      cancelHoverPopoverHide();
+      showParetoPopover(barra, tooltipSla);
+    });
+    barra.addEventListener("mouseleave", scheduleHoverPopoverHide);
+
+    // Trilha que envolve a barra (overflow visível, pro rótulo da meta
+    // poder ficar acima sem ser cortado) — a barra em si continua com
+    // overflow escondido, só pra manter o corte arredondado dos 2
+    // segmentos dentro/fora (mesmo mecanismo do "icg-abertos-barra", ver
+    // construirIcgAbertosBarra). Meta fixa (pedido do usuário: "marcar o
+    // baseline no SLA como 95%").
+    const trilha = document.createElement("div");
+    trilha.className = "icg-sla-barra-trilha";
+    trilha.append(barra);
+
+    const marca = document.createElement("div");
+    marca.className = "icg-sla-barra-marca";
+    marca.style.left = `${ICG_SLA_META_PERCENTUAL}%`;
+    const marcaLabel = document.createElement("span");
+    marcaLabel.className = "icg-sla-barra-marca-label";
+    marcaLabel.textContent = `Meta ${ICG_SLA_META_PERCENTUAL}%`;
+    marca.append(marcaLabel);
+    trilha.append(marca);
+
+    wrap.append(trilha);
+
+    return wrap;
+  }
+
+  // Baselines do "Índice de chamados abertos" — confirmado com o
+  // usuário: é o volume de chamados CRIADOS no Solar no mês atual (não o
+  // total hoje em aberto), mesmos valores de CRIADOS_RESOLVIDOS_BASELINES
+  // (gráfico "Criados x Resolvidos" da home).
+  const ICG_ABERTOS_BASELINE_MIN = 1530;
+  const ICG_ABERTOS_BASELINE_MAX = 1870;
+
+  // Escala fixa da barra (0 a 2000) — pedido explícito do usuário
+  // ("quero manter o contorno da linha de 0 a 2000"): as marcações de
+  // baseline ficam sempre na mesma posição mês a mês, em vez de escorregar
+  // numa escala recalculada a cada "valor" (como era antes, com 15% de
+  // folga sobre o maior entre valor/baselineMax). Só cresce além de 2000
+  // se "valor" passar disso (pra nunca estourar 100% da barra).
+  const ICG_ABERTOS_ESCALA_MAX = 2000;
+
+  // Barra de "chamados abertos" (criados no mês), mesmo estilo visual da
+  // barra de SLA acima (valor grande em cima + pílula cheia) — pedido do
+  // usuário ("deixe nesse estilo"). Diferente da de SLA (2 segmentos
+  // dentro/fora somando 100%), aqui é 1 valor só comparado a uma META em
+  // FAIXA: a barra preenche até "valor" (verde se estiver dentro de
+  // [baselineMin, baselineMax], vermelha se estiver fora, pra qualquer
+  // lado) numa escala FIXA (ICG_ABERTOS_ESCALA_MAX), e as 2 marcações
+  // verticais tracejadas mostram onde a faixa de meta fica nessa escala
+  // ("mantendo o baseline demarcado na linha" — pedido explícito do
+  // usuário).
+  function construirIcgAbertosBarra(valor, baselineMin, baselineMax) {
+    const maior = Math.max(valor, ICG_ABERTOS_ESCALA_MAX);
+    const pct = (v) => Math.min(100, (v / maior) * 100);
+    const dentroDaMeta = valor >= baselineMin && valor <= baselineMax;
+
+    const wrap = document.createElement("div");
+    wrap.className = "icg-sla-barra-wrap";
+
+    const barra = document.createElement("div");
+    barra.className = "icg-abertos-barra";
+
+    const fill = document.createElement("div");
+    fill.className = `icg-abertos-barra-fill ${dentroDaMeta ? "icg-abertos-barra-fill--dentro" : "icg-abertos-barra-fill--fora"}`;
+    fill.style.width = `${pct(valor)}%`;
+    barra.append(fill);
+
+    [
+      { v: baselineMin, rotulo: String(baselineMin) },
+      { v: baselineMax, rotulo: String(baselineMax) },
+    ].forEach(({ v, rotulo }) => {
+      const marca = document.createElement("div");
+      marca.className = "icg-abertos-barra-marca";
+      marca.style.left = `${pct(v)}%`;
+      const label = document.createElement("span");
+      label.className = "icg-abertos-barra-marca-label";
+      label.textContent = rotulo;
+      marca.append(label);
+      barra.append(marca);
+    });
+
+    // Pedido do usuário: o valor deve aparecer DENTRO da barra (não mais
+    // acima dela), mesmo tratamento já aplicado à barra de SLA.
+    const valorEl = document.createElement("div");
+    valorEl.className = "icg-sla-barra-valor";
+    valorEl.textContent = valor.toLocaleString("pt-BR");
+    barra.append(valorEl);
+
+    wrap.append(barra);
+
+    return wrap;
+  }
+
+  // Barra comparativa (cinza esmaecido), abaixo da barra principal de SLA
+  // e da de "chamados abertos" — período de mesma duração, imediatamente
+  // anterior ao selecionado no filtro "De"/"até" (ver
+  // _cache_material_icg_dados no backend). "pct" já vem calculado por
+  // quem chama, na MESMA escala da barra principal acima dela, pra ficar
+  // visualmente alinhada. "rotuloPeriodo" é o texto da legenda (datas do
+  // período anterior, já formatado por quem chama). "marcas" (opcional):
+  // mesmo baseline da barra principal acima dela (ver
+  // construirIcgSlaBarra/construirIcgAbertosBarra), marcado também na
+  // barra cinza — pedido explícito do usuário. "tooltip" (opcional): texto
+  // mostrado no hover da barra (pedido explícito do usuário — "tanto
+  // para o período atual quanto para o inferior"), mesmo mecanismo do
+  // hover da barra principal.
+  function construirIcgComparativoBarra(valorTexto, pct, rotuloPeriodo, marcas, tooltip) {
+    const wrap = document.createElement("div");
+    wrap.className = "icg-comparativo-wrap";
+
+    // Legenda (sem o valor — ele agora vai dentro da barra, igual à
+    // principal) — abaixo da barra, alinhada à esquerda (pedido explícito
+    // do usuário).
+    const legenda = document.createElement("div");
+    legenda.className = "icg-comparativo-legenda";
+    legenda.textContent = rotuloPeriodo;
+
+    // Mesmo modelo visual da barra principal (valor centralizado dentro
+    // dela) — só em cinza esmaecido em vez de verde/vermelho (pedido
+    // explícito do usuário).
+    const barra = document.createElement("div");
+    barra.className = "icg-comparativo-barra";
+    const fill = document.createElement("div");
+    fill.className = "icg-comparativo-barra-fill";
+    fill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+    barra.append(fill);
+
+    const valorEl = document.createElement("div");
+    valorEl.className = "icg-comparativo-barra-valor";
+    valorEl.textContent = valorTexto;
+    barra.append(valorEl);
+
+    if (tooltip) {
+      barra.addEventListener("mouseenter", () => {
+        cancelHoverPopoverHide();
+        showParetoPopover(barra, tooltip);
+      });
+      barra.addEventListener("mouseleave", scheduleHoverPopoverHide);
+    }
+
+    // Trilha com overflow visível, pro rótulo da marca poder ficar acima
+    // sem ser cortado (mesmo mecanismo da barra principal) — a barra em
+    // si continua com overflow escondido, só pro preenchimento.
+    const trilha = document.createElement("div");
+    trilha.className = "icg-comparativo-trilha";
+    trilha.append(barra);
+
+    (marcas || []).forEach(({ pct: marcaPct, rotulo }) => {
+      const marca = document.createElement("div");
+      marca.className = "icg-sla-barra-marca";
+      marca.style.left = `${marcaPct}%`;
+      const label = document.createElement("span");
+      label.className = "icg-sla-barra-marca-label";
+      label.textContent = rotulo;
+      marca.append(label);
+      trilha.append(marca);
+    });
+
+    wrap.append(trilha);
+    wrap.append(legenda);
+
+    return wrap;
+  }
+
+  // Tabela de variação (pedido explícito do usuário), ao lado da barra —
+  // 1 linha por categoria: quadrado colorido (mesma cor já usada na
+  // legenda/barra daquela categoria) + seta (verde pra cima quando o
+  // valor atual é maior que o do período anterior/cinza, vermelha pra
+  // baixo quando é menor) + percentual de variação com sinal + diferença
+  // em contagem (atual - anterior, com sinal — pedido explícito do
+  // usuário, coluna a mais). "linhas": [{cor, rotulo, atual, anterior}].
+  // Sem "anterior" (0 ou ausente, ex.: sem comparativa ainda) a seta/%
+  // saem neutras ("—") — não dá pra calcular variação percentual sobre
+  // uma base zero; a diferença em contagem não tem essa limitação (é só
+  // subtração), então continua aparecendo mesmo nesse caso.
+  function construirIcgVariacaoTabela(linhas) {
+    const tabela = document.createElement("div");
+    tabela.className = "icg-variacao-tabela";
+
+    linhas.forEach(({ cor, rotulo, atual, anterior }) => {
+      const linha = document.createElement("div");
+      linha.className = "icg-variacao-linha";
+
+      const categoria = document.createElement("span");
+      categoria.className = "icg-variacao-categoria";
+      const dot = document.createElement("span");
+      dot.className = "icg-variacao-dot";
+      dot.style.background = cor;
+      categoria.append(dot, document.createTextNode(rotulo));
+
+      const seta = document.createElement("span");
+      const pctEl = document.createElement("span");
+      pctEl.className = "icg-variacao-pct";
+
+      if (!anterior) {
+        seta.className = "icg-variacao-seta icg-variacao-seta--neutro";
+        seta.textContent = "—";
+        pctEl.textContent = "—";
+      } else {
+        const variacao = Math.round(((atual - anterior) / anterior) * 1000) / 10;
+        const subiu = variacao >= 0;
+        seta.className = `icg-variacao-seta ${subiu ? "icg-variacao-seta--up" : "icg-variacao-seta--down"}`;
+        seta.textContent = subiu ? "▲" : "▼";
+        pctEl.textContent = `${subiu ? "+" : ""}${variacao}%`;
+      }
+
+      const diferenca = atual - (anterior || 0);
+      const diferencaEl = document.createElement("span");
+      diferencaEl.className = "icg-variacao-diferenca";
+      diferencaEl.textContent = `${diferenca > 0 ? "+" : ""}${diferenca.toLocaleString("pt-BR")}`;
+
+      // Hover com o comparativo (pedido explícito do usuário): Atual /
+      // Passado / Diferença (em contagem e %).
+      const diferencaPct = anterior ? `${Math.round(((atual - anterior) / anterior) * 1000) / 10}%` : "—";
+      const tooltip = [
+        `Atual: ${atual}`,
+        `Passado: ${anterior || 0}`,
+        `Diferença: ${diferenca > 0 ? "+" : ""}${diferenca} (${diferencaPct})`,
+      ];
+      linha.addEventListener("mouseenter", () => {
+        cancelHoverPopoverHide();
+        showParetoPopover(linha, tooltip);
+      });
+      linha.addEventListener("mouseleave", scheduleHoverPopoverHide);
+
+      linha.append(categoria, seta, pctEl, diferencaEl);
+      tabela.append(linha);
+    });
+
+    return tabela;
+  }
+
+  // Tabela da média dos últimos 3 meses (pedido explícito do usuário:
+  // "quero que apareça abaixo [da tabela de variação] em uma tabela
+  // nova") — mesmo contorno/bordas de ".icg-variacao-tabela", só que
+  // sem seta/dot (não é uma comparação direta, é a média de 3 períodos).
+  // "linhas": [{rotulo, valorTexto}].
+  function construirIcgMediaTabela(linhas) {
+    const tabela = document.createElement("div");
+    tabela.className = "icg-variacao-tabela icg-media-tabela";
+
+    linhas.forEach(({ rotulo, valorTexto }) => {
+      const linha = document.createElement("div");
+      linha.className = "icg-variacao-linha";
+
+      const rotuloEl = document.createElement("span");
+      rotuloEl.className = "icg-media-tabela-rotulo";
+      rotuloEl.textContent = rotulo;
+
+      const valorEl = document.createElement("span");
+      valorEl.className = "icg-media-tabela-valor";
+      valorEl.textContent = valorTexto;
+
+      linha.append(rotuloEl, valorEl);
+      tabela.append(linha);
+    });
+
+    return tabela;
+  }
+
+  const ICG_ATENDIMENTO_CORES = { criados: "#c23b43", resolvidos: "#1f9e73" };
+
+  // Base comum dos 2 gráficos de atendimento (diário e mensal): checa o
+  // Plotly e cria o elemento dentro de "container".
+  function icgAtendimentoCriarGrafico(container) {
+    container.innerHTML = "";
+    if (typeof Plotly === "undefined") {
+      const aviso = document.createElement("p");
+      aviso.className = "hint";
+      aviso.textContent = "Não foi possível carregar a biblioteca de gráficos (Plotly) — verifique a conexão.";
+      container.append(aviso);
+      return null;
+    }
+    const grafico = document.createElement("div");
+    grafico.className = "icg-atendimento-plot";
+    container.append(grafico);
+    return grafico;
+  }
+
+  // Tema escuro + interação limitada (pedido do usuário: "o gráfico está
+  // muito livre"): zoom/pan só no eixo X (Y fixo de 0 até o maior valor +
+  // folga), sem sair do período dos dados, sem zoom pela roda do mouse
+  // (não sequestra o scroll da página). "xaxisExtra" completa o eixo X de
+  // cada gráfico (formato de data/rótulos).
+  function icgAtendimentoLayout(maiorValor, xMin, xMax, xaxisExtra, annotations) {
+    const corTexto = "#eef1f6";
+    const corMuted = "#8993a6";
+    const corGrade = "#262e3c";
+    const eixoBase = {
+      gridcolor: corGrade,
+      linecolor: corMuted,
+      mirror: true,
+      showline: true,
+      ticks: "outside",
+      tickcolor: corMuted,
+      tickfont: { color: corMuted },
+    };
+    return {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      font: { color: corTexto, size: 12 },
+      margin: { l: 56, r: 16, t: 10, b: 40 },
+      height: 340,
+      hovermode: "x unified",
+      dragmode: "zoom",
+      // Caixa do hover no tema escuro do app — o padrão (fundo branco com
+      // o texto claro herdado de "font") ficava ilegível.
+      hoverlabel: { bgcolor: "#1b212c", bordercolor: corGrade, font: { color: corTexto, size: 12 } },
+      xaxis: { ...eixoBase, type: "date", range: [xMin, xMax], minallowed: xMin, maxallowed: xMax, ...xaxisExtra },
+      yaxis: { ...eixoBase, range: [0, Math.max(1, maiorValor) * 1.1], fixedrange: true, zeroline: false },
+      legend: { orientation: "h", x: 0.5, xanchor: "center", y: -0.18, font: { color: corTexto } },
+      annotations: annotations || [],
+    };
+  }
+
+  function icgAtendimentoConfig(nomeArquivo) {
+    return {
+      responsive: true,
+      scrollZoom: false,
+      displaylogo: false,
+      modeBarButtons: [["zoom2d", "pan2d", "zoomIn2d", "zoomOut2d", "resetScale2d", "toImage"]],
+      toImageButtonOptions: { filename: nomeArquivo, format: "png" },
+    };
+  }
+
+  function icgAtendimentoSerie(chave, nome, x, y) {
+    return {
+      type: "scatter",
+      mode: "lines+markers",
+      name: nome,
+      legendgroup: chave,
+      x,
+      y,
+      line: { color: ICG_ATENDIMENTO_CORES[chave], width: 2 },
+      marker: { color: ICG_ATENDIMENTO_CORES[chave], size: 5 },
+      hovertemplate: `${nome}: %{y}<extra></extra>`,
+    };
+  }
+
+  // "Atendimento diário" (pedido explícito do usuário) — 2ª página do
+  // carrossel de Material ICG: gráfico de LINHA, 1 ponto por dia do
+  // período selecionado ("dados.atendimento_diario.serie"), com 2 séries
+  // (Criados/Resolvidos) + 1 baseline tracejado por série (média diária
+  // dos últimos 3 meses, já calculada pro grupo selecionado no seletor
+  // Tudo/N1/N2/PROD). Desenhado com Plotly (pedido: "estilo matplotlib,
+  // que permita interação") — toolbar com zoom por caixa, pan, zoom +/-,
+  // voltar ao início e salvar PNG (só no eixo X, dentro do período);
+  // clicar na legenda liga/desliga a série e duplo clique isola (realce).
+  function renderizarIcgAtendimentoDiarioChart(container, serieDiaria, baselineCriados, baselineResolvidos) {
+    const grafico = icgAtendimentoCriarGrafico(container);
+    if (!grafico) return;
+
+    const datas = serieDiaria.map((d) => d.data);
+    const primeiraData = datas[0];
+    const ultimaData = datas[datas.length - 1];
+
+    // Baseline como traço próprio (não "shape"), pra entrar na legenda e
+    // ligar/desligar junto com a série dela (mesmo "legendgroup").
+    function baseline(chave, nome, valor) {
+      return {
+        type: "scatter",
+        mode: "lines",
+        name: `Baseline ${nome} (${valor.toLocaleString("pt-BR")}/dia)`,
+        legendgroup: chave,
+        x: [primeiraData, ultimaData],
+        y: [valor, valor],
+        line: { color: ICG_ATENDIMENTO_CORES[chave], width: 1.5, dash: "dash" },
+        opacity: 0.75,
+        hoverinfo: "skip",
+      };
+    }
+
+    const traces = [
+      icgAtendimentoSerie("criados", "Criados", datas, serieDiaria.map((d) => d.criados)),
+      icgAtendimentoSerie("resolvidos", "Resolvidos", datas, serieDiaria.map((d) => d.resolvidos)),
+      baseline("criados", "criados", baselineCriados),
+      baseline("resolvidos", "resolvidos", baselineResolvidos),
+    ];
+
+    // Valor do baseline à esquerda da linha tracejada (pedido explícito
+    // do usuário), na cor da série.
+    const anotacoesBaseline = [
+      ["criados", baselineCriados],
+      ["resolvidos", baselineResolvidos],
+    ].map(([chave, valor]) => ({
+      xref: "paper",
+      x: 0,
+      xanchor: "right",
+      xshift: -4,
+      y: valor,
+      yref: "y",
+      text: valor.toLocaleString("pt-BR"),
+      showarrow: false,
+      font: { color: ICG_ATENDIMENTO_CORES[chave], size: 11 },
+    }));
+
+    const maiorValor = Math.max(baselineCriados, baselineResolvidos, ...serieDiaria.flatMap((d) => [d.criados, d.resolvidos]));
+    const layout = icgAtendimentoLayout(
+      maiorValor,
+      primeiraData,
+      ultimaData,
+      { tickformat: "%d/%m", hoverformat: "%d/%m/%Y" },
+      anotacoesBaseline
+    );
+
+    Plotly.newPlot(grafico, traces, layout, icgAtendimentoConfig("atendimento-diario"));
+
+    // Número do baseline (anotação à esquerda) acompanha o filtro da
+    // legenda (pedido explícito do usuário): anotação não some sozinha
+    // quando o traço é desligado/isolado, então espelha a visibilidade do
+    // traço de baseline da mesma série (índices 2 e 3 em "traces", mesma
+    // ordem das anotações).
+    grafico.on("plotly_restyle", () => {
+      const visivel = (indiceTrace) => {
+        const v = grafico.data[indiceTrace].visible;
+        return v === undefined || v === true;
+      };
+      Plotly.relayout(grafico, {
+        "annotations[0].visible": visivel(2),
+        "annotations[1].visible": visivel(3),
+      });
+    });
+  }
+
+  // "Atendimento mensal" — mesmo gráfico, quando o filtro da tela é "Ano"
+  // (pedido explícito do usuário): 1 ponto por mês, e o baseline também
+  // mês a mês (cada ponto = média dos 3 meses anteriores àquele mês, já
+  // calculada no backend — "baseline_criados"/"baseline_resolvidos" de
+  // cada item; null quando não há mês anterior no cache, e a linha
+  // tracejada só começa onde há valor). Rótulos de mês montados aqui
+  // ("Jan 2026"...) pra ficarem em pt-BR (o Plotly só tem inglês).
+  function renderizarIcgAtendimentoMensalChart(container, serieMensal) {
+    const grafico = icgAtendimentoCriarGrafico(container);
+    if (!grafico) return;
+
+    const meses = serieMensal.map((m) => m.data);
+    const rotulos = meses.map((data) => formatarMesAno(data.slice(0, 7)));
+
+    function baselineMensal(chave, nome) {
+      return {
+        type: "scatter",
+        mode: "lines+markers",
+        name: `Baseline ${nome} (média 3 meses anteriores)`,
+        legendgroup: chave,
+        x: meses,
+        y: serieMensal.map((m) => m[`baseline_${chave}`]),
+        line: { color: ICG_ATENDIMENTO_CORES[chave], width: 1.5, dash: "dash" },
+        marker: { color: ICG_ATENDIMENTO_CORES[chave], size: 4, symbol: "circle-open" },
+        opacity: 0.75,
+        connectgaps: false,
+        hovertemplate: `Baseline ${nome}: %{y}<extra></extra>`,
+      };
+    }
+
+    const traces = [
+      icgAtendimentoSerie("criados", "Criados", meses, serieMensal.map((m) => m.criados)),
+      icgAtendimentoSerie("resolvidos", "Resolvidos", meses, serieMensal.map((m) => m.resolvidos)),
+      baselineMensal("criados", "criados"),
+      baselineMensal("resolvidos", "resolvidos"),
+    ];
+
+    const valores = serieMensal.flatMap((m) => [m.criados, m.resolvidos, m.baseline_criados || 0, m.baseline_resolvidos || 0]);
+    // Folga de meio mês nas pontas, pros 1º/último pontos não ficarem
+    // colados nas bordas do gráfico.
+    const xMin = new Date(new Date(meses[0]).getTime() - 15 * 86400000).toISOString().slice(0, 10);
+    const xMax = new Date(new Date(meses[meses.length - 1]).getTime() + 15 * 86400000).toISOString().slice(0, 10);
+    const layout = icgAtendimentoLayout(Math.max(...valores), xMin, xMax, {
+      tickmode: "array",
+      tickvals: meses,
+      ticktext: rotulos,
+      hoverformat: "%m/%Y",
+    });
+
+    Plotly.newPlot(grafico, traces, layout, icgAtendimentoConfig("atendimento-mensal"));
+  }
+
+  // "Índice de reabertura" — pedido explícito do usuário: diferente das
+  // 2 pílulas acima, aqui é um gráfico de BARRA VERTICAL (3 barras do mês
+  // atual: Criados em vermelho, Encerrados em verde — Resolvido e
+  // Encerrado juntos, CACHE_STATUS_RESOLVIDOS — e Reabertura em
+  // amarelo). Reaproveita o eixo/grade/legenda do "Criados x Resolvidos"
+  // (mesmas classes home-sla-chart-*), sem baseline (não faz sentido
+  // pra essa combinação — a própria altura pequena da barra de
+  // Reabertura, bem menor que as outras 2, já comunica visualmente o
+  // índice baixo).
+  // "comparativo" (opcional): {criados, resolvidos, reabertos} do
+  // período anterior — pedido explícito do usuário: mesma barra cinza de
+  // comparação das 2 pílulas acima, só que à DIREITA do gráfico existente
+  // (2ª coluna de barras, não embaixo — aqui já é um gráfico de barras
+  // verticais, embaixo não faz sentido).
+  function construirIcgReaberturaChart(criados, resolvidos, reabertos, comparativo) {
+    const valoresComparativo = comparativo ? [comparativo.criados, comparativo.resolvidos, comparativo.reabertos] : [];
+    const maior = Math.max(1, criados, resolvidos, reabertos, ...valoresComparativo);
+    // "--grande" (ver classe abaixo) aumenta a altura fixa de
+    // ".home-sla-chart-bars"/".home-sla-chart-par" em style.css, então
+    // esse alturaMax maior não corta mais o rótulo da barra mais alta
+    // (era exatamente esse descompasso que cortava o "707" antes).
+    const alturaMax = 200;
+
+    const wrap = document.createElement("div");
+    // "--grande": barras mais largas + fontes maiores (pedido do
+    // usuário: "aumente o tamanho"); ".home-sla-chart-bars" também ganha
+    // "justify-content: center" só nessa variante, pra centralizar a
+    // única coluna de barras em vez dela ficar colada à esquerda com um
+    // vão vazio sobrando (pedido: "centralize") — não mexe no gráfico
+    // padrão de vários meses da home (que preenche/rola a largura toda).
+    wrap.className = "home-sla-chart-inner home-sla-chart-inner--grande";
+
+    const plot = document.createElement("div");
+    plot.className = "home-sla-chart-plot";
+
+    // Sem eixo (números/traços à esquerda) nem grade de fundo — pedido
+    // explícito do usuário ("remover"): só as barras, com o valor direto
+    // em cima de cada uma.
+    const bars = document.createElement("div");
+    bars.className = "home-sla-chart-bars";
+
+    // Reaproveitado pra montar o grupo de 3 barras do mês atual (cores) e
+    // o grupo comparativo (cinza) — "cinza" quando true troca a cor por
+    // tipo por 3 tons de cinza diferentes (1 por tipo, pedido explícito
+    // do usuário), em vez da mesma cor nas 3 barras.
+    function construirTrio(valores, cinza, sufixoTooltip) {
+      const trio = document.createElement("div");
+      trio.className = "home-sla-chart-par";
+      [
+        ["criados", "Criados", valores[0]],
+        ["resolvidos", "Encerrados", valores[1]],
+        ["reabertos", "Reabertura", valores[2]],
+      ].forEach(([tipo, rotuloTipo, valor]) => {
+        const bar = document.createElement("div");
+        bar.className = cinza
+          ? `home-sla-chart-bar home-sla-chart-bar--comparativo-${tipo}`
+          : `home-sla-chart-bar home-sla-chart-bar--${tipo}`;
+        bar.style.height = `${Math.max((valor / maior) * alturaMax, valor ? 2 : 0)}px`;
+
+        const rotuloValor = document.createElement("span");
+        rotuloValor.className = "home-sla-chart-bar-valor";
+        rotuloValor.textContent = valor.toLocaleString("pt-BR");
+        bar.append(rotuloValor);
+
+        const tooltip = `${rotuloTipo}${sufixoTooltip || ""}: ${valor}`;
+        bar.addEventListener("mouseenter", () => {
+          cancelHoverPopoverHide();
+          showParetoPopover(bar, tooltip);
+        });
+        bar.addEventListener("mouseleave", scheduleHoverPopoverHide);
+
+        trio.append(bar);
+      });
+      return trio;
+    }
+
+    const col = document.createElement("div");
+    col.className = "home-sla-chart-col";
+    col.append(construirTrio([criados, resolvidos, reabertos], false, ""));
+    bars.append(col);
+
+    if (comparativo) {
+      const colComparativo = document.createElement("div");
+      colComparativo.className = "home-sla-chart-col home-sla-chart-col--comparativo";
+      colComparativo.append(
+        construirTrio(
+          [comparativo.criados, comparativo.resolvidos, comparativo.reabertos],
+          true,
+          " (mês anterior)"
+        )
+      );
+      bars.append(colComparativo);
+    }
+
+    plot.append(bars);
+    wrap.append(plot);
+    return wrap;
+  }
+
+  // Modo "Mês" do filtro (pedido explícito do usuário, como alternativa
+  // ao "Personalizado" De/até) — converte o mês escolhido num intervalo
+  // De/até: dia 1 até o último dia do mês, ou até HOJE se o mês escolhido
+  // for o corrente (ainda em andamento — o cache não tem dia futuro).
+  function mesParaIntervalo(mesIso) {
+    const [ano, mes] = mesIso.split("-").map(Number);
+    const hoje = new Date();
+    const ehMesCorrente = ano === hoje.getFullYear() && mes === hoje.getMonth() + 1;
+    const inicio = `${mesIso}-01`;
+    if (ehMesCorrente) {
+      return { inicio, fim: `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}` };
+    }
+    const ultimoDia = new Date(ano, mes, 0).getDate();
+    return { inicio, fim: `${mesIso}-${String(ultimoDia).padStart(2, "0")}` };
+  }
+
+  // Modo "Ano" do filtro (pedido explícito do usuário): anos a partir de
+  // 2026 (início do cache) até o ano atual; intervalo = ano inteiro, ou
+  // até hoje se for o ano corrente. Nesse modo o gráfico da página 2 vira
+  // 1 ponto por mês (granularidade "mes" no backend).
+  const MATERIAL_ICG_ANO_INICIAL = 2026;
+
+  function materialIcgAnosDisponiveis() {
+    const anoAtual = new Date().getFullYear();
+    const anos = [];
+    for (let ano = MATERIAL_ICG_ANO_INICIAL; ano <= Math.max(anoAtual, MATERIAL_ICG_ANO_INICIAL); ano += 1) anos.push(ano);
+    return anos;
+  }
+
+  function anoParaIntervalo(ano) {
+    const hoje = new Date();
+    if (Number(ano) === hoje.getFullYear()) {
+      const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+      return { inicio: `${ano}-01-01`, fim: hojeIso };
+    }
+    return { inicio: `${ano}-01-01`, fim: `${ano}-12-31` };
+  }
+
+  function materialIcgAtualizarVisibilidadeFiltro() {
+    const modo = $("material-icg-filtro-tipo").value;
+    $("material-icg-filtro-mes-wrap").classList.toggle("hidden", modo !== "mes");
+    $("material-icg-filtro-ano-wrap").classList.toggle("hidden", modo !== "ano");
+    $("material-icg-filtro-personalizado-wrap").classList.toggle("hidden", modo !== "personalizado");
+  }
+
+  async function carregarMaterialIcg() {
+    const statusEl = $("material-icg-status");
+    statusEl.classList.add("is-loading");
+    statusEl.textContent = "Carregando...";
+
+    const hoje = new Date();
+    const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+    const inicioMesIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-01`;
+    const mesAtualReal = hojeIso.slice(0, 7);
+
+    materialIcgAtualizarVisibilidadeFiltro();
+
+    // Filtro "De"/"até" do modo Personalizado: só define o padrão (dia 1
+    // do mês atual até hoje) na 1ª carga, nunca sobrescreve o que o
+    // usuário já escolheu.
+    const inicioEl = $("material-icg-input-inicio");
+    const fimEl = $("material-icg-input-fim");
+    if (!inicioEl.value) inicioEl.value = inicioMesIso;
+    if (!fimEl.value) fimEl.value = hojeIso;
+
+    // Intervalo efetivo da consulta: modo "Mês" converte o mês
+    // selecionado (ou o mês atual real, na 1ª carga) num De/até; modo
+    // "Personalizado" usa os inputs direto.
+    const modoFiltro = $("material-icg-filtro-tipo").value;
+    const mesSelectEl = $("material-icg-mes-select");
+
+    const anoSelectEl = $("material-icg-ano-select");
+    if (!anoSelectEl.options.length) {
+      materialIcgAnosDisponiveis().forEach((ano) => {
+        const option = document.createElement("option");
+        option.value = String(ano);
+        option.textContent = String(ano);
+        anoSelectEl.append(option);
+      });
+      anoSelectEl.value = String(Math.max(MATERIAL_ICG_ANO_INICIAL, hoje.getFullYear()));
+    }
+
+    let intervalo;
+    if (modoFiltro === "mes") intervalo = mesParaIntervalo(mesSelectEl.value || mesAtualReal);
+    else if (modoFiltro === "ano") intervalo = anoParaIntervalo(anoSelectEl.value);
+    else intervalo = { inicio: inicioEl.value, fim: fimEl.value };
+    const granularidade = modoFiltro === "ano" ? "mes" : "dia";
+
+    // FCA's (lista de dias de apresentação, SQLite) — independente dos
+    // filtros de período/grupo dos gráficos acima.
+    carregarIcgFcas();
+
+    const erros = [];
+
+    // Os 3 gráficos (SLA/Abertos/Reabertura) + a comparativa (mesma
+    // duração, período imediatamente anterior) são 100% cache local (sem
+    // Jira ao vivo — tag "Cacheado" na tela), e saem TODOS de 1 fetch só:
+    // /api/material-icg/dados faz 1 único scan da pasta de cache (antes
+    // eram 3 scans separados, 1 por endpoint).
+    let dados = null;
+    try {
+      const resp = await apiCall("/api/material-icg/dados", {
+        inicio: intervalo.inicio,
+        fim: intervalo.fim,
+        grupos_linha: materialIcgGruposLinha(),
+        grupos_indicadores: materialIcgGruposIndicadores(),
+        granularidade,
+      });
+      const data = await resp.json();
+      if (resp.ok) dados = data;
+      else erros.push(data.error || "Erro ao carregar o Material ICG.");
+    } catch (e) {
+      erros.push("Não foi possível conectar ao servidor (Material ICG).");
+    }
+
+    // Seletor "Mês": meses com dado no cache (vem de graça na resposta
+    // acima, sem scan extra). Mantém a seleção anterior do usuário ao
+    // recarregar. Se a 1ª consulta usou um mês diferente do que acaba
+    // sendo selecionado aqui (ex.: 1ª carga, select ainda vazio, caiu no
+    // mês atual real por padrão, mas o usuário tinha um mês diferente
+    // selecionado antes de uma troca de modo), refaz só esse fetch.
+    const mesesDisponiveis = dados?.meses_disponiveis || [];
+    const mesSelecaoAnterior = mesSelectEl.value;
+    mesSelectEl.innerHTML = "";
+    mesesDisponiveis.forEach((mes) => {
+      const option = document.createElement("option");
+      option.value = mes;
+      option.textContent = formatarMesAno(mes);
+      mesSelectEl.append(option);
+    });
+    if (mesesDisponiveis.includes(mesSelecaoAnterior)) {
+      mesSelectEl.value = mesSelecaoAnterior;
+    } else if (mesesDisponiveis.includes(mesAtualReal)) {
+      mesSelectEl.value = mesAtualReal;
+    } else if (mesesDisponiveis.length) {
+      mesSelectEl.value = mesesDisponiveis[mesesDisponiveis.length - 1];
+    }
+    if (modoFiltro === "mes" && mesSelectEl.value && mesSelectEl.value !== (mesSelecaoAnterior || mesAtualReal)) {
+      intervalo = mesParaIntervalo(mesSelectEl.value);
+      try {
+        const resp = await apiCall("/api/material-icg/dados", {
+          inicio: intervalo.inicio,
+          fim: intervalo.fim,
+          grupos_linha: materialIcgGruposLinha(),
+          grupos_indicadores: materialIcgGruposIndicadores(),
+          granularidade,
+        });
+        const data = await resp.json();
+        if (resp.ok) dados = data;
+      } catch (e) {
+        // segue com os dados da 1ª consulta.
+      }
+    }
+
+    const comparativo = dados?.comparativo || null;
+    const media3Meses = dados?.media_3_meses || null;
+    const rotuloPeriodoAnterior = dados
+      ? `Período anterior (${formatarDataBR(dados.inicio_anterior)} a ${formatarDataBR(dados.fim_anterior)})`
+      : "";
+
+    if (dados) {
+      $("material-icg-sla-titulo").textContent = `SLA de ${formatarDataBR(dados.inicio)} a ${formatarDataBR(dados.fim)}`;
+      $("material-icg-abertos-titulo").textContent = `Índice de chamados abertos (criados de ${formatarDataBR(
+        dados.inicio
+      )} a ${formatarDataBR(dados.fim)})`;
+    }
+
+    const slaEl = $("material-icg-sla");
+    if (dados) {
+      slaEl.innerHTML = "";
+      if (dados.sla.dentro_prazo + dados.sla.fora_prazo > 0) {
+        const wrap = document.createElement("div");
+        wrap.className = "icg-barra-com-comparativo";
+        wrap.append(construirIcgSlaBarra(dados.sla.dentro_prazo, dados.sla.fora_prazo, dados.sla.percentual_dentro_prazo));
+        if (comparativo) {
+          wrap.append(
+            construirIcgComparativoBarra(
+              `${comparativo.sla.percentual_dentro_prazo}%`,
+              comparativo.sla.percentual_dentro_prazo,
+              rotuloPeriodoAnterior,
+              [{ pct: ICG_SLA_META_PERCENTUAL, rotulo: `Meta ${ICG_SLA_META_PERCENTUAL}%` }],
+              [`Dentro do prazo: ${comparativo.sla.dentro_prazo}`, `Fora do prazo: ${comparativo.sla.fora_prazo}`]
+            )
+          );
+        }
+        const linha = document.createElement("div");
+        linha.className = "icg-secao-com-variacao";
+        linha.append(wrap);
+
+        // Tabela de variação e tabela de média, empilhadas (pedido
+        // explícito do usuário: a média "aparece abaixo, em uma tabela
+        // nova"), as duas à direita do gráfico.
+        const tabelasDireita = document.createElement("div");
+        tabelasDireita.className = "icg-tabelas-direita";
+        if (comparativo) {
+          tabelasDireita.append(
+            construirIcgVariacaoTabela([
+              {
+                cor: "var(--success)",
+                rotulo: "Dentro do prazo",
+                atual: dados.sla.dentro_prazo,
+                anterior: comparativo.sla.dentro_prazo,
+              },
+              {
+                cor: "var(--danger)",
+                rotulo: "Fora do prazo",
+                atual: dados.sla.fora_prazo,
+                anterior: comparativo.sla.fora_prazo,
+              },
+            ])
+          );
+        }
+        if (media3Meses) {
+          tabelasDireita.append(
+            construirIcgMediaTabela([{ rotulo: "Média SLA (últimos 3 meses)", valorTexto: `${media3Meses.sla_percentual}%` }])
+          );
+        }
+        if (tabelasDireita.childElementCount) {
+          linha.append(tabelasDireita);
+        }
+
+        slaEl.append(linha);
+      } else {
+        const vazio = document.createElement("p");
+        vazio.className = "hint";
+        vazio.textContent = "Nenhum chamado resolvido nesse período no cache.";
+        slaEl.append(vazio);
+      }
+    }
+
+    const abertosEl = $("material-icg-abertos");
+    const reaberturaEl = $("material-icg-reabertura");
+    if (dados) {
+      abertosEl.innerHTML = "";
+      if (dados.abertos > 0 || (dados.reabertura && dados.reabertura.criados > 0)) {
+        // Mesmo estilo visual da barra de SLA (pedido do usuário:
+        // "deixe nesse estilo, mantendo o baseline demarcado na
+        // linha") — ver construirIcgAbertosBarra.
+        const wrap = document.createElement("div");
+        wrap.className = "icg-barra-com-comparativo";
+        wrap.append(construirIcgAbertosBarra(dados.abertos, ICG_ABERTOS_BASELINE_MIN, ICG_ABERTOS_BASELINE_MAX));
+        if (comparativo) {
+          // Mesma escala (0 a "maior") da barra principal acima dela
+          // (ver construirIcgAbertosBarra), pra ficar visualmente
+          // alinhada em vez de recalcular a própria escala.
+          const maior = Math.max(dados.abertos, ICG_ABERTOS_ESCALA_MAX);
+          const pctEscala = (v) => Math.min(100, (v / maior) * 100);
+          wrap.append(
+            construirIcgComparativoBarra(
+              comparativo.abertos.toLocaleString("pt-BR"),
+              pctEscala(comparativo.abertos),
+              rotuloPeriodoAnterior,
+              [
+                { pct: pctEscala(ICG_ABERTOS_BASELINE_MIN), rotulo: String(ICG_ABERTOS_BASELINE_MIN) },
+                { pct: pctEscala(ICG_ABERTOS_BASELINE_MAX), rotulo: String(ICG_ABERTOS_BASELINE_MAX) },
+              ]
+            )
+          );
+        }
+        const linha = document.createElement("div");
+        linha.className = "icg-secao-com-variacao";
+        linha.append(wrap);
+
+        const tabelasDireita = document.createElement("div");
+        tabelasDireita.className = "icg-tabelas-direita";
+        if (comparativo) {
+          tabelasDireita.append(
+            construirIcgVariacaoTabela([
+              { cor: "var(--sla-chart-criados)", rotulo: "Abertos", atual: dados.abertos, anterior: comparativo.abertos },
+            ])
+          );
+        }
+        if (media3Meses) {
+          tabelasDireita.append(
+            construirIcgMediaTabela([
+              { rotulo: "Média de abertos (últimos 3 meses)", valorTexto: media3Meses.abertos_media.toLocaleString("pt-BR") },
+            ])
+          );
+        }
+        if (tabelasDireita.childElementCount) {
+          linha.append(tabelasDireita);
+        }
+
+        abertosEl.append(linha);
+      } else {
+        const vazio = document.createElement("p");
+        vazio.className = "hint";
+        vazio.textContent = "Nenhum chamado criado nesse período no cache.";
+        abertosEl.append(vazio);
+      }
+
+      reaberturaEl.innerHTML = "";
+      if (dados.reabertura.criados > 0 || dados.reabertura.resolvidos > 0 || dados.reabertura.reabertos > 0) {
+        const wrap = document.createElement("div");
+        wrap.className = "icg-reabertura-wrap";
+
+        const linhaChart = document.createElement("div");
+        linhaChart.className = "icg-secao-com-variacao";
+        linhaChart.append(
+          construirIcgReaberturaChart(
+            dados.reabertura.criados,
+            dados.reabertura.resolvidos,
+            dados.reabertura.reabertos,
+            comparativo?.reabertura
+          )
+        );
+        const tabelasDireitaReabertura = document.createElement("div");
+        tabelasDireitaReabertura.className = "icg-tabelas-direita";
+        if (comparativo) {
+          tabelasDireitaReabertura.append(
+            construirIcgVariacaoTabela([
+              {
+                cor: "var(--sla-chart-criados)",
+                rotulo: "Criados",
+                atual: dados.reabertura.criados,
+                anterior: comparativo.reabertura.criados,
+              },
+              {
+                cor: "var(--sla-chart-resolvidos)",
+                rotulo: "Encerrados",
+                atual: dados.reabertura.resolvidos,
+                anterior: comparativo.reabertura.resolvidos,
+              },
+              {
+                cor: "var(--warning)",
+                rotulo: "Reabertura",
+                atual: dados.reabertura.reabertos,
+                anterior: comparativo.reabertura.reabertos,
+              },
+            ])
+          );
+        }
+        // Média do MESMO intervalo, nos últimos 3 meses (pedido explícito
+        // do usuário) — diferente da tabela de "mês anterior" acima: 2ª
+        // tabela, empilhada abaixo dela.
+        if (media3Meses) {
+          tabelasDireitaReabertura.append(
+            construirIcgMediaTabela([
+              {
+                rotulo: "Percentual de reabertura (média 3 meses)",
+                valorTexto: `${media3Meses.reabertura_percentual_media}%`,
+              },
+            ])
+          );
+        }
+        if (tabelasDireitaReabertura.childElementCount) {
+          linhaChart.append(tabelasDireitaReabertura);
+        }
+        wrap.append(linhaChart);
+
+        // 1 card por grupo (pedido explícito do usuário): período
+        // selecionado e, quando tem comparativa, o mesmo cálculo pro
+        // período anterior (reabertos / criados), lado a lado.
+        const cardsPercentual = document.createElement("div");
+        cardsPercentual.className = "icg-reabertura-cards-percentual";
+        const percentualAbertura = dados.reabertura.criados
+          ? Math.round((dados.reabertura.reabertos / dados.reabertura.criados) * 1000) / 10
+          : 0;
+        cardsPercentual.append(summaryCard(`${percentualAbertura}%`, "Percentual de reabertura", "tone-warning"));
+        if (comparativo) {
+          const percentualAberturaAnterior = comparativo.reabertura.criados
+            ? Math.round((comparativo.reabertura.reabertos / comparativo.reabertura.criados) * 1000) / 10
+            : 0;
+          cardsPercentual.append(
+            summaryCard(`${percentualAberturaAnterior}%`, "Percentual de reabertura (mês anterior)", "tone-neutral")
+          );
+        }
+        wrap.append(cardsPercentual);
+
+        reaberturaEl.append(wrap);
+      } else {
+        const vazio = document.createElement("p");
+        vazio.className = "hint";
+        vazio.textContent = "Nenhum chamado criado nesse período no cache.";
+        reaberturaEl.append(vazio);
+      }
+    }
+
+    // 2ª página do carrossel (pedido explícito do usuário): gráfico de
+    // linha, 1 ponto por dia do período selecionado, com baseline da
+    // média diária dos últimos 3 meses.
+    const atendimentoEl = $("material-icg-atendimento-diario");
+    if (dados) {
+      const atendimentoDiario = dados.atendimento_diario;
+      const porMes = atendimentoDiario && atendimentoDiario.granularidade === "mes";
+      $("material-icg-atendimento-titulo").textContent = `${porMes ? "Atendimento mensal" : "Atendimento diário"} — ${formatarDataBR(
+        dados.inicio
+      )} a ${formatarDataBR(dados.fim)}`;
+      atendimentoEl.innerHTML = "";
+      if (atendimentoDiario && atendimentoDiario.serie && atendimentoDiario.serie.length) {
+        if (porMes) {
+          renderizarIcgAtendimentoMensalChart(atendimentoEl, atendimentoDiario.serie);
+        } else {
+          renderizarIcgAtendimentoDiarioChart(
+            atendimentoEl,
+            atendimentoDiario.serie,
+            atendimentoDiario.baseline_criados,
+            atendimentoDiario.baseline_resolvidos
+          );
+        }
+      } else {
+        const vazio = document.createElement("p");
+        vazio.className = "hint";
+        vazio.textContent = "Nenhum chamado nesse período no cache.";
+        atendimentoEl.append(vazio);
+      }
+    }
+
+    statusEl.classList.remove("is-loading");
+    statusEl.textContent = erros.join(" ");
+  }
+
+  $("material-icg-ano-select").addEventListener("change", () => {
+    carregarMaterialIcg();
+  });
+
+  $("material-icg-filtro-tipo").addEventListener("change", () => {
+    materialIcgAtualizarVisibilidadeFiltro();
+    carregarMaterialIcg();
+  });
+
+  $("material-icg-mes-select").addEventListener("change", () => {
+    carregarMaterialIcg();
+  });
+
+  $("material-icg-input-inicio").addEventListener("change", () => {
+    carregarMaterialIcg();
+  });
+
+  $("material-icg-input-fim").addEventListener("change", () => {
+    carregarMaterialIcg();
+  });
+
+  $("btn-material-icg").addEventListener("click", () => {
+    closeAllDialogs();
+    $("material-icg-results").classList.remove("hidden");
+    carregarMaterialIcg();
+  });
+
+  $("btn-material-icg-recarregar").addEventListener("click", () => {
+    carregarMaterialIcg();
+  });
+
+  // Carrossel de Material ICG (pedido explícito do usuário) — mesmo
+  // mecanismo de atualizarParetoSubModalCarousel, instância própria.
+  let materialIcgCarouselIndex = 0;
+
+  function atualizarMaterialIcgCarousel() {
+    const track = $("material-icg-carousel-track");
+    const total = track.children.length;
+    track.style.transform = `translateX(-${materialIcgCarouselIndex * 100}%)`;
+    $("material-icg-carousel-prev").disabled = materialIcgCarouselIndex === 0;
+    $("material-icg-carousel-next").disabled = materialIcgCarouselIndex >= total - 1;
+    Array.from($("material-icg-carousel-dots").children).forEach((dot, i) => {
+      dot.classList.toggle("active", i === materialIcgCarouselIndex);
+    });
+    // Plotly mede o container ao desenhar — reajusta ao entrar na página
+    // do gráfico, caso a janela tenha mudado de tamanho nesse meio-tempo.
+    const plotAtendimento = track.querySelector(".icg-atendimento-plot");
+    if (plotAtendimento && typeof Plotly !== "undefined") Plotly.Plots.resize(plotAtendimento);
+  }
+
+  $("material-icg-carousel-prev").addEventListener("click", () => {
+    if (materialIcgCarouselIndex > 0) {
+      materialIcgCarouselIndex -= 1;
+      atualizarMaterialIcgCarousel();
+    }
+  });
+  $("material-icg-carousel-next").addEventListener("click", () => {
+    if (materialIcgCarouselIndex < $("material-icg-carousel-track").children.length - 1) {
+      materialIcgCarouselIndex += 1;
+      atualizarMaterialIcgCarousel();
+    }
+  });
+  Array.from($("material-icg-carousel-dots").children).forEach((dot, i) => {
+    dot.addEventListener("click", () => {
+      materialIcgCarouselIndex = i;
+      atualizarMaterialIcgCarousel();
+    });
+  });
+
+  // Seletor de grupo estilo Excel (pedido explícito do usuário) — usado
+  // 2x em Material ICG: página 1 (SLA/Abertos/Reabertura, padrão N1+N2) e
+  // "Atendimento diário" (padrão Tudo), cada um com estado próprio. Marca
+  // as caixas no painel e só aplica (refaz o fetch) no "Confirmar";
+  // "Cancelar" ou clicar fora descarta. "Tudo" é exclusivo com N1/N2/PROD
+  // e o painel nunca fica sem nada marcado. Envia pro backend como lista
+  // de chaves ("n1"/"n2"/"prod"/"tudo") — ver _resolver_grupos em
+  // api/index.py. Devolve uma função que lê o estado JÁ CONFIRMADO.
+  const MATERIAL_ICG_GRUPO_LABELS = { tudo: "Tudo", n1: "N1", n2: "N2", prod: "PROD" };
+
+  function configurarFiltroGrupoExcel(raiz, estadoInicial, aoConfirmar) {
+    let confirmado = [...estadoInicial];
+    const btn = raiz.querySelector(".icg-filtro-grupo-btn");
+    const label = raiz.querySelector(".icg-filtro-grupo-label");
+    const painel = raiz.querySelector(".icg-filtro-grupo-painel");
+    const checkboxes = Array.from(painel.querySelectorAll('input[type="checkbox"]'));
+    const tudoEl = checkboxes.find((cb) => cb.value === "tudo");
+
+    function normalizar(origem) {
+      if (origem === "tudo" && tudoEl.checked) {
+        checkboxes.forEach((cb) => {
+          if (cb !== tudoEl) cb.checked = false;
+        });
+      } else if (origem !== "tudo") {
+        tudoEl.checked = !checkboxes.some((cb) => cb.value !== "tudo" && cb.checked);
+      }
+      if (!checkboxes.some((cb) => cb.checked)) tudoEl.checked = true;
+    }
+
+    function abrir() {
+      // Reseta pro estado JÁ CONFIRMADO (descarta marcação não confirmada).
+      checkboxes.forEach((cb) => {
+        cb.checked = confirmado.includes(cb.value);
+      });
+      painel.classList.remove("hidden");
+    }
+
+    function fechar() {
+      painel.classList.add("hidden");
+    }
+
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (painel.classList.contains("hidden")) abrir();
+      else fechar();
+    });
+
+    painel.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const checkbox = event.target.closest('input[type="checkbox"]');
+      if (checkbox) normalizar(checkbox.value);
+    });
+
+    raiz.querySelector(".icg-filtro-grupo-cancelar").addEventListener("click", fechar);
+
+    raiz.querySelector(".icg-filtro-grupo-confirmar").addEventListener("click", () => {
+      const marcados = checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
+      confirmado = marcados.length ? marcados : ["tudo"];
+      label.textContent = confirmado.map((g) => MATERIAL_ICG_GRUPO_LABELS[g]).join(", ");
+      fechar();
+      aoConfirmar();
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!painel.classList.contains("hidden") && !raiz.contains(event.target)) fechar();
+    });
+
+    return () => confirmado;
+  }
+
+  const materialIcgGruposIndicadores = configurarFiltroGrupoExcel(
+    $("material-icg-filtro-grupo-indicadores"),
+    ["n1", "n2"],
+    () => carregarMaterialIcg()
+  );
+  const materialIcgGruposLinha = configurarFiltroGrupoExcel(
+    $("material-icg-filtro-grupo-linha"),
+    ["tudo"],
+    () => carregarMaterialIcg()
+  );
 
   // Mops Tv do Futuro separa "Categoria de Encerramento" em sub-blocos por
   // "APP"/"BOX" (tag no fim do nome da categoria, resolvida no backend —
   // ver _dividir_categorias_tv) em vez de uma lista só como Mops Solar;
   // "secao" chega como {app, box, outros?} nesse caso, em vez do formato
-  // "chato" {categorias, total_chamados, total_categorizados}. Usado tanto
-  // pela ação "Categorias de Encerramento" quanto pelo Report Vini.
+  // "chato" {categorias, total_chamados, total_categorizados}. Usado pelo
+  // Report Vini (TOP 5 CATEGORIAS DE ENCERRAMENTO).
   function buildCategoriaTableEl(titulo, secao) {
     if (secao.categorias) {
       const holder = document.createElement("div");

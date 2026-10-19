@@ -7,3 +7,11 @@ venv/
 build/
 dist/
 *.spec
+
+.vercel
+.env*
+
+# Ferramenta Caveman (plugin do Claude) — não faz parte do painel.
+.agents/
+Cavemen/
+skills-lock.json

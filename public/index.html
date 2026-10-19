@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Extração de Chamados Jira</title>
+  <link rel="icon" type="image/png" href="/logo_jira.png" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -64,50 +65,33 @@
           <span id="acoes-toggle-icon">▾</span>
         </button>
         <div class="actions-grid collapse open" id="acoes-grid">
-          <button id="btn-extracao-completa" class="nav-item" type="button">
-            <span class="nav-icon">📋</span><span class="nav-label">Extração completa</span>
-          </button>
-          <button id="btn-extracao-query" class="nav-item" type="button">
-            <span class="nav-icon">🧾</span><span class="nav-label">Extração por Query</span>
-          </button>
-          <button id="btn-a-violar" class="nav-item" type="button">
-            <span class="nav-icon">⏰</span><span class="nav-label">A violar</span>
+          <!-- "Extração em Lote": era um submenu com "Por Query" (preview
+               em tela) e "Em Lote" (salva direto em arquivo) — pedido do
+               usuário pra remover "Por Query" (a de lote já cobre 1 query
+               só, numa tabela de 1 linha) e deixar só esta. -->
+          <button id="btn-extracao-lote" class="nav-item" type="button">
+            <span class="nav-icon">🧾</span><span class="nav-label">Extração em Lote</span>
           </button>
           <button id="btn-violados" class="nav-item" type="button">
             <span class="nav-icon">🔴</span><span class="nav-label">Violados</span>
           </button>
-          <button id="btn-categorias-encerramento" class="nav-item" type="button">
-            <span class="nav-icon">🏷️</span><span class="nav-label">Categorias de Encerramento</span>
-          </button>
-          <button id="btn-criados-resolvidos" class="nav-item" type="button">
-            <span class="nav-icon">📈</span><span class="nav-label">Criados x Resolvidos</span>
-          </button>
-          <button id="btn-distribuicao" class="nav-item" type="button">
-            <span class="nav-icon">📊</span><span class="nav-label">Distribuição</span>
-          </button>
-          <button id="btn-reabertos" class="nav-item" type="button">
-            <span class="nav-icon">🔄</span><span class="nav-label">Reabertos</span>
-          </button>
           <button id="btn-colaboradores" class="nav-item" type="button">
             <span class="nav-icon">🧑‍🤝‍🧑</span><span class="nav-label">Colaboradores</span>
-          </button>
-          <button id="btn-criticos" class="nav-item" type="button">
-            <span class="nav-icon">🚨</span><span class="nav-label">Chamados Críticos</span>
-          </button>
-          <button id="btn-analistas-encerramento" class="nav-item" type="button">
-            <span class="nav-icon">👤</span><span class="nav-label">Analistas de Encerramento</span>
-          </button>
-          <button id="btn-jornada" class="nav-item" type="button">
-            <span class="nav-icon">🧭</span><span class="nav-label">Análise de Jornada</span>
-          </button>
-          <button id="btn-eps" class="nav-item" type="button">
-            <span class="nav-icon">🏬</span><span class="nav-label">Análise de EPS</span>
           </button>
           <button id="btn-report-vini" class="nav-item hidden" type="button">
             <span class="nav-icon">🎯</span><span class="nav-label">Report Vini</span>
           </button>
           <button id="btn-tv-resolvidos-reabertos" class="nav-item hidden" type="button">
             <span class="nav-icon">🗂️</span><span class="nav-label">Resolvidos e Reabertos (Excel)</span>
+          </button>
+          <button id="btn-cache" class="nav-item" type="button">
+            <span class="nav-icon">💾</span><span class="nav-label">Cache de Chamados</span>
+          </button>
+          <button id="btn-pareto-solar" class="nav-item" type="button">
+            <span class="nav-icon">📊</span><span class="nav-label">Pareto Solar</span>
+          </button>
+          <button id="btn-material-icg" class="nav-item" type="button">
+            <span class="nav-icon">📋</span><span class="nav-label">Material ICG</span>
           </button>
         </div>
       </div>
@@ -147,15 +131,55 @@
             na hora, sem gravar nada em disco, banco ou log no servidor.
           </p>
 
-          <div class="section-label" style="margin-top: 20px; margin-bottom: 8px">DASHBOARDS</div>
-          <div class="home-dashboards">
+          <div class="home-dashboards-header" style="margin-top: 20px; margin-bottom: 8px">
+            <div class="section-label" style="margin: 0">DASHBOARDS</div>
+            <!-- Filtra TODOS os widgets da home (via CSS, data-caixa em
+                 cada bloco/linha/card de caixa) entre Solar e Claro Tv —
+                 estado em homeCaixaFiltro/aplicarHomeCaixaFiltro em
+                 app.js, persistido em localStorage. -->
+            <div class="home-dashboards-header-right">
+              <label class="home-caixa-filtro-label">
+                Caixa:
+                <select id="home-caixa-filtro-select" class="home-caixa-filtro-select">
+                  <option value="solar">Solar</option>
+                  <option value="tv">Claro Tv</option>
+                </select>
+              </label>
+              <!-- Recarrega TODOS os widgets da home de uma vez — mesma
+                   função usada no login (carregarHomeDashboardsGradual em
+                   app.js). Cada card individualmente também tem seu
+                   próprio botão (injetado em cada ".home-dashboard-title-row"
+                   por aplicarHomeReloadButtons em app.js, não precisa
+                   repetir aqui no HTML). -->
+              <button id="btn-home-reload-geral" class="home-reload-btn home-reload-btn--geral" type="button" title="Atualizar todos os widgets">
+                ↻ Atualizar tudo
+              </button>
+            </div>
+          </div>
+          <div class="home-dashboards" id="home-dashboards">
             <div class="home-dashboard-col">
+              <!-- Histórico de TODOS os meses do cache, 1 mini anel por mês
+                   — no topo da coluna esquerda. Geral por caixa, sem
+                   separar por grupo (Solar: N1+N2+Prod juntos; Claro Tv:
+                   N1+N2 juntos — ver /api/home-sla-cache em api/index.py e
+                   carregarHomeSlaCache em app.js). -->
               <div class="home-dashboard-card">
                 <div class="home-dashboard-title-row">
                   <div class="home-dashboard-title">SLA</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
                 </div>
-                <div id="home-sla-mes"></div>
+                <div id="home-sla-mes" class="home-sla-historico"></div>
+              </div>
+              <!-- Histórico de TODOS os meses do cache, geral (Solar +
+                   Claro Tv juntos, sem separar por caixa) — ver
+                   /api/home-criados-resolvidos-cache em api/index.py e
+                   carregarHomeCriadosResolvidosCache em app.js. -->
+              <div class="home-dashboard-card">
+                <div class="home-dashboard-title-row">
+                  <div class="home-dashboard-title">Criados x Resolvidos por mês</div>
+                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+                </div>
+                <div id="home-criados-resolvidos-mes"></div>
               </div>
               <div class="home-dashboard-card">
                 <div class="home-dashboard-title-row">
@@ -190,13 +214,6 @@
                 </div>
                 <div id="home-reabertos-mes" class="summary-cards home-reabertos-mes-cards"></div>
               </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Colaboradores</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
-                </div>
-                <div id="home-colaboradores-mes"></div>
-              </div>
             </div>
             <div class="home-dashboard-col" id="home-dashboard-col-right">
               <div class="home-dashboard-card">
@@ -215,21 +232,6 @@
               </div>
               <div class="home-dashboard-card">
                 <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Violados</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Últimos 30 dias</span>
-                </div>
-                <div class="home-bar30-legend">
-                  <span class="home-bar30-legend-item">
-                    <span class="home-bar30-legend-dot home-bar30-legend-dot--resolvido"></span>Resolvido dentro do prazo
-                  </span>
-                  <span class="home-bar30-legend-item">
-                    <span class="home-bar30-legend-dot home-bar30-legend-dot--violado"></span>Violado
-                  </span>
-                </div>
-                <div id="home-violados-30dias"></div>
-              </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
                   <div class="home-dashboard-title">Chamados Críticos (COTI)</div>
                   <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
                 </div>
@@ -243,6 +245,17 @@
                 <div id="home-classificacao-funil"></div>
               </div>
             </div>
+          </div>
+
+          <!-- Fora das 2 colunas (de propósito): tabela de uma coluna por
+               mês (pode passar de 10), precisa da largura toda pra não
+               ficar espremida nem exigir scroll horizontal curto demais. -->
+          <div class="home-dashboard-card" style="margin-top: 16px">
+            <div class="home-dashboard-title-row">
+              <div class="home-dashboard-title">Colaboradores</div>
+              <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+            </div>
+            <div id="home-colaboradores-mes"></div>
           </div>
 
           <div class="section-label" style="margin-top: 20px; margin-bottom: 8px">CAIXA SOLUCIONADORA</div>
@@ -421,15 +434,6 @@
           </p>
         </div>
 
-        <!-- A violar: escolher Hoje / Amanhã / Plano semanal -->
-        <div id="violar-dialog" class="collapse">
-          <div class="actions-grid">
-            <button id="btn-violar-hoje" class="btn-secondary" type="button">Hoje</button>
-            <button id="btn-violar-amanha" class="btn-secondary" type="button">Amanhã</button>
-            <button id="btn-violar-semanal" class="btn-secondary" type="button">Plano semanal</button>
-          </div>
-        </div>
-
         <!-- Violados: Tudo (padrão, sem filtro de data) / Hoje / Personalizado -->
         <div id="violados-dialog" class="collapse">
           <div class="radio-row" style="margin-bottom: 10px">
@@ -453,379 +457,57 @@
           </div>
         </div>
 
-        <!-- Extração completa: expande aqui mesmo, sob o botão -->
-        <div id="extracao-dialog" class="collapse">
-          <div class="option-group">
-            <div class="section-label" style="margin-bottom: 8px">SELECIONAR CAIXAS</div>
-            <div class="radio-row" id="extracao-grupos-checkboxes" style="margin-bottom: 0"></div>
-          </div>
-
-          <div class="option-group">
-            <div class="section-label" style="margin-bottom: 8px">STATUS</div>
-            <div class="radio-row" id="extracao-status-checkboxes" style="margin-bottom: 0; flex-wrap: wrap"></div>
-          </div>
-
-          <div class="option-group">
-            <div class="section-label" style="margin-bottom: 8px">PERÍODO (OPCIONAL)</div>
-            <div class="dialog-row" style="margin-bottom: 0">
-              <div class="field">
-                <label for="extracao-input-inicio">Data início</label>
-                <input id="extracao-input-inicio" type="date" />
-              </div>
-              <div class="field">
-                <label for="extracao-input-fim">Data fim</label>
-                <input id="extracao-input-fim" type="date" />
-              </div>
-            </div>
-          </div>
-
-          <div class="dialog-row" style="margin-top: 14px">
-            <button id="btn-extracao-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-extracao-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <!-- Extração por Query: JQL livre informada pelo usuário — sempre
-             devolve as mesmas 6 colunas fixas (Número do Chamado, Categoria
-             de Encerramento, Status, Classificação, Data de Criação e
-             Responsável), não depende de caixa/grupo/projeto/período. -->
-        <div id="extracao-query-dialog" class="collapse">
-          <div class="option-group">
-            <div class="field" style="margin-bottom: 0">
-              <label for="extracao-query-input-jql">JQL</label>
-              <textarea
-                id="extracao-query-input-jql"
-                rows="4"
-                placeholder='Ex.: project = "Central de Incidentes" AND status = "Resolvido" AND created >= "2026-09-01"'
-              ></textarea>
-            </div>
-            <p class="hint" style="margin: 8px 0 0">
-              Colunas do resultado: Número do Chamado, Categoria de Encerramento, ALM do Ofensor (quando a Categoria
-              de Encerramento for um objeto do catálogo Jira Assets), Status, Classificação, Grupo Solucionador,
-              Data de Criação e Responsável.
+        <!-- Extração em Lote: lista de queries (JQL + nome do arquivo),
+             roda uma de cada vez, em ordem — ao terminar uma (sempre em
+             lotes de chamados, pra não pesar a API), salva o .xlsx na
+             pasta de destino e segue pra próxima. Mesmas colunas do
+             cache (CACHE_COLUNAS) em cada arquivo gerado. Só funciona
+             rodando localmente (mesma limitação de Cache de Chamados). -->
+        <div id="extracao-lote-results" class="hidden extracao-lote-screen">
+          <div class="extracao-lote-intro">
+            <h2 style="margin: 0">Extração em Lote</h2>
+            <p class="hint" style="margin: 4px 0 0">
+              Cada linha é 1 query — ao clicar em "Iniciar", a lista roda em ordem, uma de cada vez. Cada query é
+              buscada em lotes de chamados (não pesa a API) e salva como .xlsx na pasta de destino antes de seguir
+              pra próxima.
             </p>
           </div>
 
-          <div class="dialog-row" style="margin-top: 14px">
-            <button id="btn-extracao-query-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-extracao-query-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <!-- Categorias de Encerramento: expande aqui mesmo, sob o botão -->
-        <div id="categorias-dialog" class="collapse">
-          <div id="categorias-controles-padrao">
-            <div class="dialog-row">
-              <div class="field">
-                <label for="cat-input-inicio">Data início</label>
-                <input id="cat-input-inicio" type="date" />
-              </div>
-              <div class="field">
-                <label for="cat-input-fim">Data fim</label>
-                <input id="cat-input-fim" type="date" />
-              </div>
-              <div class="field">
-                <label for="cat-top-n">Top</label>
-                <select id="cat-top-n">
-                  <option value="3">3</option>
-                  <option value="5">5</option>
-                  <option value="10" selected>10</option>
-                  <option value="20">20</option>
-                </select>
-              </div>
+          <div class="extracao-lote-toolbar">
+            <div class="field" style="margin-bottom: 0">
+              <label for="extracao-lote-pasta">Pasta de destino</label>
+              <input id="extracao-lote-pasta" type="text" />
             </div>
-            <div class="radio-row" style="margin-bottom: 10px">
-              <label><input type="checkbox" id="cat-check-encerrados" checked /> Encerrados</label>
-              <label><input type="checkbox" id="cat-check-reabertos" checked /> Reabertos</label>
-            </div>
-          </div>
-
-          <!-- Mops Tv do Futuro usa uma consulta fixa (ver
-               fetch_categoria_encerramento_tv_fixo) — sem período/Top
-               N/Encerrados-Reabertos escolhidos na tela, então esses
-               controles ficam escondidos e um aviso aparece no lugar. -->
-          <p id="categorias-tv-fixo-hint" class="hint hidden" style="margin: 0 0 10px">
-            Mops Tv do Futuro usa uma consulta fixa: todos os chamados (Central de Incidentes + Abertura de
-            Chamados) das caixas N1/N2 criados desde 01/06/2026, agrupados por Categoria de Encerramento.
-          </p>
-
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-categorias-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-ofensor" class="btn-secondary" type="button">🔎 Busca Ofensor</button>
-            <button id="btn-ofgeral" class="btn-secondary" type="button">📚 Extração Geral</button>
-            <button id="btn-categorias-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-
-          <!-- Busca Ofensor: dropdown "Funcionalidade Ofensores" (mesmo
-               campo/opções nativas do Jira, customfield_26645) usado como
-               parâmetro de filtro na mesma base de JQL passada pelo
-               usuário — troca "Sistemas Ofensores" (referência a objeto do
-               Jira Assets) por esse campo de select fixo. Escolher uma
-               opção já dispara a busca em "Gestão de Problemas". -->
-          <div id="ofensor-panel" class="collapse" style="margin-top: 10px">
-            <div class="field" style="max-width: 420px; margin-bottom: 0">
-              <label for="ofensor-funcionalidade">Funcionalidade Ofensores</label>
-              <select id="ofensor-funcionalidade">
-                <option value="">Selecione...</option>
-                <option value="Assetização">Assetização</option>
-                <option value="Base Instalada">Base Instalada</option>
-                <option value="Cadastro">Cadastro</option>
-                <option value="Canais Críticos">Canais Críticos</option>
-                <option value="Catálogo">Catálogo</option>
-                <option value="CLM">CLM</option>
-                <option value="Comercial">Comercial</option>
-                <option value="CPQ">CPQ</option>
-                <option value="CRM Cross">CRM Cross</option>
-                <option value="Crédito">Crédito</option>
-                <option value="CTI">CTI</option>
-                <option value="Financeiro">Financeiro</option>
-                <option value="Geral">Geral</option>
-                <option value="KB">KB</option>
-                <option value="LGPD">LGPD</option>
-                <option value="Mudança de Endereço">Mudança de Endereço</option>
-                <option value="NBA NBO">NBA NBO</option>
-                <option value="Newstack">Newstack</option>
-                <option value="Opera">Opera</option>
-                <option value="Order Management">Order Management</option>
-                <option value="PME">PME</option>
-                <option value="PME Fixa">PME Fixa</option>
-                <option value="Portal Vendas">Portal Vendas</option>
-                <option value="Rentabilização Móvel">Rentabilização Móvel</option>
-                <option value="Retenção Móvel">Retenção Móvel</option>
-                <option value="RPA">RPA</option>
-                <option value="RPA - Canais Críticos">RPA - Canais Críticos</option>
-                <option value="RPA - NBA">RPA - NBA</option>
-                <option value="RPA - PME">RPA - PME</option>
-                <option value="Técnica">Técnica</option>
-                <option value="Viabilidade">Viabilidade</option>
-                <option value="Visão 360">Visão 360</option>
+            <div class="field extracao-lote-field-formato" style="margin-bottom: 0">
+              <label for="extracao-lote-formato">Formato</label>
+              <select id="extracao-lote-formato">
+                <option value="xlsx" selected>Excel (.xlsx)</option>
+                <option value="csv">CSV (.csv)</option>
               </select>
             </div>
-
-            <!-- Só aparece depois de escolher a Funcionalidade — refina o
-                 resultado buscando por "Nome" (summary) OU "ALM"
-                 (customfield_26643), nunca os dois ao mesmo tempo. -->
-            <div id="ofensor-filtro-extra" class="hidden" style="margin-top: 10px">
-              <div class="radio-row" style="margin-bottom: 6px">
-                <label><input type="radio" name="ofensor-campo-busca" value="nome" checked /> Nome</label>
-                <label><input type="radio" name="ofensor-campo-busca" value="alm" /> ALM</label>
-              </div>
-              <div class="field" style="max-width: 420px; margin-bottom: 0">
-                <input id="ofensor-termo-busca" type="text" placeholder="Digite pra filtrar..." autocomplete="off" />
-              </div>
-            </div>
-
-            <!-- Filtra pelo Status da Categoria de Encerramento (checado
-                 aos poucos, lote a lote — ver ofensor-progresso). "Ativo"
-                 marcado por padrão, já que o pedido é ver só os PRBs
-                 ativos; "Inativo" fica disponível pra quem quiser ver o
-                 contrário. -->
-            <div id="ofensor-filtro-status" class="radio-row hidden" style="margin-top: 10px">
-              <label><input type="checkbox" id="ofensor-check-ativo" checked /> Ativo</label>
-              <label><input type="checkbox" id="ofensor-check-inativo" /> Inativo</label>
-            </div>
-
-            <div id="ofensor-status" class="hint" style="margin-top: 10px"></div>
-            <div id="ofensor-progresso" class="hint hidden" style="margin-top: 4px"></div>
-            <div id="ofensor-chamados-wrap" class="table-wrap hidden" style="margin-top: 10px">
-              <table class="data-table" id="ofensor-chamados-table">
-                <thead>
-                  <tr>
-                    <th>Chave</th>
-                    <th>Resumo</th>
-                    <th>Status</th>
-                    <th>Criado em</th>
-                    <th>Responsável</th>
-                    <th>Categoria Ativa?</th>
-                    <th>Qtd. Atrelados</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-              <div id="ofensor-paginacao" class="dialog-row hidden" style="margin-top: 10px">
-                <button id="ofensor-pagina-anterior" class="btn-secondary" type="button">◀ Anterior</button>
-                <span id="ofensor-pagina-label" class="hint"></span>
-                <button id="ofensor-pagina-proxima" class="btn-secondary" type="button">Próxima ▶</button>
-              </div>
+            <div class="extracao-lote-toolbar-botoes">
+              <button id="btn-extracao-lote-add" class="btn-secondary" type="button">+ Adicionar linha</button>
+              <button id="btn-extracao-lote-iniciar" class="btn-primary" type="button">▶ Iniciar</button>
             </div>
           </div>
 
-          <!-- Extração Geral: NÃO mostra tabela em tela — baixa direto um
-               Excel com os chamados da Funcionalidade Ofensores escolhida
-               (mesmo campo/opções da Busca Ofensor, mas esse dropdown é
-               independente do de lá — cada painel guarda a própria escolha),
-               já com a coluna "categoria_status" checada em cada linha.
-               Exige Funcionalidade selecionada (não deixa exportar o
-               projeto "Gestão de Problemas" inteiro sem filtro nenhum). -->
-          <div id="ofgeral-panel" class="collapse" style="margin-top: 10px">
-            <div class="field" style="max-width: 420px; margin-bottom: 0">
-              <label for="ofgeral-funcionalidade">Funcionalidade Ofensores</label>
-              <select id="ofgeral-funcionalidade">
-                <option value="">Selecione...</option>
-                <option value="Assetização">Assetização</option>
-                <option value="Base Instalada">Base Instalada</option>
-                <option value="Cadastro">Cadastro</option>
-                <option value="Canais Críticos">Canais Críticos</option>
-                <option value="Catálogo">Catálogo</option>
-                <option value="CLM">CLM</option>
-                <option value="Comercial">Comercial</option>
-                <option value="CPQ">CPQ</option>
-                <option value="CRM Cross">CRM Cross</option>
-                <option value="Crédito">Crédito</option>
-                <option value="CTI">CTI</option>
-                <option value="Financeiro">Financeiro</option>
-                <option value="Geral">Geral</option>
-                <option value="KB">KB</option>
-                <option value="LGPD">LGPD</option>
-                <option value="Mudança de Endereço">Mudança de Endereço</option>
-                <option value="NBA NBO">NBA NBO</option>
-                <option value="Newstack">Newstack</option>
-                <option value="Opera">Opera</option>
-                <option value="Order Management">Order Management</option>
-                <option value="PME">PME</option>
-                <option value="PME Fixa">PME Fixa</option>
-                <option value="Portal Vendas">Portal Vendas</option>
-                <option value="Rentabilização Móvel">Rentabilização Móvel</option>
-                <option value="Retenção Móvel">Retenção Móvel</option>
-                <option value="RPA">RPA</option>
-                <option value="RPA - Canais Críticos">RPA - Canais Críticos</option>
-                <option value="RPA - NBA">RPA - NBA</option>
-                <option value="RPA - PME">RPA - PME</option>
-                <option value="Técnica">Técnica</option>
-                <option value="Viabilidade">Viabilidade</option>
-                <option value="Visão 360">Visão 360</option>
-              </select>
-            </div>
-            <div class="radio-row" style="margin-top: 10px; margin-bottom: 6px">
-              <label><input type="radio" name="ofgeral-campo-busca" value="nome" checked /> Nome</label>
-              <label><input type="radio" name="ofgeral-campo-busca" value="alm" /> ALM</label>
-            </div>
-            <div class="dialog-row" style="margin-bottom: 0">
-              <div class="field" style="max-width: 420px; margin-bottom: 0">
-                <label for="ofgeral-termo-busca">Filtrar por (opcional)</label>
-                <input id="ofgeral-termo-busca" type="text" placeholder="Deixe em branco pra trazer todos da Funcionalidade..." autocomplete="off" />
-              </div>
-              <button id="btn-ofgeral-buscar" class="btn-primary" type="button">📥 Gerar Excel</button>
-            </div>
-            <div id="ofgeral-status" class="hint" style="margin-top: 10px"></div>
-          </div>
-        </div>
-
-        <div id="categorias-results" class="hidden" style="margin-top: 14px">
-          <span class="date-badge" id="categorias-date" style="margin-bottom: 10px"></span>
-
-          <!-- Conteúdo montado inteiro via JS (renderCategoriaTable) — pra
-               Mops Solar é 1 título + 1 tabela; pra Mops Tv do Futuro vem
-               dividido em sub-blocos App/Box (ver buildCategoriaTableEl
-               em app.js), então não dá pra fixar título/tabela únicos
-               direto no HTML como antes. -->
-          <div id="categorias-encerrados-block" class="hidden"></div>
-          <div id="categorias-reabertos-block" class="hidden" style="margin-top: 14px"></div>
-
-          <!-- Mops Tv do Futuro: tabela única (Categoria/Issues/%) + gráfico
-               de barras, montada via renderCategoriaTvFixo em app.js. -->
-          <div id="categorias-tv-fixo-block" class="hidden"></div>
-        </div>
-
-        <!-- Criados x Resolvidos: expande aqui mesmo, sob o botão -->
-        <div id="criados-resolvidos-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="cr-input-inicio">Data início</label>
-              <input id="cr-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="cr-input-fim">Data fim</label>
-              <input id="cr-input-fim" type="date" />
-            </div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-criados-resolvidos-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-criados-resolvidos-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <div id="criados-resolvidos-results" class="hidden" style="margin-top: 14px">
-          <span class="date-badge" id="cr-date" style="margin-bottom: 10px"></span>
-          <div id="cr-summary-cards" class="summary-cards"></div>
-
-          <!-- Donut (dentro/fora do prazo) e o detalhamento por grupo ficam
-               lado a lado nessa linha — quebra pra baixo sozinho se a tela
-               for estreita demais pros dois juntos. -->
-          <div class="cr-donut-row">
-            <div id="cr-prazo-donut" class="hidden"></div>
-
-            <!-- Chamados encerrados por grupo (N1/N2/PROD): contador + média
-                 diária (total ÷ dias do período) — só quando o campo Grupo
-                 Solucionador foi resolvido no servidor. -->
-            <div id="cr-por-grupo-block" class="hidden">
-              <div class="section-label" style="margin-bottom: 8px">CRIADOS / ENCERRADOS POR GRUPO SOLUCIONADOR</div>
-              <div id="cr-por-grupo-cards" class="summary-cards"></div>
-            </div>
-          </div>
-
-          <div class="table-wrap">
-            <table class="data-table" id="cr-table">
-              <thead></thead>
+          <div class="table-wrap extracao-lote-table-wrap">
+            <table class="data-table" id="extracao-lote-table">
+              <thead>
+                <tr>
+                  <th class="extracao-lote-col-num">#</th>
+                  <th>Query (JQL)</th>
+                  <th class="extracao-lote-col-nome">Nome do arquivo</th>
+                  <th class="extracao-lote-col-status">Status</th>
+                  <th class="extracao-lote-col-acao"></th>
+                </tr>
+              </thead>
               <tbody></tbody>
             </table>
           </div>
-        </div>
 
-        <!-- Distribuição: chamados TRATADOS (resolvidos) no dia, classificados
-             em Convencional (azul) / Priorizado (amarelo) / COTI (vermelho),
-             + PDST criados no dia (cinza) — em barra vertical agrupada por
-             grupo (N1/N2/PROD). "SELECIONAR CAIXAS" aqui filtra os grupos
-             (mesmo painel/rótulo de Extração completa); a caixa
-             Solar/TV é a seleção global do topo. -->
-        <div id="distribuicao-dialog" class="collapse">
-          <div class="option-group">
-            <div class="section-label" style="margin-bottom: 8px">SELECIONAR CAIXAS</div>
-            <div class="radio-row" id="distribuicao-grupos-checkboxes" style="margin-bottom: 0"></div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <div class="field">
-              <label for="distribuicao-input-inicio">Data início</label>
-              <input id="distribuicao-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="distribuicao-input-fim">Data fim</label>
-              <input id="distribuicao-input-fim" type="date" />
-            </div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-distribuicao-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-distribuicao-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <div id="distribuicao-results" class="hidden" style="margin-top: 14px">
-          <span class="date-badge" id="distribuicao-date" style="margin-bottom: 10px"></span>
-          <div id="distribuicao-chart-wrap"></div>
-
-          <!-- Pré-análise textual do período (composição + TMA por
-               categoria), pensada pra embasar justificativa de SLA —
-               ver construirAnaliseDistribuicao / fetch_distribuicao_tratados. -->
-          <div class="section-label" style="margin: 18px 0 8px">PRÉ-ANÁLISE DO PERÍODO</div>
-          <div id="distribuicao-analise" class="distribuicao-analise"></div>
-        </div>
-
-        <!-- Reabertos: expande aqui mesmo, sob o botão. Resultado usa a mesma
-             tela de RESULTADOS (results-card) das demais ações de lista. -->
-        <div id="reabertos-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="reabertos-input-inicio">Data início</label>
-              <input id="reabertos-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="reabertos-input-fim">Data fim</label>
-              <input id="reabertos-input-fim" type="date" />
-            </div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-reabertos-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-reabertos-cancelar" class="btn-secondary" type="button">Cancelar</button>
+          <div class="extracao-lote-rodape">
+            <div id="extracao-lote-status" class="hint"></div>
           </div>
         </div>
 
@@ -852,110 +534,6 @@
         <div id="colaboradores-results" class="hidden" style="margin-top: 14px">
           <span class="date-badge" id="colaboradores-date" style="margin-bottom: 10px"></span>
           <div id="colaboradores-table-wrap" class="table-wrap"></div>
-        </div>
-
-        <!-- Análise de Jornada: Data início/fim + dropdown "Classificação"
-             (lista muda conforme a caixa) — busca chamados de qualquer
-             status no período, disponível nas duas caixas. -->
-        <div id="jornada-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="jornada-input-inicio">Data início</label>
-              <input id="jornada-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="jornada-input-fim">Data fim</label>
-              <input id="jornada-input-fim" type="date" />
-            </div>
-            <div class="field" style="flex: 1 1 240px; min-width: 220px">
-              <label for="jornada-classificacao">Classificação</label>
-              <select id="jornada-classificacao">
-                <option value="">Selecione...</option>
-              </select>
-            </div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-jornada-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-jornada-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <!-- Chamados Críticos: expande aqui mesmo, sob o botão -->
-        <div id="criticos-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="criticos-input-inicio">Data início</label>
-              <input id="criticos-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="criticos-input-fim">Data fim</label>
-              <input id="criticos-input-fim" type="date" />
-            </div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-criticos-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-criticos-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <div id="criticos-results" class="hidden" style="margin-top: 14px">
-          <span class="date-badge" id="criticos-date" style="margin-bottom: 10px"></span>
-
-          <!-- Grupo 1 de 3: COTI -->
-          <div class="section-label" style="margin-bottom: 8px">COTI</div>
-          <div id="criticos-coti-cards" class="summary-cards"></div>
-
-          <!-- Grupo 2 de 3: Chamados Clarinha -->
-          <div class="section-label" style="margin: 14px 0 8px">CHAMADOS CLARINHA</div>
-          <div class="criticos-clarinha-row">
-            <div id="criticos-clarinha-frame1"></div>
-            <div class="table-wrap criticos-clarinha-frame2">
-              <table class="data-table" id="criticos-clarinha-table">
-                <thead></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Grupo 3 de 3: Escalonamento Informal -->
-          <div class="section-label" style="margin: 14px 0 8px">ESCALONAMENTO INFORMAL</div>
-          <div class="table-wrap">
-            <table class="data-table" id="criticos-informal-table">
-              <thead></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Análise de EPS: expande aqui mesmo, sob o botão -->
-        <div id="eps-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="eps-input-inicio">Data início</label>
-              <input id="eps-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="eps-input-fim">Data fim</label>
-              <input id="eps-input-fim" type="date" />
-            </div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-eps-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-eps-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
-
-        <div id="eps-results" class="hidden" style="margin-top: 14px">
-          <span class="date-badge" id="eps-date" style="margin-bottom: 10px"></span>
-
-          <div class="section-label" style="margin-bottom: 8px">TOP 5 ABERTORES DE CHAMADO</div>
-          <div id="eps-top-abertos"></div>
-
-          <div class="section-label" style="margin: 14px 0 8px">TOP 5 RESOLVIDOS POR EPS</div>
-          <div id="eps-top-resolvidos"></div>
-
-          <div class="section-label" style="margin: 14px 0 8px">TOP 5 EPS COM REABERTOS</div>
-          <div id="eps-top-reabertos"></div>
         </div>
 
         <!-- Report Vini: específico de Mops Tv do Futuro (botão some fora
@@ -1045,67 +623,235 @@
           <div id="report-diario-top-cards" class="summary-cards"></div>
         </div>
 
-        <!-- Analistas de Encerramento: Data início, Data fim e Analista ficam
-             juntos numa linha só, sempre visíveis de uma vez. A lista de
-             analistas recarrega sozinha quando as datas mudam (sem botão
-             "Gerar" no meio do caminho) e trocar de analista na busca não
-             mexe nas datas. -->
-        <div id="analistas-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="analistas-input-inicio">Data início</label>
-              <input id="analistas-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="analistas-input-fim">Data fim</label>
-              <input id="analistas-input-fim" type="date" />
-            </div>
-            <div class="field combobox" style="flex: 1 1 240px; min-width: 220px">
-              <label for="analistas-busca">Analista</label>
-              <input
-                id="analistas-busca"
-                type="text"
-                class="combobox-input"
-                placeholder="Buscar analista..."
-                autocomplete="off"
-                role="combobox"
-                aria-expanded="false"
-                aria-autocomplete="list"
-                aria-controls="analistas-dropdown"
-                disabled
-              />
-              <div id="analistas-dropdown" class="combobox-dropdown hidden" role="listbox"></div>
-            </div>
-            <button id="btn-analistas-cancelar" class="btn-secondary" type="button">Fechar</button>
+        <!-- Cache de Chamados: ação direta (sem diálogo) — 1 seção por
+             pasta de cache registrada (pedido do usuário: "tenho mais de
+             uma pasta de cache"), todas visíveis ao mesmo tempo, montadas
+             e persistidas em localStorage por app.js (ver
+             CACHE_SECOES_STORAGE_KEY/renderCacheSecoes/construirSecaoCache).
+             Cada seção lista as planilhas .xlsx da sua própria pasta (uma
+             por mês; a do mês corrente é criada sozinha quando falta — ver
+             _cache_garantir_mes_atual em api/index.py), cada linha com os
+             chamados em aberto por caixa e um botão "Sincronizar" que
+             atualiza o Status dos já existentes e acrescenta quem foi
+             criado depois da última sincronização. Só funciona rodando
+             localmente; na Vercel a pasta não existe e o servidor devolve
+             um erro claro. -->
+        <div id="cache-results" class="hidden" style="margin-top: 14px">
+          <div class="results-header" style="margin-bottom: 14px">
+            <span class="hint" style="flex: 1 1 auto">Cada seção abaixo lê uma pasta de cache diferente — a Caixa decide a JQL usada pra achar chamados novos; a Pasta de origem é o caminho de verdade lido/gravado.</span>
+            <button id="btn-cache-adicionar-secao" class="btn-secondary" type="button">+ Adicionar pasta</button>
+          </div>
+          <div id="cache-secoes"></div>
+        </div>
+
+        <!-- Pareto Solar: ação direta (sem diálogo) — Pareto de
+             "Classificação", "Categoria de Encerramento" e "Categoria de
+             Encerramento" só dos reabertos, de TODOS os meses que
+             aparecerem no cache (sem recorte de período), 1 seletor de mês
+             de cada (<select> + 1 card com o gráfico do mês escolhido, ver
+             criarParetoSeletorMes em app.js), só as caixas N1/N2 da Mops
+             Solar (sem Prod). Lê só as planilhas de cache local (sem
+             consultar o Jira na hora, ver /api/pareto-solar em
+             api/index.py, que devolve os 3 campos numa resposta só) — só
+             funciona rodando localmente, igual a tela de Cache. Botão
+             some fora da caixa Solar (mesmo padrão do Report Vini). -->
+        <div id="pareto-solar-results" class="hidden" style="margin-top: 14px">
+          <div class="results-header" style="margin-bottom: 10px">
+            <span class="hint">Pareto Solar — todos os meses (N1/N2 Solar)</span>
+            <span class="spacer"></span>
+            <button id="btn-pareto-solar-recarregar" class="btn-secondary" type="button">↻ Recarregar</button>
+          </div>
+          <div id="pareto-solar-status" class="hint" style="margin-bottom: 10px"></div>
+
+          <div class="card" style="margin-top: 8px">
+            <select id="pareto-solar-mes-select" class="pareto-mes-select"></select>
+            <div id="pareto-solar-track"></div>
           </div>
 
-          <div class="hint" id="analistas-status" style="margin: -6px 0 14px"></div>
+          <div class="card" style="margin-top: 18px">
+            <select id="pareto-categoria-mes-select" class="pareto-mes-select"></select>
+            <div id="pareto-categoria-track"></div>
+          </div>
 
-          <!-- Detalhe do analista selecionado — some/reaparece conforme a
-               busca acima, sem mexer nas datas nem no restante do painel. -->
-          <div id="analista-detalhe" class="hidden" style="margin-top: 4px">
-            <div class="section-label" id="analista-detalhe-titulo" style="margin-bottom: 8px"></div>
+          <div class="card" style="margin-top: 18px">
+            <select id="pareto-reaberto-mes-select" class="pareto-mes-select"></select>
+            <div id="pareto-reaberto-track"></div>
+          </div>
 
-            <div id="analista-detalhe-cards" class="summary-cards"></div>
+          <!-- Único dos 4 que consulta o Jira na hora (precisa saber quem
+               está ATUALMENTE "Aguardando Fornecedor" — não dá pra
+               reconstruir do cache, ver /api/pareto-solar-fornecedor em
+               api/index.py) — por isso tem status de carregamento à
+               parte, independente dos outros 3 (cache). -->
+          <div id="pareto-fornecedor-status" class="hint" style="margin: 18px 0 10px"></div>
+          <div class="card">
+            <select id="pareto-fornecedor-mes-select" class="pareto-mes-select"></select>
+            <div id="pareto-fornecedor-track"></div>
+          </div>
+        </div>
 
-            <div class="section-label" style="margin: 14px 0 8px">AGUARDANDO FORNECEDOR</div>
-            <div class="table-wrap">
-              <table class="data-table" id="analista-fornecedor-table">
-                <thead></thead>
-                <tbody></tbody>
-              </table>
+        <!-- Popup de drill-down: clicar numa barra do carrossel
+             "Classificação" acima abre um Pareto só daquela Classificação,
+             no mesmo mês — um carrossel de 3 cards (Sub-Classificação/
+             PROP_Site/Categoria de Encerramento), os 3 já buscados em
+             paralelo na abertura (ver /api/pareto-solar-subclassificacao em
+             api/index.py, PARETO_SUB_MODAL_CAMPOS e abrirParetoSubModal em
+             app.js). Clique fora do card ou no "✕ Fechar" fecha. -->
+        <div id="pareto-sub-modal" class="hidden">
+          <div class="pareto-sub-modal-box card">
+            <div class="results-header" style="margin-bottom: 10px">
+              <span class="hint" id="pareto-sub-modal-title" style="flex: 1 1 auto"></span>
+              <button id="btn-pareto-sub-modal-fechar" class="btn-secondary" type="button">✕ Fechar</button>
             </div>
-
-            <div class="section-label" style="margin: 14px 0 8px">TOP CATEGORIAS DE ENCERRAMENTO</div>
-            <div class="table-wrap">
-              <table class="data-table" id="analista-categorias-table">
-                <thead></thead>
-                <tbody></tbody>
-              </table>
+            <div id="pareto-sub-modal-status" class="hint" style="margin-bottom: 10px"></div>
+            <div class="pareto-sub-modal-carousel">
+              <button id="pareto-sub-modal-prev" class="pareto-sub-modal-arrow" type="button" aria-label="Anterior">‹</button>
+              <div class="pareto-sub-modal-viewport">
+                <div class="pareto-sub-modal-track" id="pareto-sub-modal-track"></div>
+              </div>
+              <button id="pareto-sub-modal-next" class="pareto-sub-modal-arrow" type="button" aria-label="Próximo">›</button>
             </div>
+            <div class="pareto-sub-modal-dots" id="pareto-sub-modal-dots"></div>
+          </div>
+        </div>
 
-            <div class="section-label" style="margin: 14px 0 8px">CALENDÁRIO</div>
-            <div id="analista-calendario"></div>
+        <!-- Material ICG: indicadores cobrados semanalmente (pedido do
+             usuário). Os 3 gráficos (SLA do mês/Índice de chamados
+             abertos/Índice de reabertura) dividem 1 card só no topo da
+             tela, em 3 colunas lado a lado (pedido explícito do usuário:
+             "esses 3 devem dividir o mesmo card" — era um carrossel
+             antes, trocado por isso porque cada slide ficava com muito
+             espaço vazio sobrando). Os 4 cards de FCA (Fato/Causa/Ação, 1
+             por quarta-feira do mês) ficam fixos abaixo, numa única
+             cópia (não 1 por métrica). Só caixa Solar (as metas — SLA
+             95%, reabertura 4% etc. — são todas do Solar). -->
+        <div id="material-icg-results" class="hidden" style="margin-top: 14px">
+          <div class="results-header" style="margin-bottom: 10px; flex-wrap: wrap; row-gap: 8px">
+            <span class="hint">Material ICG — Solar</span>
+            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+            <span class="spacer"></span>
+            <label class="home-caixa-filtro-label" for="material-icg-filtro-tipo">Filtro</label>
+            <select id="material-icg-filtro-tipo" class="home-caixa-filtro-select">
+              <option value="mes">Mês</option>
+              <option value="ano">Ano</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+            <span id="material-icg-filtro-mes-wrap">
+              <select id="material-icg-mes-select" class="home-caixa-filtro-select"></select>
+            </span>
+            <!-- Modo "Ano": o gráfico da página 2 vira 1 ponto por mês
+                 (ver materialIcgAnosDisponiveis em app.js). -->
+            <span id="material-icg-filtro-ano-wrap" class="hidden">
+              <select id="material-icg-ano-select" class="home-caixa-filtro-select"></select>
+            </span>
+            <span id="material-icg-filtro-personalizado-wrap" class="hidden">
+              <label class="home-caixa-filtro-label" for="material-icg-input-inicio">De</label>
+              <input id="material-icg-input-inicio" type="date" />
+              <label class="home-caixa-filtro-label" for="material-icg-input-fim">até</label>
+              <input id="material-icg-input-fim" type="date" />
+            </span>
+            <button id="btn-material-icg-recarregar" class="btn-secondary" type="button">↻ Recarregar</button>
+          </div>
+          <div id="material-icg-status" class="hint" style="margin-bottom: 10px"></div>
+
+          <!-- Carrossel (pedido explícito do usuário): página 1 = os 3
+               gráficos de sempre; página 2 = atendimento diário (linha,
+               1 ponto por dia do período selecionado, com baseline da
+               média diária dos últimos 3 meses). Reaproveita as mesmas
+               classes "pareto-sub-modal-*" do carrossel de drill-down do
+               Pareto (mesmo visual, instância própria aqui). -->
+          <div class="pareto-sub-modal-carousel">
+            <button id="material-icg-carousel-prev" class="pareto-sub-modal-arrow" type="button" aria-label="Anterior">‹</button>
+            <div class="pareto-sub-modal-viewport">
+              <div class="pareto-sub-modal-track" id="material-icg-carousel-track">
+                <div class="pareto-sub-modal-slide">
+                  <!-- Seletor de grupo da página 1 (SLA/Abertos/Reabertura)
+                       — mesmo componente estilo Excel do "Atendimento
+                       diário", estado independente; padrão N1+N2 (ver
+                       configurarFiltroGrupoExcel em app.js). -->
+                  <div class="icg-pagina-topo">
+                    <div class="icg-filtro-grupo" id="material-icg-filtro-grupo-indicadores">
+                      <button type="button" class="btn-secondary icg-filtro-grupo-btn">
+                        Grupo: <span class="icg-filtro-grupo-label">N1, N2</span> ▾
+                      </button>
+                      <div class="icg-filtro-grupo-painel hidden">
+                        <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="tudo" /> Tudo</label>
+                        <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="n1" checked /> N1</label>
+                        <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="n2" checked /> N2</label>
+                        <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="prod" /> PROD</label>
+                        <div class="icg-filtro-grupo-acoes">
+                          <button type="button" class="btn-secondary icg-filtro-grupo-cancelar">Cancelar</button>
+                          <button type="button" class="btn-primary icg-filtro-grupo-confirmar">Confirmar</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card icg-trio-row">
+                    <div class="icg-trio-col icg-trio-col--empilhado">
+                      <div class="icg-trio-sub">
+                        <div class="pareto-titulo-destaque" id="material-icg-sla-titulo">SLA do mês atual</div>
+                        <div id="material-icg-sla" class="icg-trio-col-conteudo icg-trio-col-conteudo--compacta"></div>
+                      </div>
+                      <div class="icg-trio-sub">
+                        <div class="pareto-titulo-destaque" id="material-icg-abertos-titulo">Índice de chamados abertos (criados no mês)</div>
+                        <div id="material-icg-abertos" class="icg-trio-col-conteudo icg-trio-col-conteudo--compacta"></div>
+                      </div>
+                    </div>
+                    <div class="icg-trio-col">
+                      <div class="pareto-titulo-destaque">Índice de reabertura</div>
+                      <div id="material-icg-reabertura" class="icg-trio-col-conteudo"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="pareto-sub-modal-slide">
+                  <div class="card">
+                    <div class="icg-atendimento-topo">
+                      <div class="pareto-titulo-destaque" id="material-icg-atendimento-titulo">Atendimento diário</div>
+                      <!-- Seletor de grupo do gráfico (estilo Excel: marca
+                           e só aplica no "Confirmar") — ver
+                           configurarFiltroGrupoExcel em app.js. -->
+                      <div class="icg-filtro-grupo" id="material-icg-filtro-grupo-linha">
+                        <button type="button" class="btn-secondary icg-filtro-grupo-btn">
+                          Grupo: <span class="icg-filtro-grupo-label">Tudo</span> ▾
+                        </button>
+                        <div class="icg-filtro-grupo-painel hidden">
+                          <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="tudo" checked /> Tudo</label>
+                          <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="n1" /> N1</label>
+                          <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="n2" /> N2</label>
+                          <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="prod" /> PROD</label>
+                          <div class="icg-filtro-grupo-acoes">
+                            <button type="button" class="btn-secondary icg-filtro-grupo-cancelar">Cancelar</button>
+                            <button type="button" class="btn-primary icg-filtro-grupo-confirmar">Confirmar</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div id="material-icg-atendimento-diario"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button id="material-icg-carousel-next" class="pareto-sub-modal-arrow" type="button" aria-label="Próximo">›</button>
+          </div>
+          <div class="pareto-sub-modal-dots" id="material-icg-carousel-dots">
+            <button class="pareto-sub-modal-dot active" type="button" aria-label="Página 1"></button>
+            <button class="pareto-sub-modal-dot" type="button" aria-label="Página 2"></button>
+          </div>
+
+          <!-- FCA's: Mês -> Dia de apresentação -> FCA's (1 por indicador,
+               cada um em árvore Fato -> Causa -> Ação), em listas
+               alternadas. Salvo em SQLite local (ver carregarIcgFcas em
+               app.js / MATERIAL_ICG_FCA_DB em api/index.py). -->
+          <div class="card icg-fca-card-wrap" style="margin-top: 16px">
+            <div class="icg-fca-topo">
+              <div class="section-label" style="margin: 0">FCA's</div>
+              <span class="spacer"></span>
+              <label class="home-caixa-filtro-label" for="material-icg-fca-mes">Mês</label>
+              <input id="material-icg-fca-mes" type="month" />
+              <button id="btn-material-icg-fca-add-mes" class="btn-primary" type="button">Adicionar mês</button>
+            </div>
+            <div id="material-icg-fca-status" class="hint" style="margin: 6px 0"></div>
+            <div id="material-icg-fca-lista" class="icg-fca-lista"></div>
           </div>
         </div>
 
@@ -1123,18 +869,7 @@
           <button id="btn-download" class="btn-secondary" type="button">⬇ Baixar arquivo</button>
         </div>
 
-        <!-- Plano semanal: mapa de calor dos próximos 7 dias (só aparece nessa ação) -->
-        <div id="heatmap-block" class="hidden" style="margin-bottom: 14px">
-          <div class="top-assignees-title">Chamados a violar — próximos 7 dias</div>
-          <div class="heatmap-grid" id="heatmap-grid"></div>
-        </div>
-
         <div id="summary-cards" class="summary-cards"></div>
-
-        <div id="por-grupo-block" class="hidden">
-          <div class="section-label" style="margin-bottom: 8px">POR GRUPO SOLUCIONADOR</div>
-          <div id="por-grupo-cards" class="summary-cards"></div>
-        </div>
 
         <!-- Só aparece em Violados -->
         <div id="por-turno-block" class="hidden">
@@ -1154,33 +889,6 @@
           </div>
         </div>
 
-        <!-- Só aparece em Análise de Jornada: cards (Total/Abertos) à
-             esquerda + tabela por status e tabela de top analistas à
-             direita, as três colunas alinhadas na mesma linha. -->
-        <div id="jornada-resumo-block" class="hidden">
-          <div class="jornada-layout">
-            <div id="jornada-cards" class="summary-cards jornada-cards"></div>
-            <div class="jornada-table-wrap">
-              <div class="section-label" style="margin-bottom: 8px">TABELA POR STATUS</div>
-              <div class="table-wrap">
-                <table class="data-table" id="jornada-status-table">
-                  <thead></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
-            <div class="jornada-table-wrap">
-              <div class="section-label" style="margin-bottom: 8px">TOP ANALISTAS</div>
-              <div class="table-wrap">
-                <table class="data-table" id="jornada-analistas-table">
-                  <thead></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div id="top-assignees" class="top-assignees"></div>
 
         <div class="table-wrap" id="results-table-wrap">
@@ -1191,33 +899,6 @@
         </div>
         <div id="table-note" class="hint" style="margin-top: 8px"></div>
 
-        <!-- Só aparece em Análise de Jornada, se o campo "Sub-Classificação"
-             for encontrado no Jira: gráfico de barras com as sub-classificações
-             mais frequentes entre os chamados encontrados. Some no modo
-             "Geral" — vira o ranking por Classificação logo abaixo. -->
-        <div id="jornada-subclassificacao-block" class="hidden">
-          <div class="section-label" style="margin-bottom: 8px">SUB-CLASSIFICAÇÃO</div>
-          <div id="jornada-subclassificacao-chart"></div>
-        </div>
-
-        <!-- Só aparece em Análise de Jornada no modo "Geral": ranking de
-             quantos chamados por Classificação — clicar numa linha expande
-             o detalhamento por Sub-Classificação daquela Classificação. -->
-        <div id="jornada-ranking-block" class="hidden">
-          <div class="section-label" style="margin-bottom: 8px">RANKING POR CLASSIFICAÇÃO</div>
-          <p class="hint" style="margin-bottom: 8px">Clique numa linha para ver o detalhamento por Sub-Classificação.</p>
-          <div class="table-wrap">
-            <div id="jornada-ranking"></div>
-          </div>
-        </div>
-
-        <!-- Só aparece em Análise de Jornada, no lugar da tabela de linhas:
-             mesmo layout do calendário de Analistas de Encerramento, com
-             "Chamados criados" por dia em vez de Encerrados/Reabertos. -->
-        <div id="jornada-calendario-block" class="hidden">
-          <div class="section-label" style="margin-bottom: 8px">CHAMADOS CRIADOS POR DIA</div>
-          <div id="jornada-calendario"></div>
-        </div>
       </section>
       </div><!-- /content-area -->
       </div><!-- /app-layout -->
@@ -1236,6 +917,10 @@
     </div>
   </div>
 
+  <!-- Plotly (gráfico "Atendimento diário" de Material ICG): toolbar
+       interativa estilo matplotlib — zoom por caixa, pan, zoom +/-,
+       autoscale, voltar ao início, salvar PNG. -->
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-basic-dist-min@2.35.2/plotly-basic.min.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
