@@ -1246,7 +1246,15 @@ def fetch_pdst_abertos_por_grupo(config, grupos, grupo_field_id):
     return _contar_abertos_por_grupo(config, grupos, grupo_field_id, extra_clause)
 
 
-def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id, prod_projetos=None):
+def fetch_grupo_criacao_mensal(
+    config,
+    grupos,
+    grupo_field_id,
+    prod_projetos=None,
+    classificacao_field_id=None,
+    subclassificacao_field_id=None,
+    eps_field_id=None,
+):
     """Réplica de um gadget de dashboard nativo do Jira (Two Dimensional
     Filter Statistics: Grupo Solucionador × mês de criação) — usado na home
     da versão web. Entre os chamados atualmente ABERTOS (status fora de
@@ -1258,13 +1266,29 @@ def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id, prod_projetos=Non
 
     "prod_projetos" (opcional): ver _grupo_projeto_clause — quando
     informado, o grupo Prod passa a considerar esses projetos em vez de
-    "Central de Incidentes" (N1/N2 continuam só Central de Incidentes)."""
+    "Central de Incidentes" (N1/N2 continuam só Central de Incidentes).
+
+    "classificacao_field_id" (opcional, "Classificação"): quando
+    informado, cada chamado de "chamados" também traz "classificacao" (None se o
+    campo estiver vazio) — alimenta o Pareto do popup da home.
+    "subclassificacao_field_id" ("Sub-Classificação") e "eps_field_id"
+    ("PROP_Site", a localidade) idem: viram "subclassificacao" e "eps" em
+    cada chamado, pros rankings que aparecem ao clicar numa barra do Pareto."""
     status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
     grupo_projeto_clause = _grupo_projeto_clause(grupos, [PROJETO_INC], prod_projetos)
     jql = f"{grupo_projeto_clause} AND status NOT IN ({status_clause})"
-    issues = fetch_issues(config, jql, ["created", grupo_field_id])
+    extras = [f for f in (classificacao_field_id, subclassificacao_field_id, eps_field_id) if f]
+    issues = fetch_issues(config, jql, ["created", "status", grupo_field_id] + extras)
+    for field_id in extras:
+        _precache_categoria_labels(config, issues, field_id)
+
+    def valor_campo(issue_fields, field_id):
+        if not field_id:
+            return None
+        return (_extract_categoria_values(config, issue_fields.get(field_id)) or [None])[0]
 
     contagem = {grupo: Counter() for grupo in grupos}
+    chamados = []
     for issue in issues:
         issue_fields = issue.get("fields", {})
         grupo = _extract_grupo_solucionador(issue_fields.get(grupo_field_id))
@@ -1273,6 +1297,17 @@ def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id, prod_projetos=Non
         mes = (issue_fields.get("created") or "")[:7]
         if mes:
             contagem[grupo][mes] += 1
+            chamados.append(
+                {
+                    "key": issue.get("key"),
+                    "grupo": grupo,
+                    "status": _extract(issue_fields.get("status"), "name") or "Sem status",
+                    "criado": issue_fields["created"][:10],
+                    "classificacao": valor_campo(issue_fields, classificacao_field_id),
+                    "subclassificacao": valor_campo(issue_fields, subclassificacao_field_id),
+                    "eps": valor_campo(issue_fields, eps_field_id),
+                }
+            )
 
     meses = sorted({mes for c in contagem.values() for mes in c})
 
@@ -1292,6 +1327,9 @@ def fetch_grupo_criacao_mensal(config, grupos, grupo_field_id, prod_projetos=Non
         "linhas": linhas,
         "totais_por_mes": [totais_por_mes[mes] for mes in meses],
         "total_geral": total_geral,
+        # 1 item por chamado (key, grupo, status, dia de criação) — a home
+        # usa pra montar o popup por semana/status (abrirHomeCarrossel).
+        "chamados": chamados,
     }
 
 
@@ -1397,6 +1435,120 @@ def fetch_chamados_por_query(config, jql, categoria_field_id, classificacao_fiel
     return rows
 
 
+# "Extrair GML": colunas customizadas, na ordem da planilha, pelo NOME do
+# campo no Jira (o ID é resolvido do lado da API web, ver
+# _resolve_field_id em api/index.py). As colunas padrão (Ticket, Relator,
+# Status, Descrição, Resolução, Resolvido, Criado) vêm de campos nativos.
+GML_COLUNAS = [
+    "Ticket",
+    "Relator",
+    "Status",
+    "Descrição",
+    "RequestType",
+    "Resolução",
+    "Resolvido",
+    "Gestor",
+    "Criado",
+    "Gerente Requisitante",
+    "Ativo Operações de TI",
+    "Planned start",
+    "Planned end",
+]
+GML_CAMPOS_CUSTOMIZADOS = [
+    "Request Type",
+    "Gestor",
+    "Gerente Requisitante",
+    "Ativo Operações de TI",
+    "Planned start",
+    "Planned end",
+]
+
+
+def _adf_para_texto(no):
+    """Texto puro de um documento ADF (Atlassian Document Format — formato
+    de "description" e de campos de texto longo na REST API v3): junta os
+    nós "text", quebra linha entre blocos (parágrafo, título, item de
+    lista...) e em "hardBreak"."""
+    if isinstance(no, list):
+        return "".join(_adf_para_texto(n) for n in no)
+    if not isinstance(no, dict):
+        return ""
+    tipo = no.get("type")
+    if tipo == "text":
+        return no.get("text") or ""
+    if tipo == "hardBreak":
+        return "\n"
+    if tipo in ("mention", "emoji"):
+        return (no.get("attrs") or {}).get("text") or ""
+    texto = _adf_para_texto(no.get("content") or [])
+    if tipo in ("paragraph", "heading", "listItem", "codeBlock", "blockquote", "tableRow", "rule"):
+        texto += "\n"
+    return texto
+
+
+def _valor_legivel(config, valor):
+    """Valor de exibição de um campo de tipo desconhecido de antemão (as
+    colunas do GML são de tipos variados): objeto do Jira Assets (label,
+    ver _extract_categoria_values), Request Type do JSM ({"requestType":
+    {"name"}}), usuário (displayName), opção/objeto ("value"/"name"),
+    documento ADF (texto) ou lista de qualquer um desses (unidos por ", ")."""
+    if valor is None or valor == "" or valor == []:
+        return None
+    if _extract_asset_refs(valor) is not None:
+        return ", ".join(str(v) for v in _extract_categoria_values(config, valor)) or None
+    if isinstance(valor, list):
+        itens = [_valor_legivel(config, v) for v in valor]
+        return ", ".join(str(v) for v in itens if v not in (None, "")) or None
+    if isinstance(valor, dict):
+        if valor.get("type") == "doc":
+            return _adf_para_texto(valor).strip() or None
+        if isinstance(valor.get("requestType"), dict):
+            return valor["requestType"].get("name")
+        return valor.get("displayName") or valor.get("value") or valor.get("name") or valor.get("key")
+    return valor
+
+
+def fetch_extracao_gml(config, jql, campos_ids):
+    """Ação "Extrair GML": chamados de 1 JQL da lista da tela, com as
+    colunas fixas de GML_COLUNAS. "campos_ids" = {nome do campo em
+    GML_CAMPOS_CUSTOMIZADOS: ID resolvido ou None} — campo não encontrado
+    sai como coluna vazia em vez de derrubar a extração (mesmo padrão
+    best-effort do Grupo Solucionador em fetch_chamados_por_query)."""
+    ids = {nome: campos_ids.get(nome) for nome in GML_CAMPOS_CUSTOMIZADOS}
+    fields = ["reporter", "status", "description", "resolution", "resolutiondate", "created"]
+    fields += [i for i in ids.values() if i]
+    issues = fetch_issues(config, jql, fields)
+
+    for field_id in ids.values():
+        if field_id:
+            _precache_categoria_labels(config, issues, field_id)
+
+    def custom(issue_fields, nome):
+        return _valor_legivel(config, issue_fields.get(ids[nome])) if ids[nome] else None
+
+    rows = []
+    for issue in issues:
+        f = issue.get("fields", {})
+        rows.append(
+            {
+                "Ticket": issue.get("key"),
+                "Relator": _extract(f.get("reporter"), "displayName"),
+                "Status": _extract(f.get("status"), "name"),
+                "Descrição": _valor_legivel(config, f.get("description")),
+                "RequestType": custom(f, "Request Type"),
+                "Resolução": _extract(f.get("resolution"), "name"),
+                "Resolvido": f.get("resolutiondate"),
+                "Gestor": custom(f, "Gestor"),
+                "Criado": f.get("created"),
+                "Gerente Requisitante": custom(f, "Gerente Requisitante"),
+                "Ativo Operações de TI": custom(f, "Ativo Operações de TI"),
+                "Planned start": custom(f, "Planned start"),
+                "Planned end": custom(f, "Planned end"),
+            }
+        )
+    return rows
+
+
 def fetch_fornecedor_criacao_mensal(config, grupos, projetos=None, prod_projetos=None):
     """Réplica de um gadget de dashboard nativo do Jira (Two Dimensional
     Filter Statistics: Fornecedor Responsável × mês de criação) — usado na
@@ -1411,6 +1563,7 @@ def fetch_fornecedor_criacao_mensal(config, grupos, projetos=None, prod_projetos
     Diferente de fetch_grupo_criacao_mensal (lista fixa de grupos): aqui os
     valores de Fornecedor Responsável são descobertos dinamicamente nos
     dados, e as linhas saem ordenadas do maior total pro menor (ranking).
+    "chamados" traz o detalhe por chamado (key, fornecedor, dia de criação).
 
     "prod_projetos" (opcional): ver _grupo_projeto_clause — usado pela
     home (N1/N2 só "Central de Incidentes", Prod só "Abertura de
@@ -1421,6 +1574,7 @@ def fetch_fornecedor_criacao_mensal(config, grupos, projetos=None, prod_projetos
 
     contagem = {}
     total_por_fornecedor = Counter()
+    chamados = []
     for issue in issues:
         issue_fields = issue.get("fields", {})
         fornecedor = extract_fornecedor(issue_fields) or "None"
@@ -1429,6 +1583,7 @@ def fetch_fornecedor_criacao_mensal(config, grupos, projetos=None, prod_projetos
             continue
         contagem.setdefault(fornecedor, Counter())[mes] += 1
         total_por_fornecedor[fornecedor] += 1
+        chamados.append({"key": issue.get("key"), "fornecedor": fornecedor, "criado": issue_fields["created"][:10]})
 
     meses = sorted({mes for c in contagem.values() for mes in c})
 
@@ -1445,6 +1600,9 @@ def fetch_fornecedor_criacao_mensal(config, grupos, projetos=None, prod_projetos
         "linhas": linhas,
         "totais_por_mes": [totais_por_mes[mes] for mes in meses],
         "total_geral": sum(total_por_fornecedor.values()),
+        # 1 item por chamado (key, fornecedor, dia de criação) — a home usa
+        # pra montar o popup por semana (ver abrirHomeCarrossel em app.js).
+        "chamados": chamados,
     }
 
 
@@ -2575,75 +2733,6 @@ def fetch_distribuicao_tratados(config, grupos, start_date, end_date, tipo_incid
         "dias": dias,
         "tma_horas": tma_horas,
     }
-
-
-def fetch_colaboradores_mes(config, grupos, start_date, end_date, projetos=None, prod_projetos=None):
-    """Widget da home "Colaboradores": pra cada colaborador (assignee) com
-    ao menos um chamado resolvido ou reaberto no período, quantos ele
-    Resolveu (Resolvido/Encerrado, resolutiondate no período — mesma
-    população de fetch_criados_x_resolvidos), quantos desses Violaram o SLA
-    "Tempo de Resolução" (extract_sla_breach) e quantos ele Reabriu (status
-    WAS "Reaberto", created no período — mesma convenção de
-    fetch_chamados_reabertos). O percentual (usado no mini gráfico de
-    pizza) é dentro-do-prazo sobre os resolvidos: (resolvidos - violados) /
-    resolvidos, mesma lógica de fetch_criados_x_resolvidos, só que por
-    colaborador em vez de agregado. Ordenado por total resolvido, do maior
-    pro menor.
-
-    "prod_projetos" (opcional): ver _grupo_projeto_clause — usado pela home
-    (N1/N2 só "Central de Incidentes", Prod só "Abertura de Chamados").
-    """
-    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-
-    resolvidos_jql = (
-        f'{grupo_projeto_clause} AND status IN ("Resolvido", "Encerrado") '
-        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
-    )
-    resolvidos_issues = fetch_issues(config, resolvidos_jql, ["assignee"] + SLA_RESOLUTION_FIELDS)
-
-    reabertos_jql = (
-        f'{grupo_projeto_clause} AND status WAS "Reaberto" '
-        f'AND created >= "{start_str}" AND created <= "{end_str}"'
-    )
-    reabertos_issues = fetch_issues(config, reabertos_jql, ["assignee"])
-
-    resolvidos_counts = Counter()
-    violados_counts = Counter()
-    for issue in resolvidos_issues:
-        nome = _extract(issue.get("fields", {}).get("assignee"), "displayName")
-        if not nome:
-            continue
-        resolvidos_counts[nome] += 1
-        _campo, _breach_dt, breached = extract_sla_breach(issue.get("fields", {}))
-        if breached:
-            violados_counts[nome] += 1
-
-    reabertos_counts = Counter()
-    for issue in reabertos_issues:
-        nome = _extract(issue.get("fields", {}).get("assignee"), "displayName")
-        if nome:
-            reabertos_counts[nome] += 1
-
-    nomes = set(resolvidos_counts) | set(reabertos_counts)
-    linhas = []
-    for nome in nomes:
-        resolvidos = resolvidos_counts.get(nome, 0)
-        violados = violados_counts.get(nome, 0)
-        reabertos = reabertos_counts.get(nome, 0)
-        percentual_dentro_prazo = round((resolvidos - violados) / resolvidos * 100, 1) if resolvidos else 0.0
-        linhas.append(
-            {
-                "colaborador": nome,
-                "resolvidos": resolvidos,
-                "violados": violados,
-                "reabertos": reabertos,
-                "percentual_dentro_prazo": percentual_dentro_prazo,
-            }
-        )
-    linhas.sort(key=lambda l: l["resolvidos"], reverse=True)
-    return linhas
 
 
 def fetch_analise_eps(config, grupos, start_date, end_date, eps_field_id, projetos=None):

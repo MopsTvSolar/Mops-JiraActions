@@ -1,0 +1,42 @@
+SELECT
+    CreatedDate,
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.OrderNumber,
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.Channel__c,
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.Segment__c,
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.Status,
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.SubStatus__c,
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.BiometryStatus__c,
+    vlocity_cmt__State__c,
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.vlocity_cmt__Reason__c,
+    DefectNumber__c,
+    OffenderName__c,
+    ErrorHandled__c
+FROM vlocity_cmt__OrchestrationItem__c
+WHERE
+    vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.Unidade__c IN ('Móvel', 'Residencial')
+    AND vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.vlocity_cmt__AccountRecordType__c IN ('Consumer', 'Billing')
+    AND vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.vlocity_cmt__SubmittedToOmDate__c != NULL
+    AND vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.RecordType.DeveloperName IN (
+        'MobileRetention',
+        'MobileRetentions',
+        'MobileMonetization'
+    )
+    AND vlocity_cmt__AssignedToManualQueueId__r.Name IN (
+        'MOPs Técnico Retenção',
+        'MOPs Negócios Rentabilização',
+        'MOPs Técnico Rentabilização',
+        'Análise Técnica',
+        'Mesa de Operação Técnica',
+        'Mesa de Operações Negócio'
+    )
+    AND (
+        vlocity_cmt__State__c IN ('Failed', 'Fatally Failed')
+        OR (
+            vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.SubStatus__c = 'Concluído Manualmente no Legado'
+            AND vlocity_cmt__State__c != 'Completed'
+        )
+    )
+    AND CreatedDate >= {inicio}
+    AND CreatedDate < {fim}
+    AND vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.vlocity_cmt__Reason__c != 'Migração Móvel Pré-Conta'
+ORDER BY CreatedDate ASC

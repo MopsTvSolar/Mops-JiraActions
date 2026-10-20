@@ -72,11 +72,11 @@
           <button id="btn-extracao-lote" class="nav-item" type="button">
             <span class="nav-icon">🧾</span><span class="nav-label">Extração em Lote</span>
           </button>
+          <button id="btn-gml" class="nav-item" type="button">
+            <span class="nav-icon">📄</span><span class="nav-label">Extrair GML</span>
+          </button>
           <button id="btn-violados" class="nav-item" type="button">
             <span class="nav-icon">🔴</span><span class="nav-label">Violados</span>
-          </button>
-          <button id="btn-colaboradores" class="nav-item" type="button">
-            <span class="nav-icon">🧑‍🤝‍🧑</span><span class="nav-label">Colaboradores</span>
           </button>
           <button id="btn-report-vini" class="nav-item hidden" type="button">
             <span class="nav-icon">🎯</span><span class="nav-label">Report Vini</span>
@@ -89,6 +89,9 @@
           </button>
           <button id="btn-pareto-solar" class="nav-item" type="button">
             <span class="nav-icon">📊</span><span class="nav-label">Pareto Solar</span>
+          </button>
+          <button id="btn-om-mapa-calor" class="nav-item" type="button">
+            <span class="nav-icon">🔥</span><span class="nav-label">Mapa de Calor OM</span>
           </button>
           <button id="btn-material-icg" class="nav-item" type="button">
             <span class="nav-icon">📋</span><span class="nav-label">Material ICG</span>
@@ -233,14 +236,14 @@
               <div class="home-dashboard-card">
                 <div class="home-dashboard-title-row">
                   <div class="home-dashboard-title">Chamados Críticos (COTI)</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Mês atual · Cacheado</span>
                 </div>
                 <div id="home-coti-mes" class="summary-cards"></div>
               </div>
               <div class="home-dashboard-card">
                 <div class="home-dashboard-title-row">
                   <div class="home-dashboard-title">Classificação — Funil</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
+                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Mês atual · Cacheado</span>
                 </div>
                 <div id="home-classificacao-funil"></div>
               </div>
@@ -492,7 +495,7 @@
           </div>
 
           <div class="table-wrap extracao-lote-table-wrap">
-            <table class="data-table" id="extracao-lote-table">
+            <table class="data-table extracao-lote-table" id="extracao-lote-table">
               <thead>
                 <tr>
                   <th class="extracao-lote-col-num">#</th>
@@ -511,29 +514,58 @@
           </div>
         </div>
 
-        <!-- Colaboradores: mesma tabela do widget da home (Resolvidos/
-             Violados/Reabertos/%), mas com período/caixa/projeto escolhidos
-             pelo usuário em vez do mês atual fixo com as duas caixas. -->
-        <div id="colaboradores-dialog" class="collapse">
-          <div class="dialog-row">
-            <div class="field">
-              <label for="colaboradores-input-inicio">Data início</label>
-              <input id="colaboradores-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="colaboradores-input-fim">Data fim</label>
-              <input id="colaboradores-input-fim" type="date" />
-            </div>
+        <!-- Extrair GML: mesma tela/fluxo de "Extração em Lote" (lista de
+             JQL + nome do arquivo, 1 de cada vez, salva na pasta de
+             destino), mas com as colunas fixas do GML (Ticket, Relator,
+             Status, Descrição, RequestType, Resolução, Resolvido, Gestor,
+             Criado, Gerente Requisitante, Ativo Operações de TI, Planned
+             start/end — ver fetch_extracao_gml em jira_extractor.py). -->
+        <div id="gml-lote-results" class="hidden extracao-lote-screen">
+          <div class="extracao-lote-intro">
+            <h2 style="margin: 0">Extrair GML</h2>
+            <p class="hint" style="margin: 4px 0 0">
+              Cada linha é 1 query — ao clicar em "Iniciar", a lista roda em ordem, uma de cada vez. Cada query é
+              buscada em lotes de chamados (não pesa a API) e salva como .xlsx na pasta de destino antes de seguir
+              pra próxima.
+            </p>
           </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-colaboradores-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-colaboradores-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
 
-        <div id="colaboradores-results" class="hidden" style="margin-top: 14px">
-          <span class="date-badge" id="colaboradores-date" style="margin-bottom: 10px"></span>
-          <div id="colaboradores-table-wrap" class="table-wrap"></div>
+          <div class="extracao-lote-toolbar">
+            <div class="field" style="margin-bottom: 0">
+              <label for="gml-lote-pasta">Pasta de destino</label>
+              <input id="gml-lote-pasta" type="text" />
+            </div>
+            <div class="field extracao-lote-field-formato" style="margin-bottom: 0">
+              <label for="gml-lote-formato">Formato</label>
+              <select id="gml-lote-formato">
+                <option value="xlsx" selected>Excel (.xlsx)</option>
+                <option value="csv">CSV (.csv)</option>
+              </select>
+            </div>
+            <div class="extracao-lote-toolbar-botoes">
+              <button id="btn-gml-lote-add" class="btn-secondary" type="button">+ Adicionar linha</button>
+              <button id="btn-gml-lote-iniciar" class="btn-primary" type="button">▶ Iniciar</button>
+            </div>
+          </div>
+
+          <div class="table-wrap extracao-lote-table-wrap">
+            <table class="data-table extracao-lote-table" id="gml-lote-table">
+              <thead>
+                <tr>
+                  <th class="extracao-lote-col-num">#</th>
+                  <th>Query (JQL)</th>
+                  <th class="extracao-lote-col-nome">Nome do arquivo</th>
+                  <th class="extracao-lote-col-status">Status</th>
+                  <th class="extracao-lote-col-acao"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="extracao-lote-rodape">
+            <div id="gml-lote-status" class="hint"></div>
+          </div>
         </div>
 
         <!-- Report Vini: específico de Mops Tv do Futuro (botão some fora
@@ -641,7 +673,7 @@
             <span class="hint" style="flex: 1 1 auto">Cada seção abaixo lê uma pasta de cache diferente — a Caixa decide a JQL usada pra achar chamados novos; a Pasta de origem é o caminho de verdade lido/gravado.</span>
             <button id="btn-cache-adicionar-secao" class="btn-secondary" type="button">+ Adicionar pasta</button>
           </div>
-          <div id="cache-secoes"></div>
+          <div id="cache-secoes" class="cache-lista"></div>
         </div>
 
         <!-- Pareto Solar: ação direta (sem diálogo) — Pareto de
@@ -713,6 +745,60 @@
             </div>
             <div class="pareto-sub-modal-dots" id="pareto-sub-modal-dots"></div>
           </div>
+        </div>
+
+        <!-- Popup de carrossel dos gráficos da home (clicar no gráfico abre):
+             mesmo visual do drill-down do Pareto (classes "pareto-sub-modal-*"),
+             mas genérico — slides montados em app.js (abrirHomeCarrossel).
+             Clique fora do card, "✕ Fechar" ou Esc fecha. -->
+        <div id="home-carrossel-modal" class="hidden">
+          <div class="pareto-sub-modal-box card">
+            <div class="results-header" style="margin-bottom: 10px">
+              <span class="hint" id="home-carrossel-titulo" style="flex: 1 1 auto"></span>
+              <button id="btn-home-carrossel-fechar" class="btn-secondary" type="button">✕ Fechar</button>
+            </div>
+            <div class="pareto-sub-modal-carousel">
+              <button id="home-carrossel-prev" class="pareto-sub-modal-arrow" type="button" aria-label="Anterior">‹</button>
+              <div class="pareto-sub-modal-viewport">
+                <div class="pareto-sub-modal-track" id="home-carrossel-track"></div>
+              </div>
+              <button id="home-carrossel-next" class="pareto-sub-modal-arrow" type="button" aria-label="Próximo">›</button>
+            </div>
+            <div class="pareto-sub-modal-dots" id="home-carrossel-dots"></div>
+          </div>
+        </div>
+
+        <!-- Mapa de calor OM: erro tratado (ErrorHandled__c) x dia dos últimos
+             3 meses, a partir das planilhas da pasta de cache OM
+             (exportações do Salesforce, ver /api/om-mapa-calor em
+             api/index.py) — só funciona rodando localmente, igual a tela
+             de Cache. -->
+        <div id="om-mapa-calor-results" class="hidden" style="margin-top: 14px">
+          <div class="results-header" style="margin-bottom: 10px">
+            <span class="hint" id="om-mapa-calor-periodo">Mapa de calor OM — pedidos por erro e dia</span>
+            <span class="spacer"></span>
+            <!-- Filtro de meses estilo Excel (mesmo visual do seletor de
+                 grupo do Material ICG): marca 1 ou mais meses e só aplica
+                 no "Confirmar". Opções montadas em app.js a partir de
+                 "meses_disponiveis" da resposta. -->
+            <div class="icg-filtro-grupo" id="om-filtro-meses">
+              <button type="button" class="btn-secondary icg-filtro-grupo-btn">
+                Meses: <span class="icg-filtro-grupo-label">—</span> ▾
+              </button>
+              <div class="icg-filtro-grupo-painel om-filtro-meses-painel hidden">
+                <label class="icg-filtro-grupo-opcao om-filtro-meses-tudo"><input type="checkbox" value="__tudo" /> (Selecionar tudo)</label>
+                <div class="om-filtro-meses-lista"></div>
+                <div class="icg-filtro-grupo-acoes">
+                  <button type="button" class="btn-secondary icg-filtro-grupo-cancelar">Cancelar</button>
+                  <button type="button" class="btn-primary icg-filtro-grupo-confirmar">Confirmar</button>
+                </div>
+              </div>
+            </div>
+            <button id="btn-om-mapa-calor-recarregar" class="btn-secondary" type="button">↻ Recarregar</button>
+          </div>
+          <div id="om-mapa-calor-status" class="hint" style="margin-bottom: 10px"></div>
+          <div id="om-mapa-calor-legenda" class="om-legenda hidden"></div>
+          <div id="om-mapa-calor-wrap" class="table-wrap om-mapa-calor-wrap"></div>
         </div>
 
         <!-- Material ICG: indicadores cobrados semanalmente (pedido do

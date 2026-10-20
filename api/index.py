@@ -19,12 +19,16 @@ import io
 import json
 import os
 import re
+import shutil
 import sqlite3
+import subprocess
 import sys
+import tempfile
+import unicodedata
 import zipfile
 from collections import Counter, defaultdict
 from contextlib import closing
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Flask, jsonify, request, send_file
 import requests
@@ -35,6 +39,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from jira_extractor import (  # noqa: E402
     BRAZIL_TZ,
+    GML_CAMPOS_CUSTOMIZADOS,
+    GML_COLUNAS,
     GRUPO_N1,
     GRUPO_N2,
     GRUPO_PROD,
@@ -50,9 +56,9 @@ from jira_extractor import (  # noqa: E402
     fetch_chamados_criticos,
     fetch_chamados_geral_classificacao,
     fetch_chamados_por_query,
+    fetch_extracao_gml,
     fetch_chamados_reabertos,
     fetch_chamados_violados,
-    fetch_colaboradores_mes,
     fetch_criados_por_dia_grupo,
     fetch_previstos_violar_por_dia,
     fetch_criados_x_resolvidos,
@@ -164,14 +170,23 @@ CACHE_DIR = os.path.join(CACHE_BASE_DIR, "Solar")
 # Solar e Tv no mesmo arquivo (foi exatamente esse bug, numa tentativa
 # anterior de somar as 2 caixas numa query só, que corrompeu a "data
 # corte" da sincronização incremental).
+# "origem" decide como a partição sincroniza: "jira" (Solar/Tv, fluxo
+# preparar/lote/finalizar) ou "salesforce" (OM: exportações do Salesforce
+# Order Management, sem caixa/JQL — sincroniza só via Salesforce CLI, ver
+# /api/cache/om-sincronizar, e nunca cria a planilha do mês sozinha) ou
+# "gml" (mesma pasta padrão de "Extrair GML"; sincroniza com a política
+# do cache de chamados, mas pela JQL fixa GML_JQL_BASE e pelas colunas do
+# GML — ver /api/cache/gml-sincronizar).
 CACHE_PARTICOES = {
-    CAIXA_SOLAR: {"id": CAIXA_SOLAR, "label": "Solar", "pasta": CACHE_DIR, "caixa": CAIXA_SOLAR},
-    CAIXA_TV: {"id": CAIXA_TV, "label": "Tv", "pasta": os.path.join(CACHE_BASE_DIR, "TV"), "caixa": CAIXA_TV},
+    CAIXA_SOLAR: {"id": CAIXA_SOLAR, "label": "Solar", "pasta": CACHE_DIR, "caixa": CAIXA_SOLAR, "origem": "jira"},
+    CAIXA_TV: {"id": CAIXA_TV, "label": "Tv", "pasta": os.path.join(CACHE_BASE_DIR, "TV"), "caixa": CAIXA_TV, "origem": "jira"},
+    "om": {"id": "om", "label": "OM", "pasta": os.path.join(CACHE_BASE_DIR, "OM"), "caixa": None, "origem": "salesforce"},
+    "gml": {"id": "gml", "label": "GML", "pasta": os.path.join(CACHE_BASE_DIR, "GML"), "caixa": None, "origem": "gml"},
 }
 CACHE_PARTICAO_PADRAO = CAIXA_SOLAR
 
 
-def _cache_resolve_particao(body):
+def _cache_resolve_particao(body, sincronizar=False):
     """Qual caixa + pasta uma requisição da tela de Cache está usando:
     "caixa" no corpo ("solar"/"tv", decide a JQL de busca de chamados
     novos — ver _cache_jql_periodo) e "pasta" (opcional — caminho absoluto
@@ -179,13 +194,23 @@ def _cache_resolve_particao(body):
     caixa, CACHE_PARTICOES[caixa]["pasta"], mesmo comportamento de sempre
     pra quem não manda esse campo). Pasta e caixa são independentes: dá
     pra apontar "solar" pra qualquer pasta, não só a padrão — útil pra
-    inspecionar uma cópia/backup sem mexer na pasta real."""
+    inspecionar uma cópia/backup sem mexer na pasta real. "sincronizar"
+    =True (rotas de sincronização do Jira) recusa partições que não são do
+    Jira (OM, que sincroniza por /api/cache/om-sincronizar)."""
     caixa_id = (body.get("caixa") or body.get("particao") or CACHE_PARTICAO_PADRAO).strip().lower()
     if caixa_id not in CACHE_PARTICOES:
         raise JiraExtractorError(f'Caixa de cache inválida: "{caixa_id}".')
     padrao = CACHE_PARTICOES[caixa_id]
+    if sincronizar and padrao["origem"] != "jira":
+        raise JiraExtractorError(f'A caixa de cache "{padrao["label"]}" não sincroniza com o Jira.')
     pasta = (body.get("pasta") or "").strip() or padrao["pasta"]
-    return {"id": padrao["id"], "label": padrao["label"], "pasta": pasta, "caixa": padrao["caixa"]}
+    return {
+        "id": padrao["id"],
+        "label": padrao["label"],
+        "pasta": pasta,
+        "caixa": padrao["caixa"],
+        "origem": padrao["origem"],
+    }
 
 
 CACHE_COL_CHAVE = "Número do Chamado"
@@ -261,6 +286,9 @@ CACHE_COL_REABERTO = "Já foi Reaberto"
 CACHE_COL_RESOLUCAO = "Data de Resolução"
 CACHE_COL_EPS = "PROP_Site"
 CACHE_COL_SUBCLASSIFICACAO = "Sub-Classificação"
+CACHE_COL_PRIORIDADE = "Prioridade"
+CACHE_COL_FOI_COTI = "Já foi P0/P1/P2"
+CACHE_PRIORIDADES_COTI = ("P0", "P1", "P2")
 CACHE_COLUNAS = [
     CACHE_COL_CHAVE,
     CACHE_COL_CATEGORIA,
@@ -275,6 +303,8 @@ CACHE_COLUNAS = [
     CACHE_COL_RESOLUCAO,
     CACHE_COL_EPS,
     CACHE_COL_SUBCLASSIFICACAO,
+    CACHE_COL_PRIORIDADE,
+    CACHE_COL_FOI_COTI,
 ]
 CACHE_STATUS_RESOLVIDOS = {"Resolvido", "Encerrado"}
 
@@ -870,7 +900,7 @@ def home_colaboradores_cache():
     return jsonify(_cache_colaboradores_mensal())
 
 
-def _cache_para_cada_linha(pasta, colunas_necessarias, processar_linha):
+def _cache_para_cada_linha(pasta, colunas_necessarias, processar_linha, colunas_opcionais=()):
     """Varre cada planilha .xlsx de "pasta", linha a linha, chamando
     "processar_linha(valor)" pra cada uma — "valor(coluna)" devolve o
     valor daquela coluna na linha atual. Ignora silenciosamente planilhas
@@ -881,7 +911,11 @@ def _cache_para_cada_linha(pasta, colunas_necessarias, processar_linha):
     home, que precisam varrer a pasta de CADA partição (Solar e Tv têm
     pastas próprias, ver CACHE_PARTICOES — não dá mais pra separar
     Solar/Tv filtrando pelo Grupo Solucionador dentro de uma varredura só
-    da pasta de Solar, já que os 2 caches não se misturam mais)."""
+    da pasta de Solar, já que os 2 caches não se misturam mais).
+
+    "colunas_opcionais": colunas que podem faltar numa planilha (ex.: as
+    adicionadas depois) — não descartam a planilha, "valor(coluna)" só
+    devolve None nelas."""
     if not pasta or not os.path.isdir(pasta):
         return
     nomes = [n for n in os.listdir(pasta) if n.lower().endswith(".xlsx") and not n.startswith("~$")]
@@ -898,6 +932,8 @@ def _cache_para_cada_linha(pasta, colunas_necessarias, processar_linha):
             if not header or any(c not in header for c in colunas_necessarias):
                 continue
             idx = {c: header.index(c) for c in colunas_necessarias}
+            for c in colunas_opcionais:
+                idx[c] = header.index(c) if c in header else None
 
             for linha in linhas:
                 if linha is None or all(v is None for v in linha):
@@ -905,7 +941,7 @@ def _cache_para_cada_linha(pasta, colunas_necessarias, processar_linha):
 
                 def valor(col, linha=linha):
                     i = idx[col]
-                    return linha[i] if i < len(linha) else None
+                    return linha[i] if i is not None and i < len(linha) else None
 
                 processar_linha(valor)
         finally:
@@ -1073,105 +1109,194 @@ def home_criados_resolvidos_cache():
 
 @app.route("/api/home-coti-mes", methods=["POST"])
 def home_coti_mes():
-    """Widget da home: os mesmos 4 cards de COTI (P0/P1/P2) da ação
-    "Chamados Críticos" (fetch_chamados_criticos), do começo do mês atual
-    até hoje. COTI é uma classificação específica da caixa Mops Solar (sem
-    equivalente na Claro Tv, mesma regra da ação original), então essa
-    carta só tem uma seção — não usa o padrão de "as duas caixas" do resto
-    da home.
+    """Widget da home "Chamados Críticos (COTI)" (tag "Mês atual ·
+    Cacheado"): os mesmos 4 cards de COTI (P0/P1/P2) da ação "Chamados
+    Críticos" (fetch_chamados_criticos), do começo do mês atual até hoje,
+    mas lidos só do cache local da Mops Solar (colunas "Prioridade" e "Já
+    foi P0/P1/P2", ver _cache_prioridade_jira) — nenhuma consulta ao Jira,
+    nem credenciais; só funciona rodando localmente e acompanha a última
+    sincronização do cache. COTI é uma classificação específica da caixa
+    Mops Solar (sem equivalente na Claro Tv, mesma regra da ação original),
+    então essa carta só tem uma seção.
 
-    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
-    Chamados" — ver nota em _build_base_jql_home."""
-    body = request.get_json(silent=True) or {}
-    projetos = [PROJETO_INC]
+    N1/N2 só "Central de Incidentes", Prod só "Abertura de Chamados" — ver
+    _home_cache_chamado_da_caixa. "sem_prioridade" = chamados do mês cuja
+    prioridade ainda não foi gravada no cache (planilha anterior às colunas
+    novas, ainda não sincronizada) — a tela avisa pra sincronizar."""
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio_mes = hoje.replace(day=1)
+    pasta = CACHE_PARTICOES[CAIXA_SOLAR]["pasta"]
+    if not os.path.isdir(pasta):
+        raise JiraExtractorError(f'Pasta de cache não encontrada neste ambiente: "{pasta}".')
+    grupos = set(CAIXAS[CAIXA_SOLAR]["grupos"])
 
-    config = _config_from_request(body)
-    resultado = fetch_chamados_criticos(
-        config, CAIXAS[CAIXA_SOLAR]["grupos"], inicio_mes, hoje, projetos=projetos, prod_projetos=[PROJETO_PDST]
+    contagem = {"criados": 0, "foi_coti": 0, "coti_atual": 0, "sem_prioridade": 0}
+
+    def processar(valor):
+        if not _home_cache_chamado_da_caixa(valor, grupos):
+            return
+        criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
+        if not criacao or not inicio_mes <= criacao.date() <= hoje:
+            return
+        contagem["criados"] += 1
+        foi_coti = valor(CACHE_COL_FOI_COTI)
+        if foi_coti is None:
+            contagem["sem_prioridade"] += 1
+            return
+        # "WAS IN (P0, P1, P2)" inclui quem está em P0/P1/P2 agora, então "atual"
+        # só conta dentro de quem já foi COTI (pontuais nunca fica negativo).
+        if foi_coti == "Sim":
+            contagem["foi_coti"] += 1
+            if valor(CACHE_COL_PRIORIDADE) in CACHE_PRIORIDADES_COTI:
+                contagem["coti_atual"] += 1
+
+    _cache_para_cada_linha(
+        pasta,
+        [CACHE_COL_GRUPO, CACHE_COL_CHAVE, CACHE_COL_CRIACAO],
+        processar,
+        colunas_opcionais=[CACHE_COL_FOI_COTI, CACHE_COL_PRIORIDADE],
     )
 
+    abertos = contagem["foi_coti"]
+    atual = contagem["coti_atual"]
+    pontuais = abertos - atual
     return jsonify(
         {
             "inicio": inicio_mes.strftime("%Y-%m-%d"),
             "fim": hoje.strftime("%Y-%m-%d"),
-            "total_criticos_abertos": resultado["total_criticos_abertos"],
-            "total_criticos_atual": resultado["total_criticos_atual"],
-            "total_pontuais": resultado["total_pontuais"],
-            "percentual_pontuais": resultado["percentual_pontuais"],
-            "percentual_criticos": resultado["percentual_criticos"],
-            "total_criados": resultado["total_criados"],
+            "total_criticos_abertos": abertos,
+            "total_criticos_atual": atual,
+            "total_pontuais": pontuais,
+            "percentual_pontuais": round(pontuais / abertos * 100, 1) if abertos else 0.0,
+            "percentual_criticos": round(abertos / contagem["criados"] * 100, 1) if contagem["criados"] else 0.0,
+            "total_criados": contagem["criados"],
+            "sem_prioridade": contagem["sem_prioridade"],
         }
     )
 
 
+def _home_cache_chamado_da_caixa(valor, grupos):
+    """Chamado do cache entra nos widgets "Cacheados" da home da caixa de
+    "grupos"? Mesma regra do resto da home (ver _build_base_jql_home): Grupo
+    Solucionador da caixa, N1/N2 só INC ("INC-...") e Prod só PDST
+    ("PDST-...")."""
+    grupo = valor(CACHE_COL_GRUPO)
+    if grupo not in grupos:
+        return False
+    prefixo = "PDST" if grupo == GRUPO_PROD else "INC"
+    return str(valor(CACHE_COL_CHAVE) or "").startswith(f"{prefixo}-")
+
+
 @app.route("/api/home-classificacao-funil", methods=["POST"])
 def home_classificacao_funil():
-    """Widget da home: funil de Classificação — top 5 valores de
-    "Classificação" com mais chamados criados (Análise de Jornada, modo
-    "Geral" — fetch_chamados_geral_classificacao + ranking igual ao de
-    lá, só que limitado ao top 5), do começo do mês atual até hoje. Cada
-    item do ranking já traz "por_subclassificacao": top 5 valores de
-    "Sub-Classificação" dentro dessa Classificação (mesmo mecanismo de
-    Análise de Jornada), pro hover da tela. Uma seção por caixa (Solar e
-    Claro Tv), cada uma com os próprios campos resolvidos (best-effort:
-    sem "Classificação", a caixa sai com o funil vazio; sem
-    "Sub-Classificação", cada item sai com "por_subclassificacao" vazio —
-    nenhum dos dois quebra a outra caixa).
+    """Widget da home "Classificação — Funil" (tag "Mês atual · Cacheado"):
+    top 5 valores de "Classificação" com mais chamados criados do começo do
+    mês atual até hoje. Clicar numa barra abre o gráfico de criados por dia dessa Classificação
+    (ver /api/home-funil-criados-dia). Uma seção por caixa (Solar e Claro
+    Tv). Lê só as planilhas do cache local de cada caixa (nenhuma consulta
+    ao Jira, nem credenciais — mesmo padrão de /api/home-colaboradores-
+    cache): só funciona rodando localmente e os números acompanham a última
+    sincronização do cache.
 
-    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
-    Chamados" — ver nota em _build_base_jql_home."""
-    body = request.get_json(silent=True) or {}
+    N1/N2 só "Central de Incidentes", Prod só "Abertura de Chamados" — ver
+    _home_cache_chamado_da_caixa."""
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio_mes = hoje.replace(day=1)
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
-        config = dict(_config_from_request(body), jql=_build_base_jql_home(caixa_id))
+        pasta = CACHE_PARTICOES[caixa_id]["pasta"]
+        if not os.path.isdir(pasta):
+            raise JiraExtractorError(f'Pasta de cache não encontrada neste ambiente: "{pasta}".')
+        grupos = set(CAIXAS[caixa_id]["grupos"])
 
-        try:
-            classificacao_field_id = _resolve_classificacao_field_id(config)
-        except Exception:
-            app.logger.exception("Falha ao resolver o campo Classificação")
-            classificacao_field_id = None
+        totais = Counter()
 
-        try:
-            subclassificacao_field_id = _resolve_subclassificacao_field_id(config)
-        except Exception:
-            app.logger.exception("Falha ao resolver o campo Sub-Classificação")
-            subclassificacao_field_id = None
+        def processar(valor):
+            classificacao = valor(CACHE_COL_CLASSIFICACAO)
+            if not classificacao or not _home_cache_chamado_da_caixa(valor, grupos):
+                return
+            criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
+            if not criacao or not inicio_mes <= criacao.date() <= hoje:
+                return
+            totais[classificacao] += 1
 
-        ranking = []
-        if classificacao_field_id:
-            rows = fetch_chamados_geral_classificacao(
-                config, inicio_mes, hoje, classificacao_field_id, subclassificacao_field_id=subclassificacao_field_id
-            )
-            totais = Counter(r.get("classificacao") for r in rows if r.get("classificacao"))
-            top5 = totais.most_common(5)
+        _cache_para_cada_linha(
+            pasta,
+            [CACHE_COL_CLASSIFICACAO, CACHE_COL_GRUPO, CACHE_COL_CHAVE, CACHE_COL_CRIACAO],
+            processar,
+        )
 
-            sub_por_classificacao = {}
-            if subclassificacao_field_id:
-                for r in rows:
-                    c, sub = r.get("classificacao"), r.get("sub_classificacao")
-                    if c and sub:
-                        sub_por_classificacao.setdefault(c, Counter())[sub] += 1
-
-            ranking = [
-                {
-                    "classificacao": c,
-                    "total": total,
-                    "por_subclassificacao": [
-                        {"sub_classificacao": sub, "total": sub_total}
-                        for sub, sub_total in sub_por_classificacao.get(c, Counter()).most_common(5)
-                    ],
-                }
-                for c, total in top5
-            ]
-
+        ranking = [{"classificacao": c, "total": total} for c, total in totais.most_common(5)]
         caixas_resultado.append({"caixa": caixa_id, "ranking": ranking})
 
     return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
+
+
+def _mes_atras(d, meses):
+    """"d" deslocado "meses" meses pra trás (dia além do fim do mês de
+    destino é truncado nele — ex.: dia 31 num mês de 30 dias cai no 30)."""
+    indice_mes = (d.year * 12 + (d.month - 1)) - meses
+    ano_novo, mes_novo = divmod(indice_mes, 12)
+    mes_novo += 1
+    return date(ano_novo, mes_novo, min(d.day, calendar.monthrange(ano_novo, mes_novo)[1]))
+
+
+@app.route("/api/home-funil-criados-dia", methods=["POST"])
+def home_funil_criados_dia():
+    """Gráfico que abre ao clicar numa barra de "Classificação — Funil" da
+    home: chamados criados por dia de UMA Classificação ("classificacao" no
+    corpo) na caixa escolhida ("caixa", padrão solar), do começo do mês
+    atual até hoje, + "baseline" = média diária desse mesmo recorte no
+    PRÓPRIO mês atual (total criado no mês / dias do mês até hoje). Lê só as planilhas do
+    cache local da caixa (nenhuma consulta ao Jira, nem credenciais) — só
+    funciona rodando localmente, e os números acompanham a última
+    sincronização do cache. Mesma regra de projeto do funil (ver
+    _home_cache_chamado_da_caixa)."""
+    body = request.get_json(silent=True) or {}
+    caixa_id = _resolve_caixa(body)
+    classificacao = (body.get("classificacao") or "").strip()
+    if not classificacao:
+        raise JiraExtractorError("Informe a Classificação.")
+
+    pasta = CACHE_PARTICOES[caixa_id]["pasta"]
+    if not os.path.isdir(pasta):
+        raise JiraExtractorError(f'Pasta de cache não encontrada neste ambiente: "{pasta}".')
+    grupos = set(CAIXAS[caixa_id]["grupos"])
+
+    hoje = datetime.now(BRAZIL_TZ).date()
+    inicio_mes = hoje.replace(day=1)
+
+    por_dia = Counter()
+
+    def processar(valor):
+        if valor(CACHE_COL_CLASSIFICACAO) != classificacao:
+            return
+        if not _home_cache_chamado_da_caixa(valor, grupos):
+            return
+        criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
+        if criacao and inicio_mes <= criacao.date() <= hoje:
+            por_dia[criacao.date()] += 1
+
+    _cache_para_cada_linha(pasta, [CACHE_COL_CLASSIFICACAO, CACHE_COL_GRUPO, CACHE_COL_CHAVE, CACHE_COL_CRIACAO], processar)
+
+    serie = []
+    dia = inicio_mes
+    while dia <= hoje:
+        serie.append({"data": dia.isoformat(), "total": por_dia.get(dia, 0)})
+        dia += timedelta(days=1)
+
+    total = sum(item["total"] for item in serie)
+    return jsonify(
+        {
+            "classificacao": classificacao,
+            "inicio": inicio_mes.isoformat(),
+            "fim": hoje.isoformat(),
+            "total": total,
+            "serie": serie,
+            "baseline": round(total / len(serie), 1),
+        }
+    )
 
 
 @app.route("/api/home-grupo-criacao", methods=["POST"])
@@ -1195,15 +1320,42 @@ def home_grupo_criacao():
         app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
         raise JiraExtractorError('Campo "Grupo Solucionador" não encontrado no Jira.')
 
-    caixas_resultado = [
-        dict(
-            caixa=caixa_id,
-            **fetch_grupo_criacao_mensal(
-                config, CAIXAS[caixa_id]["grupos"], grupo_field_id, prod_projetos=[PROJETO_PDST]
-            ),
+    # "Classificação" alimenta o Pareto do popup (best-effort: sem o campo,
+    # o Pareto sai vazio em vez de derrubar o widget).
+    try:
+        classificacao_field_id = _resolve_classificacao_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Classificação")
+        classificacao_field_id = None
+
+    # "Sub-Classificação" e "PROP_Site" (localidade) alimentam os rankings que
+    # aparecem ao clicar numa barra do Pareto (mesma regra: best-effort).
+    try:
+        subclassificacao_field_id = _resolve_subclassificacao_field_id(config)
+    except Exception:
+        app.logger.exception("Falha ao resolver o campo Sub-Classificação")
+        subclassificacao_field_id = None
+    try:
+        eps_field_id = _resolve_eps_field_id(config)
+    except Exception:
+        app.logger.exception('Falha ao resolver o campo "PROP_Site"')
+        eps_field_id = None
+
+    caixas_resultado = []
+    for caixa_id in CAIXAS:
+        dados = fetch_grupo_criacao_mensal(
+            config,
+            CAIXAS[caixa_id]["grupos"],
+            grupo_field_id,
+            prod_projetos=[PROJETO_PDST],
+            classificacao_field_id=classificacao_field_id,
+            subclassificacao_field_id=subclassificacao_field_id,
+            eps_field_id=eps_field_id,
         )
-        for caixa_id in CAIXAS
-    ]
+        # O Pareto por Classificação do popup é montado no front a partir de
+        # "chamados" (cada um traz "classificacao"), pra refiltrar por caixa
+        # na hora — ver construirSlideParetoClassificacao em app.js.
+        caixas_resultado.append(dict(caixa=caixa_id, **dados))
     return jsonify({"caixas": caixas_resultado})
 
 
@@ -1282,6 +1434,65 @@ def home_criados_mes():
         caixas_resultado.append({"caixa": caixa_id, "dias": dias})
 
     return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
+
+
+# Status de GML que marcam o calendário "Chamados Criados" da home (por
+# "Planned end"), comparados sem acento/maiúsculas (ver _gml_status_norm).
+GML_STATUS_CALENDARIO = {"concluido", "revisao pos-implementacao"}
+GML_COL_PLANNED_END = "Planned end"
+GML_COL_RELATOR = "Relator"
+
+
+@app.route("/api/home-gml-planned-end", methods=["POST"])
+def home_gml_planned_end():
+    """GMLs Concluído/Revisão Pós-Implementação agrupadas pelo dia do
+    "Planned end" (o dia marcado no próprio campo, sem converter fuso):
+    "por_dia" = {"AAAA-MM-DD": [{"ticket", "status", "relator"}]}. Período
+    = "inicio"/"fim" opcionais no corpo (AAAA-MM-DD, inclusivos); sem eles,
+    o mês atual. A home marca com um * vermelho os dias do calendário
+    "Chamados Criados" que têm GML e o gráfico "Atendimento diário" do
+    Material ICG marca os dias do período dele; o hover lista elas. Lê só as
+    planilhas de cache GML (nenhuma consulta ao Jira, nem credenciais —
+    mesmo padrão de /api/home-colaboradores-cache); como cada planilha é do
+    mês de CRIAÇÃO, varre a pasta toda, e um ticket repetido conta uma vez
+    só."""
+    pasta = CACHE_PARTICOES["gml"]["pasta"]
+    if not os.path.isdir(pasta):
+        raise JiraExtractorError(f'Pasta de cache GML não encontrada neste ambiente: "{pasta}".')
+
+    body = request.get_json(silent=True) or {}
+    hoje = datetime.now(BRAZIL_TZ).date()
+    try:
+        inicio = date.fromisoformat(str(body.get("inicio") or ""))
+        fim = date.fromisoformat(str(body.get("fim") or ""))
+    except ValueError:
+        inicio = hoje.replace(day=1)
+        fim = hoje.replace(day=calendar.monthrange(hoje.year, hoje.month)[1])
+    inicio_iso, fim_iso = inicio.isoformat(), fim.isoformat()
+
+    por_dia = defaultdict(list)
+    vistos = set()
+
+    def processar(valor):
+        ticket = str(valor(GML_COL_CHAVE) or "").strip()
+        if not ticket or ticket in vistos:
+            return
+        vistos.add(ticket)
+        status = valor(GML_COL_STATUS)
+        if _gml_status_norm(status) not in GML_STATUS_CALENDARIO:
+            return
+        planned_end = valor(GML_COL_PLANNED_END)
+        dia = planned_end.strftime("%Y-%m-%d") if isinstance(planned_end, (datetime, date)) else str(planned_end or "")[:10]
+        if inicio_iso <= dia <= fim_iso:
+            por_dia[dia].append({"ticket": ticket, "status": status, "relator": valor(GML_COL_RELATOR)})
+
+    _cache_para_cada_linha(pasta, [GML_COL_CHAVE, GML_COL_STATUS, GML_COL_PLANNED_END, GML_COL_RELATOR], processar)
+
+    for gmls in por_dia.values():
+        gmls.sort(key=lambda g: g["ticket"])
+    return jsonify(
+        {"inicio": inicio_iso, "fim": fim_iso, "total": sum(len(g) for g in por_dia.values()), "por_dia": por_dia}
+    )
 
 
 @app.route("/api/home-violar-semanal", methods=["POST"])
@@ -1363,6 +1574,37 @@ EXTRACAO_LOTE_PASTA_PADRAO = os.path.join(CACHE_BASE_DIR, "TV")
 EXTRACAO_LOTE_TAMANHO = CACHE_SYNC_LOTE
 
 
+def _gml_campos_ids(config):
+    """IDs dos campos customizados do GML resolvidos por nome
+    (GML_CAMPOS_CUSTOMIZADOS) — o que não for encontrado fica None e a
+    coluna sai vazia (ver fetch_extracao_gml)."""
+    campos_ids = {}
+    for nome in GML_CAMPOS_CUSTOMIZADOS:
+        try:
+            campos_ids[nome] = _resolve_field_id(config, nome)
+        except Exception:
+            app.logger.exception('Falha ao resolver o campo "%s"', nome)
+            campos_ids[nome] = None
+    return campos_ids
+
+
+@app.route("/api/gml", methods=["POST"])
+def extracao_gml():
+    """Ação "Extrair GML" (tela em lote, mesmo padrão de "Extração em
+    Lote"): roda 1 JQL da lista e devolve as linhas com as colunas fixas
+    de fetch_extracao_gml (GML_COLUNAS) — a tela grava cada query num
+    arquivo via /api/extracao-lote/salvar com modelo "gml". Os campos
+    customizados são resolvidos por nome (GML_CAMPOS_CUSTOMIZADOS); o que
+    não for encontrado sai com a coluna vazia."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+    jql = (body.get("jql") or "").strip()
+    if not jql:
+        raise JiraExtractorError("Informe a JQL.")
+
+    return jsonify({"linhas": fetch_extracao_gml(config, jql, _gml_campos_ids(config))})
+
+
 @app.route("/api/extracao-lote/preparar", methods=["POST"])
 def extracao_lote_preparar():
     """1º passo de "Extração em Lote": roda a JQL de 1 query da lista
@@ -1414,17 +1656,21 @@ def extracao_lote_lote():
     info_por_chave = _cache_violado_reaberto_jira(config, chaves)
     resolucao_por_chave = _cache_resolucao_jira(config, chaves)
     eps_sub_por_chave = _cache_eps_sub_jira(config, chaves)
+    prioridade_por_chave = _cache_prioridade_jira(config, chaves)
 
     resultados = {}
     for chave in chaves:
         info = info_por_chave.get(chave, {})
         eps_sub = eps_sub_por_chave.get(chave, {})
+        prioridade = prioridade_por_chave.get(chave, {})
         resultados[chave] = {
             CACHE_COL_VIOLADO: info.get("violado"),
             CACHE_COL_REABERTO: info.get("reaberto"),
             CACHE_COL_RESOLUCAO: resolucao_por_chave.get(chave),
             CACHE_COL_EPS: eps_sub.get("eps"),
             CACHE_COL_SUBCLASSIFICACAO: eps_sub.get("subclassificacao"),
+            CACHE_COL_PRIORIDADE: prioridade.get("prioridade"),
+            CACHE_COL_FOI_COTI: prioridade.get("foi_coti"),
         }
     return jsonify({"resultados": resultados})
 
@@ -1445,8 +1691,12 @@ def extracao_lote_salvar():
     manipulando o nome, nem gerar um arquivo com extensão que não bate com
     o conteúdo. "pasta" em si não tem essa restrição (é um caminho
     absoluto local escolhido na própria tela, mesmo nível de confiança do
-    CACHE_DIR)."""
+    CACHE_DIR).
+
+    "modelo" decide as colunas gravadas: "cache" (padrão, CACHE_COLUNAS —
+    Extração em Lote) ou "gml" (GML_COLUNAS — Extrair GML)."""
     body = request.get_json(silent=True) or {}
+    colunas = GML_COLUNAS if body.get("modelo") == "gml" else CACHE_COLUNAS
     pasta = (body.get("pasta") or "").strip() or EXTRACAO_LOTE_PASTA_PADRAO
     nome_arquivo = (body.get("nome_arquivo") or "").strip()
     linhas = body.get("linhas") or []
@@ -1471,13 +1721,13 @@ def extracao_lote_salvar():
     try:
         if formato == "csv":
             with open(caminho, "wb") as f:
-                f.write(_rows_to_csv_bytes([{c: linha.get(c) for c in CACHE_COLUNAS} for linha in linhas]))
+                f.write(_rows_to_csv_bytes([{c: linha.get(c) for c in colunas} for linha in linhas]))
         else:
             wb = Workbook()
             ws = wb.active
-            ws.append(CACHE_COLUNAS)
+            ws.append(colunas)
             for linha in linhas:
-                ws.append([linha.get(c) for c in CACHE_COLUNAS])
+                ws.append([linha.get(c) for c in colunas])
             wb.save(caminho)
     except OSError as e:
         raise JiraExtractorError(f'Não foi possível salvar "{caminho}": {e}')
@@ -1509,23 +1759,6 @@ def violados():
 
     return _respond(rows, "chamados_violados", body, extra=extra)
 
-
-
-@app.route("/api/colaboradores", methods=["POST"])
-def colaboradores():
-    """Ação "Colaboradores": mesma tabela por colaborador (Resolvidos,
-    Violados, Reabertos, % dentro do prazo) do widget da home
-    (fetch_colaboradores_mes), mas com período/caixa/projetos escolhidos
-    pelo usuário em vez do mês atual fixo com os dois de uma vez — mesmo
-    padrão de reabertos/analise_jornada."""
-    body = request.get_json(silent=True) or {}
-    caixa_id = _resolve_caixa(body)
-    projetos = _projetos_selecionados(body)
-    config = _config_from_request(body)
-    inicio, fim = _parse_periodo(body)
-    linhas = fetch_colaboradores_mes(config, CAIXAS[caixa_id]["grupos"], inicio, fim, projetos=projetos)
-
-    return jsonify({"inicio": inicio.strftime("%Y-%m-%d"), "fim": fim.strftime("%Y-%m-%d"), "colaboradores": linhas})
 
 
 # Mostrar as >500 categorias distintas que aparecem num mês não ajuda em
@@ -2264,12 +2497,7 @@ def _cache_material_icg_dados(
     # acima (que é só 1 período, de mesma DURAÇÃO, imediatamente antes).
     # Dia além do fim do mês de destino é truncado nele (ex.: dia 31 num
     # mês de 30 dias cai no dia 30).
-    def mes_atras(d, meses):
-        indice_mes = (d.year * 12 + (d.month - 1)) - meses
-        ano_novo, mes_novo = divmod(indice_mes, 12)
-        mes_novo += 1
-        dias_no_mes_novo = calendar.monthrange(ano_novo, mes_novo)[1]
-        return date(ano_novo, mes_novo, min(d.day, dias_no_mes_novo))
+    mes_atras = _mes_atras
 
     periodos_3_meses = [(mes_atras(inicio, n), mes_atras(fim, n)) for n in (1, 2, 3)]
     agregados_3_meses = [somar_periodo(ini, fim_, grupos_indicadores) for ini, fim_ in periodos_3_meses]
@@ -2722,7 +2950,35 @@ def _cache_contar_status(caminho):
         wb.close()
 
 
-def _cache_listar_planilhas(pasta=CACHE_DIR):
+def _cache_contar_atualizacao(caminho, origem):
+    """"Valores atualização" das seções OM/GML da tela de Cache: quantas
+    linhas a próxima sincronização ainda vai reconsultar — OM: sem
+    DefectNumber__c; GML: Status fora de GML_STATUS_FINAIS (mesmos
+    critérios das sincronizações, ver cache_om_sincronizar/
+    _gml_sincronizar_planilha). Devolve None se a coluna não existir."""
+    coluna = OM_COL_DEFEITO if origem == "salesforce" else GML_COL_STATUS
+    wb = load_workbook(caminho, read_only=True, data_only=True)
+    try:
+        linhas = wb.active.iter_rows(values_only=True)
+        header = next(linhas, None)
+        if not header or coluna not in header:
+            return None
+        idx = header.index(coluna)
+        total = 0
+        for linha in linhas:
+            if linha is None or all(v is None for v in linha):
+                continue
+            valor = linha[idx] if idx < len(linha) else None
+            if origem == "salesforce":
+                total += 0 if str(valor or "").strip() else 1
+            else:
+                total += 0 if _gml_status_final(valor) else 1
+        return total
+    finally:
+        wb.close()
+
+
+def _cache_listar_planilhas(pasta=CACHE_DIR, origem="jira"):
     if not os.path.isdir(pasta):
         raise JiraExtractorError(f'Pasta de cache não encontrada neste ambiente: "{pasta}".')
 
@@ -2731,6 +2987,14 @@ def _cache_listar_planilhas(pasta=CACHE_DIR):
     nomes = [nome for nome in os.listdir(pasta) if nome.lower().endswith(".xlsx") and not nome.startswith("~$")]
     for nome in sorted(nomes, key=_cache_ordenar_chave):
         caminho = os.path.join(pasta, nome)
+        if origem != "jira":
+            try:
+                valores = _cache_contar_atualizacao(caminho, origem)
+            except Exception:
+                app.logger.exception('Falha ao ler a planilha de cache "%s"', nome)
+                valores = None
+            arquivos.append({"nome": nome, "valores_atualizacao": valores, "sincronizado_em": meta.get(nome)})
+            continue
         try:
             total, abertos, abertos_por_caixa = _cache_contar_status(caminho)
         except Exception:
@@ -2827,6 +3091,30 @@ def _cache_violado_reaberto_jira(config, keys):
             "violado": violado_por_key.get(chave, "N/A"),
             "reaberto": "Sim" if chave in reabertos else "Não",
         }
+        for chave in chaves_unicas
+    }
+
+
+def _cache_prioridade_jira(config, keys):
+    """Para uma lista de chaves, devolve {chave: {"prioridade": nome da
+    prioridade ATUAL (ex.: "P1") ou None, "foi_coti": "Sim"/"Não"}} —
+    "foi_coti" = o chamado já teve prioridade P0/P1/P2 em algum momento
+    (priority WAS IN (P0, P1, P2), mesma JQL de fetch_chamados_criticos).
+    Alimenta as colunas "Prioridade"/"Já foi P0/P1/P2" do cache, base do
+    widget COTI da home (ver /api/home-coti-mes). Mesmo padrão de
+    _cache_violado_reaberto_jira."""
+    if not keys:
+        return {}
+    chaves_unicas = sorted(set(keys))
+    prioridade_por_key = {}
+    for issue in _cache_consultar_em_lotes(config, chaves_unicas, None, ["priority"]):
+        prioridade_por_key[issue.get("key")] = (issue.get("fields", {}).get("priority") or {}).get("name")
+    foram_coti = {
+        issue.get("key")
+        for issue in _cache_consultar_em_lotes(config, chaves_unicas, "priority WAS IN (P0, P1, P2)", ["key"])
+    }
+    return {
+        chave: {"prioridade": prioridade_por_key.get(chave), "foi_coti": "Sim" if chave in foram_coti else "Não"}
         for chave in chaves_unicas
     }
 
@@ -2931,6 +3219,7 @@ def _cache_adicionar_colunas_calculadas(config, linhas):
     info_por_chave = _cache_violado_reaberto_jira(config, chaves)
     resolucao_por_chave = _cache_resolucao_jira(config, chaves)
     eps_sub_por_chave = _cache_eps_sub_jira(config, chaves)
+    prioridade_por_chave = _cache_prioridade_jira(config, chaves)
     for linha in linhas:
         info = info_por_chave.get(linha[CACHE_COL_CHAVE], {})
         linha[CACHE_COL_VIOLADO] = info.get("violado")
@@ -2939,6 +3228,9 @@ def _cache_adicionar_colunas_calculadas(config, linhas):
         eps_sub = eps_sub_por_chave.get(linha[CACHE_COL_CHAVE], {})
         linha[CACHE_COL_EPS] = eps_sub.get("eps")
         linha[CACHE_COL_SUBCLASSIFICACAO] = eps_sub.get("subclassificacao")
+        prioridade = prioridade_por_chave.get(linha[CACHE_COL_CHAVE], {})
+        linha[CACHE_COL_PRIORIDADE] = prioridade.get("prioridade")
+        linha[CACHE_COL_FOI_COTI] = prioridade.get("foi_coti")
     return linhas
 
 
@@ -3004,9 +3296,22 @@ def _cache_garantir_mes_atual(body, particao):
     listagem com o usuário logado tenta de novo). Best-effort: qualquer
     falha aqui (Jira fora do ar, campo não encontrado etc.) só vai pro
     log, nunca derruba a listagem."""
+    if particao["origem"] not in ("jira", "gml"):
+        return
     hoje = datetime.now(BRAZIL_TZ).date()
     nome = _cache_nome_arquivo_mes(hoje.year, hoje.month)
     if os.path.isfile(os.path.join(particao["pasta"], nome)):
+        return
+    if particao["origem"] == "gml":
+        try:
+            config = _config_from_request(body)
+        except JiraExtractorError:
+            return
+        try:
+            _gml_sincronizar_planilha(config, particao["pasta"], hoje.year, hoje.month)
+            app.logger.info('Planilha GML do mês atual criada automaticamente: "%s".', nome)
+        except Exception:
+            app.logger.exception('Falha ao criar automaticamente a planilha GML do mês atual ("%s").', nome)
         return
 
     try:
@@ -3165,10 +3470,551 @@ def cache_arquivos():
         {
             "caixa": particao["caixa"],
             "pasta": particao["pasta"],
+            "origem": particao["origem"],
             "caixas": [{"id": v["id"], "label": v["label"], "pasta_padrao": v["pasta"]} for v in CACHE_PARTICOES.values()],
-            "arquivos": _cache_listar_planilhas(particao["pasta"]),
+            "arquivos": _cache_listar_planilhas(particao["pasta"], particao["origem"]),
         }
     )
+
+
+# "Mapa de calor OM": colunas das exportações do Salesforce (Order
+# Management) guardadas na pasta de cache OM (só leitura, ver
+# CACHE_PARTICOES).
+OM_COL_CRIACAO = "CreatedDate"
+OM_COL_PEDIDO = "vlocity_cmt__OrchestrationPlanId__r.vlocity_cmt__OrderId__r.OrderNumber"
+# Linhas do mapa de calor agrupadas pela mensagem de erro tratada
+# (pedido do usuário: "puxar pela coluna ErrorHandled__c").
+OM_COL_ERRO = "ErrorHandled__c"
+OM_ERRO_VAZIO = "(sem error handle)"
+# Defeito relacionado a cada Error Handle (coluna "Defeito" da tela).
+OM_COL_DEFEITO = "DefectNumber__c"
+OM_DEFEITO_VAZIO = "(sem defeito)"
+OM_MAPA_CALOR_MESES = 3
+
+
+def _om_data_criacao(valor):
+    """"CreatedDate" vem como texto ISO com fuso ("2026-09-30T21:06:13.000-0300")
+    ou, se o Excel converteu, como datetime — devolve só a data (no fuso
+    da própria exportação) ou None se não der pra ler."""
+    if isinstance(valor, datetime):
+        return valor.date()
+    try:
+        return date.fromisoformat(str(valor)[:10])
+    except ValueError:
+        return None
+
+
+@app.route("/api/om-mapa-calor", methods=["POST"])
+def om_mapa_calor():
+    """Ação "Mapa de calor OM": erro tratado (ErrorHandled__c) x dia dos meses
+    escolhidos na tela ("meses" no corpo, lista de "AAAA-MM" — filtro
+    estilo Excel, pode ser mais de um e não precisa ser contíguo). Sem
+    "meses" (ou nenhum válido), usa os últimos OM_MAPA_CALOR_MESES meses de
+    calendário até hoje. Cada célula conta pedidos DISTINTOS (OrderNumber
+    — o mesmo pedido pode ter vários itens de orquestração com o mesmo
+    erro no mesmo dia). Lê só as planilhas locais da pasta OM (sem Jira,
+    sem credenciais) — só funciona rodando localmente, igual a tela de
+    Cache. Linhas ordenadas pelo total de pedidos nos meses escolhidos
+    (maior em cima). "meses_disponiveis" (mais recente primeiro) alimenta
+    as opções do filtro."""
+    pasta = CACHE_PARTICOES["om"]["pasta"]
+    if not os.path.isdir(pasta):
+        raise JiraExtractorError(f'Pasta de cache OM não encontrada neste ambiente: "{pasta}".')
+
+    hoje = datetime.now(BRAZIL_TZ).date()
+    pedidos_por_erro_dia = defaultdict(set)
+    # (erro, dia) -> {defeito: pedidos}, pra listar os defeitos de cada
+    # Error Handle só dentro dos dias dos meses escolhidos.
+    defeitos_por_erro_dia = defaultdict(lambda: defaultdict(set))
+
+    def processar(valor):
+        dia = _om_data_criacao(valor(OM_COL_CRIACAO))
+        if dia is None or dia > hoje:
+            return
+        erro = str(valor(OM_COL_ERRO) or "").strip() or OM_ERRO_VAZIO
+        pedido = valor(OM_COL_PEDIDO) or valor(OM_COL_CRIACAO)
+        pedidos_por_erro_dia[(erro, dia)].add(pedido)
+        defeito = str(valor(OM_COL_DEFEITO) or "").strip() or OM_DEFEITO_VAZIO
+        defeitos_por_erro_dia[(erro, dia)][defeito].add(pedido)
+
+    _cache_para_cada_linha(pasta, [OM_COL_CRIACAO, OM_COL_PEDIDO, OM_COL_ERRO, OM_COL_DEFEITO], processar)
+
+    meses_disponiveis = sorted({dia.strftime("%Y-%m") for _erro, dia in pedidos_por_erro_dia}, reverse=True)
+
+    body_meses = (request.get_json(silent=True) or {}).get("meses") or []
+    meses = sorted({m for m in body_meses if isinstance(m, str) and m in meses_disponiveis})
+    if not meses:
+        ano, mes = hoje.year, hoje.month
+        padrao = []
+        for _ in range(OM_MAPA_CALOR_MESES):
+            padrao.append(f"{ano:04d}-{mes:02d}")
+            mes -= 1
+            if mes < 1:
+                mes, ano = 12, ano - 1
+        meses = sorted(padrao)
+
+    # Todos os dias de cada mês escolhido (o mês corrente só até hoje).
+    dias = []
+    for chave in meses:
+        ano, mes = int(chave[:4]), int(chave[5:])
+        ultimo = min(date(ano, mes, calendar.monthrange(ano, mes)[1]), hoje)
+        dia = date(ano, mes, 1)
+        while dia <= ultimo:
+            dias.append(dia)
+            dia += timedelta(days=1)
+    dias_set = set(dias)
+
+    pedidos_por_erro = defaultdict(set)
+    pedidos_por_erro_defeito = defaultdict(lambda: defaultdict(set))
+    for (erro, dia), pedidos in pedidos_por_erro_dia.items():
+        if dia in dias_set:
+            pedidos_por_erro[erro] |= pedidos
+            for defeito, pedidos_defeito in defeitos_por_erro_dia[(erro, dia)].items():
+                pedidos_por_erro_defeito[erro][defeito] |= pedidos_defeito
+
+    linhas = [
+        {
+            "erro": erro,
+            "total": len(pedidos),
+            # Defeitos relacionados, mais frequente primeiro (pedidos distintos).
+            "defeitos": [
+                {"defeito": defeito, "pedidos": len(p)}
+                for defeito, p in sorted(pedidos_por_erro_defeito[erro].items(), key=lambda item: (-len(item[1]), item[0]))
+            ],
+            "por_dia": [len(pedidos_por_erro_dia.get((erro, dia), ())) for dia in dias],
+        }
+        for erro, pedidos in pedidos_por_erro.items()
+    ]
+    linhas.sort(key=lambda l: (-l["total"], l["erro"]))
+
+    return jsonify(
+        {
+            "meses": meses,
+            "meses_disponiveis": meses_disponiveis,
+            "dias": [d.strftime("%Y-%m-%d") for d in dias],
+            "linhas": linhas,
+        }
+    )
+
+
+# Sincronização do cache OM via Salesforce CLI ("sf"): o CLI precisa estar
+# instalado e logado na máquina que roda o servidor (uma vez só: "sf org
+# login web --alias om-prod"). A consulta fica em api/om_query.soql (SOQL
+# puro, editável sem mexer no código) com {inicio}/{fim} trocados pelos
+# limites do período em UTC ("...Z", mesmo critério das exportações
+# mensais que já estão na pasta). As colunas da planilha saem da lista do
+# SELECT, na mesma ordem, precedidas da coluna "_" com "[<objeto>]".
+OM_SF_ORG = "om-prod"
+OM_SOQL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "om_query.soql")
+OM_SF_TIMEOUT_S = 900
+OM_SOQL_RE = re.compile(r"^\s*select\s+(.+?)\s+from\s+(\w+)", re.IGNORECASE | re.DOTALL)
+OM_SOQL_ORDER_BY_RE = re.compile(r"\border\s+by\b", re.IGNORECASE)
+# Nº de pedidos por consulta "OrderNumber IN (...)" na atualização dos
+# itens sem defeito — mesmo motivo de CACHE_SYNC_LOTE (SOQL não fica
+# gigante).
+OM_SYNC_LOTE = 200
+
+
+def _om_soql_utc(momento):
+    return momento.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _om_ler_soql():
+    """Lê api/om_query.soql. Devolve (modelo, campos, objeto) — "campos"
+    na ordem do SELECT."""
+    try:
+        with open(OM_SOQL_PATH, encoding="utf-8") as f:
+            modelo = f.read()
+    except OSError as e:
+        raise JiraExtractorError(f'Não foi possível ler a consulta SOQL do OM ("{OM_SOQL_PATH}"): {e}')
+    match = OM_SOQL_RE.match(modelo)
+    if not match or "{inicio}" not in modelo or "{fim}" not in modelo:
+        raise JiraExtractorError(
+            f'Consulta SOQL do OM inválida em "{OM_SOQL_PATH}": esperado "SELECT ... FROM ..." com {{inicio}} e {{fim}}.'
+        )
+    campos = [" ".join(c.split()) for c in match.group(1).split(",") if c.strip()]
+    return modelo, campos, match.group(2)
+
+
+def _om_montar_soql(modelo, inicio, fim, filtro_extra=None):
+    """Troca {inicio}/{fim} (datetimes com fuso) e, se vier, acrescenta
+    "AND (filtro_extra)" no fim do WHERE (antes do ORDER BY) — o WHERE do
+    modelo é uma sequência de AND no nível de cima, então dá pra somar
+    mais uma condição sem mudar o sentido das demais."""
+    soql = modelo.replace("{inicio}", _om_soql_utc(inicio)).replace("{fim}", _om_soql_utc(fim))
+    if filtro_extra:
+        ordem = list(OM_SOQL_ORDER_BY_RE.finditer(soql))
+        corte = ordem[-1].start() if ordem else len(soql.rstrip())
+        soql = f"{soql[:corte].rstrip()}\n    AND ({filtro_extra})\n{soql[corte:]}"
+    return soql
+
+
+def _om_valor_campo(registro, campo):
+    """Valor de "campo" (pode ser um caminho de relacionamento, ex.:
+    "a__r.b__r.Status") num registro do JSON do sf; None se algum nível
+    vier vazio. CreatedDate vem em UTC ("...+0000") e é gravado no fuso
+    -03:00, igual às exportações antigas (o mapa de calor usa só a data)."""
+    valor = registro
+    for parte in campo.split("."):
+        if not isinstance(valor, dict):
+            return None
+        valor = valor.get(parte)
+    if campo == OM_COL_CRIACAO and isinstance(valor, str):
+        try:
+            momento = datetime.strptime(valor, "%Y-%m-%dT%H:%M:%S.%f%z").astimezone(BRAZIL_TZ)
+            return momento.strftime("%Y-%m-%dT%H:%M:%S.") + f"{momento.microsecond // 1000:03d}-0300"
+        except ValueError:
+            return valor
+    return valor
+
+
+def _om_momento(valor):
+    """CreatedDate de uma célula ("...-0300", "...+0000" ou datetime do
+    Excel, tratado como -03:00) -> datetime com fuso; None se não der."""
+    if isinstance(valor, datetime):
+        return valor if valor.tzinfo else valor.replace(tzinfo=BRAZIL_TZ)
+    try:
+        return datetime.strptime(str(valor), "%Y-%m-%dT%H:%M:%S.%f%z")
+    except ValueError:
+        return None
+
+
+def _om_chave(criado_em, pedido):
+    """Identifica 1 item de orquestração na planilha (as exportações não
+    têm o Id do registro): pedido + CreatedDate em UTC, até o milissegundo."""
+    momento = _om_momento(criado_em)
+    instante = momento.astimezone(timezone.utc).isoformat(timespec="milliseconds") if momento else str(criado_em)
+    return (str(pedido or "").strip(), instante)
+
+
+def _om_executar_sf(soql):
+    """Roda "sf data query --file <tmp> --target-org OM_SF_ORG --json" e
+    devolve a lista de registros. A consulta vai num arquivo temporário
+    (não na linha de comando): no Windows o "sf" é um .cmd, e "<"/">" da
+    SOQL seriam interpretados pelo cmd.exe."""
+    executavel = shutil.which("sf")
+    if not executavel:
+        raise JiraExtractorError(
+            'Salesforce CLI ("sf") não encontrado neste ambiente. Instale o CLI e faça login uma vez com '
+            f'"sf org login web --alias {OM_SF_ORG}".'
+        )
+    with tempfile.NamedTemporaryFile("w", suffix=".soql", delete=False, encoding="utf-8") as f:
+        f.write(soql)
+        caminho_query = f.name
+    try:
+        processo = subprocess.run(
+            [executavel, "data", "query", "--file", caminho_query, "--target-org", OM_SF_ORG, "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=OM_SF_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        raise JiraExtractorError(f"A consulta do Salesforce CLI passou de {OM_SF_TIMEOUT_S}s e foi interrompida.")
+    finally:
+        os.remove(caminho_query)
+
+    try:
+        saida = json.loads(processo.stdout or "{}")
+    except ValueError:
+        saida = {}
+    if processo.returncode != 0 or saida.get("status") not in (0, None):
+        mensagem = saida.get("message") or (processo.stderr or "").strip() or "erro desconhecido"
+        raise JiraExtractorError(f"Falha no Salesforce CLI: {mensagem}")
+    return (saida.get("result") or {}).get("records") or []
+
+
+def _om_soql_texto(valor):
+    return "'" + str(valor).replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+@app.route("/api/cache/om-sincronizar", methods=["POST"])
+def cache_om_sincronizar():
+    """Sincroniza 1 planilha mensal do cache OM via Salesforce CLI, com a
+    mesma lógica incremental do cache do Jira:
+    1. itens já na planilha SEM DefectNumber__c são consultados de novo
+       (pelo OrderNumber, em lotes de OM_SYNC_LOTE, sempre com o WHERE da
+       consulta do mês) e têm a linha inteira atualizada;
+    2. itens novos: busca a partir do CreatedDate mais recente já presente
+       ("data corte") até o fim do mês e acrescenta quem ainda não está na
+       planilha (chave pedido + CreatedDate, ver _om_chave).
+    Planilha inexistente = consulta o mês inteiro. "nome" ("<mês-abrev>-
+    <ano>.xlsx") escolhe o mês; sem ele, usa o mês corrente. Meses em UTC,
+    igual às exportações já existentes."""
+    body = request.get_json(silent=True) or {}
+    particao = _cache_resolve_particao({**body, "caixa": "om"})
+    pasta = particao["pasta"]
+    if not os.path.isdir(pasta):
+        raise JiraExtractorError(f'Pasta de cache OM não encontrada neste ambiente: "{pasta}".')
+
+    nome = (body.get("nome") or "").strip()
+    if nome:
+        if os.path.basename(nome) != nome:
+            raise JiraExtractorError("Arquivo de cache inválido.")
+        ano_mes = _cache_mes_do_arquivo(nome)
+        if ano_mes is None:
+            raise JiraExtractorError(f'Nome de planilha fora do padrão "<mês>-<ano>.xlsx": "{nome}".')
+        ano, mes = ano_mes
+    else:
+        agora = datetime.now(timezone.utc)
+        ano, mes = agora.year, agora.month
+        nome = _cache_nome_arquivo_mes(ano, mes)
+
+    modelo, campos, objeto = _om_ler_soql()
+    inicio_mes = datetime(ano, mes, 1, tzinfo=timezone.utc)
+    fim_mes = datetime(ano + 1, 1, 1, tzinfo=timezone.utc) if mes == 12 else datetime(ano, mes + 1, 1, tzinfo=timezone.utc)
+
+    caminho = os.path.join(pasta, nome)
+    if os.path.isfile(caminho):
+        wb = load_workbook(caminho)
+    else:
+        wb = Workbook()
+        wb.active.append(["_"] + campos)
+    ws = wb.active
+
+    header = [cell.value for cell in ws[1]]
+    for campo in campos:
+        if campo not in header:
+            ws.cell(row=1, column=len(header) + 1, value=campo)
+            header.append(campo)
+    idx = {coluna: i for i, coluna in enumerate(header)}
+    for coluna in (OM_COL_CRIACAO, OM_COL_PEDIDO, OM_COL_DEFEITO):
+        if coluna not in idx:
+            raise JiraExtractorError(f'A consulta/planilha do OM precisa da coluna "{coluna}".')
+
+    def preencher(numero_linha, registro):
+        ws.cell(row=numero_linha, column=1, value=f"[{objeto}]")
+        for campo in campos:
+            ws.cell(row=numero_linha, column=idx[campo] + 1, value=_om_valor_campo(registro, campo))
+
+    # Linhas atuais: chave -> nº da linha, pedidos sem defeito e data corte.
+    linha_por_chave = {}
+    sem_defeito = {}
+    corte = inicio_mes
+    for numero_linha in range(2, ws.max_row + 1):
+        valor = lambda coluna: ws.cell(row=numero_linha, column=idx[coluna] + 1).value  # noqa: E731
+        criado_em, pedido = valor(OM_COL_CRIACAO), valor(OM_COL_PEDIDO)
+        if criado_em is None and pedido is None:
+            continue
+        chave = _om_chave(criado_em, pedido)
+        linha_por_chave[chave] = numero_linha
+        if not str(valor(OM_COL_DEFEITO) or "").strip() and chave[0]:
+            sem_defeito[chave] = chave[0]
+        momento = _om_momento(criado_em)
+        if momento and momento > corte:
+            corte = momento
+
+    # 1) Atualiza quem ainda não tem defeito.
+    atualizados = 0
+    pedidos = sorted(set(sem_defeito.values()))
+    for i in range(0, len(pedidos), OM_SYNC_LOTE):
+        lote = pedidos[i : i + OM_SYNC_LOTE]
+        filtro = f"{OM_COL_PEDIDO} IN ({', '.join(_om_soql_texto(p) for p in lote)})"
+        for registro in _om_executar_sf(_om_montar_soql(modelo, inicio_mes, fim_mes, filtro)):
+            chave = _om_chave(_om_valor_campo(registro, OM_COL_CRIACAO), _om_valor_campo(registro, OM_COL_PEDIDO))
+            if chave in sem_defeito:
+                preencher(linha_por_chave[chave], registro)
+                atualizados += 1
+
+    # 2) Novos a partir da data corte (SOQL não aceita milissegundos: corta
+    # pro segundo e descarta pela chave quem já está na planilha).
+    novos = 0
+    inicio_novos = corte.replace(microsecond=0)
+    for registro in _om_executar_sf(_om_montar_soql(modelo, inicio_novos, fim_mes)):
+        chave = _om_chave(_om_valor_campo(registro, OM_COL_CRIACAO), _om_valor_campo(registro, OM_COL_PEDIDO))
+        if chave in linha_por_chave:
+            continue
+        numero_linha = ws.max_row + 1
+        preencher(numero_linha, registro)
+        linha_por_chave[chave] = numero_linha
+        novos += 1
+
+    # Grava num temporário e troca no fim: uma falha no meio nunca deixa a
+    # planilha do mês pela metade.
+    temporario = os.path.join(pasta, f".{nome}.tmp")
+    try:
+        wb.save(temporario)
+        os.replace(temporario, caminho)
+    except PermissionError:
+        if os.path.exists(temporario):
+            os.remove(temporario)
+        raise JiraExtractorError(f'Não foi possível gravar "{nome}" — feche a planilha no Excel e tente de novo.')
+    finally:
+        wb.close()
+
+    sincronizado_em = datetime.now(BRAZIL_TZ).isoformat()
+    meta = _cache_load_meta(pasta)
+    meta[nome] = sincronizado_em
+    _cache_save_meta(meta, pasta)
+    return jsonify(
+        {
+            "nome": nome,
+            "verificados": len(sem_defeito),
+            "atualizados": atualizados,
+            "novos": novos,
+            "data_corte": corte.astimezone(BRAZIL_TZ).isoformat(),
+            "valores_atualizacao": _cache_contar_atualizacao(caminho, "salesforce"),
+            "sincronizado_em": sincronizado_em,
+        }
+    )
+
+
+# Cache GML: mesma política do cache de chamados (planilha por mês de
+# criação, sincronização incremental), com a JQL fixa abaixo + o recorte
+# de "created" do mês. Na sincronização, todo ticket da planilha que NÃO
+# está em GML_STATUS_FINAIS é consultado de novo (por chave, em lotes de
+# CACHE_SYNC_LOTE) e tem a linha inteira atualizada; depois entram os
+# tickets novos criados a partir do "Criado" mais recente da planilha.
+GML_JQL_BASE = (
+    '"Ativo Operações de TI" = "ari:cloud:cmdb::object/76827f8b-4d96-46a6-abf2-f592d6b4b2d9/223777" '
+    'AND PROJECT = "Central de Mudanças e Liberação"'
+)
+# Comparados sem acento/maiúsculas (ver _gml_status_final).
+GML_STATUS_FINAIS = {"concluido", "encerrado", "cancelado"}
+GML_COL_CHAVE = "Ticket"
+GML_COL_STATUS = "Status"
+GML_COL_CRIADO = "Criado"
+
+
+def _gml_status_norm(status):
+    """Status sem acento/maiúsculas, pra comparar com os conjuntos GML_STATUS_*."""
+    return unicodedata.normalize("NFKD", str(status or "")).encode("ascii", "ignore").decode().strip().casefold()
+
+
+def _gml_status_final(status):
+    return _gml_status_norm(status) in GML_STATUS_FINAIS
+
+
+def _gml_momento(valor):
+    """"Criado" da planilha ("2026-10-19T19:59:58.892-0300" ou datetime
+    do Excel, tratado como -03:00) -> datetime com fuso; None se não der."""
+    if isinstance(valor, datetime):
+        return valor if valor.tzinfo else valor.replace(tzinfo=BRAZIL_TZ)
+    try:
+        return datetime.strptime(str(valor), "%Y-%m-%dT%H:%M:%S.%f%z")
+    except ValueError:
+        return None
+
+
+def _gml_sincronizar_planilha(config, pasta, ano, mes):
+    """Sincroniza (ou cria, se não existir) a planilha GML do mês
+    ("<mês-abrev>-<ano>.xlsx" em "pasta"). Devolve o dict de resposta de
+    /api/cache/gml-sincronizar."""
+    nome = _cache_nome_arquivo_mes(ano, mes)
+    caminho = os.path.join(pasta, nome)
+    ultimo_dia = calendar.monthrange(ano, mes)[1]
+    fim_jql = f"{ano:04d}-{mes:02d}-{ultimo_dia:02d} 23:59"
+    campos_ids = _gml_campos_ids(config)
+
+    if os.path.isfile(caminho):
+        wb = load_workbook(caminho)
+    else:
+        os.makedirs(pasta, exist_ok=True)
+        wb = Workbook()
+        wb.active.append(GML_COLUNAS)
+    ws = wb.active
+
+    header = [cell.value for cell in ws[1]]
+    for coluna in GML_COLUNAS:
+        if coluna not in header:
+            ws.cell(row=1, column=len(header) + 1, value=coluna)
+            header.append(coluna)
+    idx = {coluna: i + 1 for i, coluna in enumerate(header)}
+
+    def preencher(numero_linha, linha):
+        for coluna in GML_COLUNAS:
+            ws.cell(row=numero_linha, column=idx[coluna], value=linha.get(coluna))
+
+    linha_por_chave = {}
+    pendentes = []
+    corte = None
+    for numero_linha in range(2, ws.max_row + 1):
+        chave = ws.cell(row=numero_linha, column=idx[GML_COL_CHAVE]).value
+        if not chave:
+            continue
+        chave = str(chave).strip()
+        linha_por_chave[chave] = numero_linha
+        if not _gml_status_final(ws.cell(row=numero_linha, column=idx[GML_COL_STATUS]).value):
+            pendentes.append(chave)
+        momento = _gml_momento(ws.cell(row=numero_linha, column=idx[GML_COL_CRIADO]).value)
+        if momento and (corte is None or momento > corte):
+            corte = momento
+
+    # 1) Atualiza quem não está Concluído/Encerrado (por chave, em lotes).
+    atualizados = 0
+    for i in range(0, len(pendentes), CACHE_SYNC_LOTE):
+        lote = pendentes[i : i + CACHE_SYNC_LOTE]
+        jql = f"key IN ({', '.join(lote)})"
+        for linha in fetch_extracao_gml(config, jql, campos_ids):
+            numero_linha = linha_por_chave.get(linha.get(GML_COL_CHAVE))
+            if numero_linha:
+                preencher(numero_linha, linha)
+                atualizados += 1
+
+    # 2) Novos a partir da data corte (JQL só vai até o minuto: o mesmo
+    # minuto entra de novo e é descartado pela chave).
+    inicio_jql = corte.astimezone(BRAZIL_TZ).strftime("%Y-%m-%d %H:%M") if corte else f"{ano:04d}-{mes:02d}-01 00:00"
+    jql = f'{GML_JQL_BASE} AND created >= "{inicio_jql}" AND created <= "{fim_jql}" ORDER BY created ASC'
+    novos = 0
+    for linha in fetch_extracao_gml(config, jql, campos_ids):
+        chave = linha.get(GML_COL_CHAVE)
+        if not chave or chave in linha_por_chave:
+            continue
+        numero_linha = ws.max_row + 1
+        preencher(numero_linha, linha)
+        linha_por_chave[chave] = numero_linha
+        novos += 1
+
+    # Grava num temporário e troca no fim: uma falha no meio nunca deixa a
+    # planilha do mês pela metade.
+    temporario = os.path.join(pasta, f".{nome}.tmp")
+    try:
+        wb.save(temporario)
+        os.replace(temporario, caminho)
+    except PermissionError:
+        if os.path.exists(temporario):
+            os.remove(temporario)
+        raise JiraExtractorError(f'Não foi possível gravar "{nome}" — feche a planilha no Excel e tente de novo.')
+    finally:
+        wb.close()
+
+    sincronizado_em = datetime.now(BRAZIL_TZ).isoformat()
+    meta = _cache_load_meta(pasta)
+    meta[nome] = sincronizado_em
+    _cache_save_meta(meta, pasta)
+    return {
+        "nome": nome,
+        "verificados": len(pendentes),
+        "atualizados": atualizados,
+        "novos": novos,
+        "valores_atualizacao": _cache_contar_atualizacao(caminho, "gml"),
+        "sincronizado_em": sincronizado_em,
+    }
+
+
+@app.route("/api/cache/gml-sincronizar", methods=["POST"])
+def cache_gml_sincronizar():
+    """Sincroniza 1 planilha mensal do cache GML (ver
+    _gml_sincronizar_planilha). "nome" ("<mês-abrev>-<ano>.xlsx") escolhe
+    o mês; sem ele, usa o mês corrente (cria a planilha se não existir).
+    "pasta" opcional, igual às demais rotas de cache."""
+    body = request.get_json(silent=True) or {}
+    config = _config_from_request(body)
+    particao = _cache_resolve_particao({**body, "caixa": "gml"})
+
+    nome = (body.get("nome") or "").strip()
+    if nome:
+        if os.path.basename(nome) != nome:
+            raise JiraExtractorError("Arquivo de cache inválido.")
+        ano_mes = _cache_mes_do_arquivo(nome)
+        if ano_mes is None:
+            raise JiraExtractorError(f'Nome de planilha fora do padrão "<mês>-<ano>.xlsx": "{nome}".')
+        ano, mes = ano_mes
+    else:
+        hoje = datetime.now(BRAZIL_TZ).date()
+        ano, mes = hoje.year, hoje.month
+
+    return jsonify(_gml_sincronizar_planilha(config, particao["pasta"], ano, mes))
 
 
 @app.route("/api/cache/escolher-pasta", methods=["POST"])
@@ -3215,6 +4061,8 @@ CACHE_COLUNAS_CALCULADAS = (
     CACHE_COL_RESOLUCAO,
     CACHE_COL_EPS,
     CACHE_COL_SUBCLASSIFICACAO,
+    CACHE_COL_PRIORIDADE,
+    CACHE_COL_FOI_COTI,
 )
 
 # Subconjunto de CACHE_COLUNAS_CALCULADAS cuja ausência dispara
@@ -3227,7 +4075,10 @@ CACHE_COLUNAS_CALCULADAS = (
 # campos genuinamente vazios no Jira (não é "ainda não conferido", é
 # "não tem mesmo") entrava pra sempre na lista de pendentes, gerando
 # consultas inúteis a cada sincronização.
-CACHE_COLUNAS_RECHECK_AO_FALTAR = (CACHE_COL_VIOLADO, CACHE_COL_REABERTO, CACHE_COL_RESOLUCAO)
+# "Já foi P0/P1/P2" entra: é sempre "Sim"/"Não" (nunca vazio de verdade), então
+# vazio = planilha anterior à coluna, ainda sem backfill. "Prioridade"
+# fica de fora (pode ser vazia de verdade).
+CACHE_COLUNAS_RECHECK_AO_FALTAR = (CACHE_COL_VIOLADO, CACHE_COL_REABERTO, CACHE_COL_RESOLUCAO, CACHE_COL_FOI_COTI)
 
 
 def _cache_migrar_colunas(ws, header):
@@ -3314,7 +4165,7 @@ def cache_sincronizar_preparar():
     (ver CACHE_PARTICOES)."""
     body = request.get_json(silent=True) or {}
     _config_from_request(body)  # só valida que vieram credenciais
-    particao = _cache_resolve_particao(body)
+    particao = _cache_resolve_particao(body, sincronizar=True)
     caminho, nome = _cache_resolve_path(body.get("nome"), particao["pasta"])
 
     wb = load_workbook(caminho)
@@ -3352,7 +4203,7 @@ def cache_sincronizar_lote():
     CACHE_PARTICOES)."""
     body = request.get_json(silent=True) or {}
     config = _config_from_request(body)
-    particao = _cache_resolve_particao(body)
+    particao = _cache_resolve_particao(body, sincronizar=True)
     caminho, nome = _cache_resolve_path(body.get("nome"), particao["pasta"])
     entradas = body.get("entradas") or []
     if not isinstance(entradas, list) or not entradas:
@@ -3375,6 +4226,8 @@ def cache_sincronizar_lote():
         col_resolucao = header.index(CACHE_COL_RESOLUCAO) + 1
         col_eps = header.index(CACHE_COL_EPS) + 1
         col_subclassificacao = header.index(CACHE_COL_SUBCLASSIFICACAO) + 1
+        col_prioridade = header.index(CACHE_COL_PRIORIDADE) + 1
+        col_foi_coti = header.index(CACHE_COL_FOI_COTI) + 1
 
         status_por_key = _cache_status_atual_jira(config, chaves)
         try:
@@ -3392,6 +4245,11 @@ def cache_sincronizar_lote():
         except Exception:
             app.logger.exception('Falha ao calcular PROP_Site/Sub-Classificação pra um lote de "%s"', nome)
             eps_sub_por_key = {}
+        try:
+            prioridade_por_key = _cache_prioridade_jira(config, chaves)
+        except Exception:
+            app.logger.exception('Falha ao calcular Prioridade/Já foi P0/P1/P2 pra um lote de "%s"', nome)
+            prioridade_por_key = {}
 
         atualizados = 0
         for entrada in entradas:
@@ -3413,6 +4271,10 @@ def cache_sincronizar_lote():
             if eps_sub:
                 ws.cell(row=row_idx, column=col_eps).value = eps_sub.get("eps")
                 ws.cell(row=row_idx, column=col_subclassificacao).value = eps_sub.get("subclassificacao")
+            prioridade = prioridade_por_key.get(chave)
+            if prioridade:
+                ws.cell(row=row_idx, column=col_prioridade).value = prioridade["prioridade"]
+                ws.cell(row=row_idx, column=col_foi_coti).value = prioridade["foi_coti"]
 
         wb.save(caminho)
     finally:
@@ -3435,7 +4297,7 @@ def cache_sincronizar_finalizar():
     de status/SLA (a cara da operação) já rodou."""
     body = request.get_json(silent=True) or {}
     config = _config_from_request(body)
-    particao = _cache_resolve_particao(body)
+    particao = _cache_resolve_particao(body, sincronizar=True)
     caminho, nome = _cache_resolve_path(body.get("nome"), particao["pasta"])
 
     wb = load_workbook(caminho)

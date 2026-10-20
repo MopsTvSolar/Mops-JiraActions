@@ -136,10 +136,10 @@ main {
 #categorias-results:not(.hidden),
 #criados-resolvidos-results:not(.hidden),
 #distribuicao-results:not(.hidden),
-#colaboradores-results:not(.hidden),
 #criticos-results:not(.hidden),
 #eps-results:not(.hidden),
 #analista-detalhe:not(.hidden),
+#om-mapa-calor-results:not(.hidden),
 #report-vini-results:not(.hidden),
 #report-diario-results:not(.hidden) {
   animation: viewEnter 0.32s ease;
@@ -793,7 +793,8 @@ button {
    (fixed, inset:0, backdrop com blur), mas com z-index maior (fica por
    cima dele se os dois coincidirem) e um card central em vez de uma caixa
    pequena. */
-#pareto-sub-modal {
+#pareto-sub-modal,
+#home-carrossel-modal {
   position: fixed;
   inset: 0;
   z-index: 110;
@@ -807,7 +808,8 @@ button {
   animation: viewEnter 0.2s ease;
 }
 
-#pareto-sub-modal.hidden {
+#pareto-sub-modal.hidden,
+#home-carrossel-modal.hidden {
   display: none;
 }
 
@@ -1454,7 +1456,7 @@ button {
    texto nunca trunca: sem nowrap/ellipsis, quebra em quantas linhas
    precisar (mensagem de erro pode ser longa: caminho do arquivo, erro do
    Jira etc.). */
-#extracao-lote-table td.extracao-lote-col-status {
+.extracao-lote-table td.extracao-lote-col-status {
   white-space: normal;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -1479,17 +1481,17 @@ button {
   font-weight: 600;
 }
 
-#extracao-lote-table td.extracao-lote-col-num {
+.extracao-lote-table td.extracao-lote-col-num {
   text-align: center;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-#extracao-lote-table td.extracao-lote-col-acao {
+.extracao-lote-table td.extracao-lote-col-acao {
   text-align: center;
 }
 
-#extracao-lote-table td.extracao-lote-col-acao button {
+.extracao-lote-table td.extracao-lote-col-acao button {
   padding: 4px 8px;
 }
 
@@ -1500,8 +1502,8 @@ button {
 /* "Extração em Lote": tabela de queries (JQL + nome do arquivo) — inputs
    direto nas células (não estão dentro de ".field", que é só pros
    diálogos de ação), então ganham o próprio estilo aqui. */
-#extracao-lote-table .extracao-lote-input-jql,
-#extracao-lote-table td input[type="text"] {
+.extracao-lote-table .extracao-lote-input-jql,
+.extracao-lote-table td input[type="text"] {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--card-border);
@@ -1512,13 +1514,13 @@ button {
   resize: vertical;
 }
 
-#extracao-lote-table .extracao-lote-input-jql {
+.extracao-lote-table .extracao-lote-input-jql {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   min-height: 44px;
 }
 
-#extracao-lote-table .extracao-lote-input-jql:focus,
-#extracao-lote-table td input[type="text"]:focus {
+.extracao-lote-table .extracao-lote-input-jql:focus,
+.extracao-lote-table td input[type="text"]:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
@@ -2382,6 +2384,7 @@ footer {
 }
 
 .home-violar-tile {
+  position: relative;
   width: 42px;
   min-height: 42px;
   border-radius: 7px;
@@ -2793,16 +2796,6 @@ footer {
 
 .home-funil-valor {
   flex-shrink: 0;
-}
-
-.home-funil-popover-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--text);
-  margin-top: 4px;
 }
 
 /* Legenda de bolinhas coloridas usada nos widgets da home com mapa de calor
@@ -3599,4 +3592,457 @@ footer {
 .icg-fca-btn-remover:hover {
   border-color: var(--danger);
   color: var(--danger);
+}
+
+/* "Mapa de calor OM": erro (linha) x dia (coluna). Coluna "Erro" fixa à
+   esquerda pra continuar legível ao rolar os dias na horizontal. Células
+   são quadrados separados (border-spacing) com cantos arredondados; cor =
+   --danger misturado ao fundo da célula vazia, na proporção de
+   --intensidade (calculada em app.js sobre o maior valor da tabela). */
+.om-mapa-calor-wrap {
+  max-height: 680px;
+}
+
+/* Mesmo motivo de .home-colab-mensal-table: table-layout fixed + width
+   100% de .data-table espremeria as colunas de dia na largura do card
+   (sem rolagem). Em auto, a tabela cresce além do card e o .table-wrap
+   rola nas duas direções. */
+.om-mapa-calor {
+  table-layout: auto;
+  width: auto;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.om-mapa-calor th,
+.om-mapa-calor td {
+  padding: 4px 6px;
+  border-bottom: none;
+}
+
+/* O th de .data-table é sticky (top: 0); com 2 linhas de cabeçalho, a de
+   dias desce a altura da de meses (+ o border-spacing) pra não ficar por
+   cima dela ao rolar. */
+.om-mapa-calor thead tr:first-child th {
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.om-mapa-calor thead .om-dia {
+  top: 31px;
+}
+
+.om-mapa-calor .om-col-erro {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card-bg);
+  width: 480px;
+  min-width: 480px;
+  max-width: 480px;
+  font-size: 12px;
+  /* cobre o vão do border-spacing ao rolar na horizontal */
+  box-shadow: 3px 0 0 var(--card-bg);
+}
+
+/* ErrorHandled__c é longo ("message: ... | detailed message: ... | error
+   code: ..."): quebra em até 3 linhas na coluna larga; texto completo no
+   title da célula. */
+.om-mapa-calor .om-erro-texto {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.om-mapa-calor th.om-col-erro {
+  z-index: 3;
+  background: var(--card-bg-elevated);
+}
+
+/* Defeitos relacionados ao Error Handle: 1 por linha, nome + nº de
+   pedidos alinhado à direita. */
+.om-mapa-calor .om-col-defeito {
+  min-width: 170px;
+  max-width: 220px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.om-mapa-calor .om-defeito {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.om-mapa-calor .om-defeito-nome {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.om-mapa-calor .om-defeito-qtd {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.om-mapa-calor .om-col-total {
+  font-weight: 700;
+  text-align: right;
+  min-width: 52px;
+}
+
+.om-mapa-calor .om-mes {
+  text-align: center;
+  border-radius: 6px;
+}
+
+.om-mapa-calor .om-dia {
+  text-align: center;
+  min-width: 34px;
+  border-radius: 6px;
+}
+
+.om-mapa-calor .om-fim-semana {
+  color: var(--danger);
+}
+
+.om-mapa-calor .om-celula {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.om-mapa-calor .om-quadrado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  background: var(--card-bg-elevated);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+/* Separação visual entre meses (1º dia de cada mês, exceto o primeiro). */
+.om-mapa-calor .om-inicio-mes {
+  box-shadow: -2px 0 0 var(--muted);
+}
+
+.om-mapa-calor .om-celula-ativa {
+  background: color-mix(in srgb, var(--danger) var(--intensidade), var(--card-bg-elevated));
+  color: var(--text);
+  font-weight: 700;
+}
+
+.om-mapa-calor .om-celula-forte {
+  color: #fff;
+}
+
+.om-mapa-calor .om-quadrado:hover {
+  position: relative;
+  z-index: 1;
+  transform: scale(1.15);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Legenda "Menos ■■■■■ Mais" acima da tabela. */
+.om-legenda {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.om-legenda-quadrado {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--danger) var(--intensidade), var(--card-bg-elevated));
+}
+
+.om-legenda-vazio {
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+}
+
+/* Lista de meses do filtro: rola se houver muitos meses no cache. */
+.om-filtro-meses-painel {
+  min-width: 180px;
+}
+
+.om-filtro-meses-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-top: 4px;
+  border-top: 1px solid var(--card-border);
+}
+
+/* Cache em lista alternada (mesmo padrão de .icg-fca-lista): seções
+   empilhadas como linhas de uma lista só, fundo alternando entre as
+   linhas; cada uma abre/fecha pela seta do cabeçalho. */
+.cache-lista {
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.cache-lista > .cache-secao {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 10px 14px;
+  background: var(--card-bg);
+}
+
+.cache-lista > .cache-secao:nth-child(even) {
+  background: var(--card-bg-elevated);
+}
+
+.cache-lista > .cache-secao:not(:last-child) {
+  border-bottom: 1px solid var(--card-border);
+}
+
+.cache-secao-header {
+  margin-bottom: 0;
+}
+
+.cache-secao.aberto .cache-secao-header {
+  margin-bottom: 12px;
+}
+
+.cache-secao-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.cache-secao-toggle::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.cache-secao.aberto .cache-secao-toggle::before {
+  transform: rotate(90deg);
+}
+
+.cache-secao-corpo {
+  display: none;
+}
+
+.cache-secao.aberto .cache-secao-corpo {
+  display: block;
+}
+
+/* "*" vermelho no canto do tile de "Chamados Criados": o dia tem GML
+   Concluído/Revisão Pós-Implementação com Planned end nele (hover lista). */
+.home-violar-tile-gml {
+  position: absolute;
+  top: 0;
+  right: 3px;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--danger);
+  cursor: help;
+}
+
+/* Gráfico da home que abre popup em carrossel ao clicar (ver
+   abrirHomeCarrossel em app.js): cursor de clique + realce no hover. */
+.home-clicavel {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: box-shadow 0.12s ease;
+}
+
+.home-clicavel:hover {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* .data-table é table-layout: fixed + width 100%: com muitas semanas
+   espremeria as colunas — auto deixa a tabela crescer e o .table-wrap
+   rolar na horizontal. */
+.home-semana-tabela {
+  table-layout: auto;
+  width: auto;
+  min-width: 100%;
+}
+
+.home-semana-tabela th,
+.home-semana-tabela td {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.home-semana-tabela th:first-child,
+.home-semana-tabela td:first-child {
+  text-align: left;
+}
+
+/* Cabeçalho das colunas de semana na vertical (lê de baixo pra cima):
+   com muitas semanas, o rótulo horizontal alargava demais a tabela. */
+.home-semana-tabela th.home-semana-col-data,
+.home-dashboard-table th.home-semana-col-data {
+  width: 44px;
+  min-width: 44px;
+  padding: 8px 4px;
+  vertical-align: bottom;
+}
+
+.home-semana-vertical {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+
+.home-semana-tabela td {
+  min-width: 44px;
+}
+
+/* Idade do chamado em "Aguardando Fornecedor": verde = criado nos últimos
+   7 dias, vermelho = há mais de 1 semana. */
+.home-semana-tabela td.home-semana-no-prazo {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.home-semana-tabela td.home-semana-atrasado {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* Soma estilo Excel na linha "Total (issues)" do popup por semana. */
+.home-semana-tabela .data-table-total-row td {
+  user-select: none;
+}
+
+.home-semana-tabela .data-table-total-row td:not(:first-child) {
+  cursor: cell;
+}
+
+.home-semana-tabela .data-table-total-row td.home-semana-selecionada {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: rgba(201, 162, 39, 0.18);
+}
+
+.home-semana-soma {
+  margin-top: 10px;
+}
+
+.home-semana-soma--ativa {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Filtro de caixa (N1/N2/PROD) do popup por status: checkboxes em linha. */
+.home-semana-filtro {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.home-semana-filtro label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.home-semana-filtro-titulo {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Barra do Pareto de Classificação selecionada (clique) no popup da home. */
+.pareto-bar.pareto-bar-selecionada {
+  fill: var(--accent);
+}
+
+/* Rankings (Sub-Classificação e localidade) abaixo do Pareto. */
+.home-ranking-detalhe {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.home-ranking-lista {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.home-ranking-linha {
+  display: grid;
+  grid-template-columns: 34px minmax(160px, 1.2fr) 2fr 96px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.home-ranking-linha:not(:last-child) {
+  border-bottom: 1px solid var(--card-border);
+}
+
+.home-ranking-pos {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.home-ranking-nome {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-ranking-trilha {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--card-bg-elevated);
+}
+
+.home-ranking-barra {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--dist-azul);
+}
+
+.home-ranking-qtd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }

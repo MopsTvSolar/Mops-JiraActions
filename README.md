@@ -74,6 +74,17 @@ Abre em `http://127.0.0.1:5000`. Localmente, o `.env` na raiz do projeto (mesmo 
 
 **Auto-login em dev**: se o `.env` também tiver `JIRA_EMAIL`/`JIRA_API_TOKEN` preenchidos (como no `jira_gui.py`/CLI), a tela conecta sozinha ao abrir, poupando digitar de novo a cada teste. Isso só funciona rodando `python api/index.py` direto — a rota que expõe isso (`/api/dev-autologin`) nem é registrada quando o app roda importado como WSGI (produção na Vercel), então não existe risco disso vazar credencial em deploy.
 
+### Cache OM (Salesforce CLI)
+
+A seção "OM (Salesforce)" da tela de Cache sincroniza pelo Salesforce CLI, não pelo Jira. Na máquina que roda `python api/index.py`, uma vez só:
+
+```
+npm install -g @salesforce/cli
+sf org login web --alias om-prod
+```
+
+"Sincronizar" usa a consulta de [api/om_query.soql](api/om_query.soql) com a mesma lógica incremental do Jira: consulta de novo os itens da planilha que estão sem `DefectNumber__c` (pelo `OrderNumber`) e atualiza a linha, depois acrescenta os itens novos a partir do `CreatedDate` mais recente da planilha até o fim do mês. Planilha inexistente = mês inteiro. "Sincronizar tudo" faz isso em todas e cria a do mês atual se faltar. A consulta é SOQL puro e pode ser editada sem mexer no código: mantenha `{inicio}`/`{fim}` (viram os limites do período em UTC) e o `ORDER BY` no fim; as colunas da planilha seguem a ordem do `SELECT`.
+
 ## Interface gráfica (recomendado para uso local)
 
 ```

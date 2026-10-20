@@ -16,12 +16,13 @@
 
   const otherActionButtons = [
     $("btn-violados"),
-    $("btn-colaboradores"),
+    $("btn-gml"),
     $("btn-report-vini"),
     $("btn-tv-resolvidos-reabertos"),
     $("btn-report-diario"),
     $("btn-cache"),
     $("btn-pareto-solar"),
+    $("btn-om-mapa-calor"),
     $("btn-material-icg"),
   ];
 
@@ -209,7 +210,6 @@
   // (abra ele um painel próprio ou dispare uma ação na hora), os outros que
   // estavam abertos retraem primeiro.
   const ALL_DIALOG_IDS = [
-    "colaboradores-dialog",
     "violados-dialog",
     "report-vini-dialog",
     "tv-resolvidos-reabertos-dialog",
@@ -230,12 +230,13 @@
   // mostrar dois de uma vez.
   function hideAllResults() {
     resultsCard.classList.add("hidden");
-    $("colaboradores-results").classList.add("hidden");
     $("report-vini-results").classList.add("hidden");
     $("report-diario-results").classList.add("hidden");
     $("cache-results").classList.add("hidden");
     $("pareto-solar-results").classList.add("hidden");
+    $("om-mapa-calor-results").classList.add("hidden");
     $("extracao-lote-results").classList.add("hidden");
+    $("gml-lote-results").classList.add("hidden");
     $("material-icg-results").classList.add("hidden");
     $("pareto-sub-modal").classList.add("hidden");
     hideHoverPopover();
@@ -247,12 +248,13 @@
   // elementos e recalcula sozinho sempre que algum deles muda.
   const RESULT_BLOCK_IDS = [
     "results-card",
-    "colaboradores-results",
     "report-vini-results",
     "report-diario-results",
     "cache-results",
     "pareto-solar-results",
+    "om-mapa-calor-results",
     "extracao-lote-results",
+    "gml-lote-results",
     "material-icg-results",
   ];
 
@@ -263,19 +265,19 @@
   // Violados, Reabertos, Jornada), então esse caso usa "lastAction" (já
   // existe mais abaixo, pro botão "Baixar arquivo") em vez do id do bloco.
   const DIALOG_TO_NAV = {
-    "colaboradores-dialog": "btn-colaboradores",
     "violados-dialog": "btn-violados",
     "report-vini-dialog": "btn-report-vini",
     "tv-resolvidos-reabertos-dialog": "btn-tv-resolvidos-reabertos",
   };
 
   const RESULT_TO_NAV = {
-    "colaboradores-results": "btn-colaboradores",
     "report-vini-results": "btn-report-vini",
     "report-diario-results": "btn-report-diario",
     "cache-results": "btn-cache",
     "pareto-solar-results": "btn-pareto-solar",
+    "om-mapa-calor-results": "btn-om-mapa-calor",
     "extracao-lote-results": "btn-extracao-lote",
+    "gml-lote-results": "btn-gml",
     "material-icg-results": "btn-material-icg",
   };
 
@@ -291,7 +293,9 @@
       "btn-report-diario",
       "btn-cache",
       "btn-pareto-solar",
+      "btn-om-mapa-calor",
       "btn-extracao-lote",
+      "btn-gml",
       "btn-material-icg",
     ]),
   ];
@@ -746,7 +750,8 @@
   // Responsável (valores descobertos nos dados, já vem ordenado do maior
   // pro menor). "colunaLabel" é o texto do cabeçalho da 1ª coluna;
   // "obterLabelLinha" extrai o texto de cada linha.
-  function construirTabelaMesCriacao(dados, colunaLabel, obterLabelLinha) {
+  // "mesesVerticais": cabeçalho dos meses na vertical, no formato "10/2026".
+  function construirTabelaMesCriacao(dados, colunaLabel, obterLabelLinha, { mesesVerticais = false } = {}) {
     const table = document.createElement("table");
     table.className = "data-table home-dashboard-table";
 
@@ -757,7 +762,16 @@
     trHead.append(thGrupo);
     dados.meses.forEach((mes) => {
       const th = document.createElement("th");
-      th.textContent = formatarMesAno(mes);
+      if (mesesVerticais) {
+        th.className = "home-semana-col-data";
+        const rotulo = document.createElement("span");
+        rotulo.className = "home-semana-vertical";
+        rotulo.textContent = `${mes.slice(5, 7)}/${mes.slice(0, 4)}`;
+        th.append(rotulo);
+        th.title = formatarMesAno(mes);
+      } else {
+        th.textContent = formatarMesAno(mes);
+      }
       trHead.append(th);
     });
     const thTotal = document.createElement("th");
@@ -806,7 +820,9 @@
   }
 
   function construirTabelaGrupoCriacao(dados) {
-    return construirTabelaMesCriacao(dados, "Grupo Solucionador", (linha) => GRUPO_LABEL_CURTO[linha.grupo] || linha.grupo);
+    return construirTabelaMesCriacao(dados, "Grupo Solucionador", (linha) => GRUPO_LABEL_CURTO[linha.grupo] || linha.grupo, {
+      mesesVerticais: true,
+    });
   }
 
   function construirTabelaFornecedorCriacao(dados) {
@@ -1261,11 +1277,499 @@
         const wrap = document.createElement("div");
         wrap.className = "table-wrap";
         wrap.append(construirTabelaGrupoCriacao(dados));
+        // Clicar na tabela abre o popup com os chamados abertos por status
+        // e semana.
+        tornarClicavelPorSemana(wrap, {
+          caixa,
+          dados,
+          titulo: "Chamados abertos por status e semana",
+          montarSlides: () => {
+            const chamados = (dados.chamados || []).map((c) => ({ ...c, grupoCurto: GRUPO_LABEL_CURTO[c.grupo] || c.grupo }));
+            if (!chamados.length) return [];
+            const grupos = ["N1", "N2", "PROD"].filter((g) => chamados.some((c) => c.grupoCurto === g));
+            return [
+              // 1) Status × semana, com filtro de caixa (N1/N2/PROD) dinâmico.
+              ...construirSlidesSemanas(chamados, "status", "Status", {
+                rotulo: "Status por semana",
+                filtro: { campo: "grupoCurto", titulo: "Caixa", opcoes: grupos },
+              }),
+              // 2) Grupo Solucionador × semana.
+              ...construirSlidesSemanas(chamados, "grupoCurto", "Grupo Solucionador", { rotulo: "Grupo por semana" }),
+              // 3) Pareto de Classificação.
+              construirSlideParetoClassificacao(chamados, {
+                filtro: { campo: "grupoCurto", titulo: "Caixa", opcoes: grupos },
+              }),
+            ];
+          },
+        });
         container.append(homeCaixaSubbloco(caixa, wrap));
       });
     } catch (e) {
       homeCardErro(container, "Não foi possível conectar ao servidor.");
     }
+  }
+
+  // ------------------------------------------- popup carrossel dos gráficos da home
+  // Clicar num gráfico da home abre este popup (mesmo visual do drill-down
+  // do Pareto). "slides" = [{rotulo, el}] — cada gráfico monta os seus; o
+  // popup só cuida de título, navegação (setas/pontos/Esc) e fechar.
+  let homeCarrosselIndex = 0;
+
+  function atualizarHomeCarrossel() {
+    const track = $("home-carrossel-track");
+    track.style.transform = `translateX(-${homeCarrosselIndex * 100}%)`;
+    $("home-carrossel-prev").disabled = homeCarrosselIndex === 0;
+    $("home-carrossel-next").disabled = homeCarrosselIndex >= track.children.length - 1;
+    Array.from($("home-carrossel-dots").children).forEach((dot, i) => {
+      dot.classList.toggle("active", i === homeCarrosselIndex);
+    });
+  }
+
+  function abrirHomeCarrossel(titulo, slides) {
+    const track = $("home-carrossel-track");
+    const dotsEl = $("home-carrossel-dots");
+    $("home-carrossel-titulo").textContent = titulo;
+    track.innerHTML = "";
+    dotsEl.innerHTML = "";
+
+    slides.forEach(({ rotulo, el }, i) => {
+      const slide = document.createElement("div");
+      slide.className = "pareto-sub-modal-slide";
+      slide.append(el);
+      track.append(slide);
+
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "pareto-sub-modal-dot";
+      dot.setAttribute("aria-label", rotulo);
+      dot.title = rotulo;
+      dot.addEventListener("click", () => {
+        homeCarrosselIndex = i;
+        atualizarHomeCarrossel();
+      });
+      dotsEl.append(dot);
+    });
+
+    homeCarrosselIndex = 0;
+    atualizarHomeCarrossel();
+    // Um slide só: sem setas nem pontos.
+    const navegavel = slides.length > 1;
+    $("home-carrossel-prev").classList.toggle("hidden", !navegavel);
+    $("home-carrossel-next").classList.toggle("hidden", !navegavel);
+    dotsEl.classList.toggle("hidden", !navegavel);
+    $("home-carrossel-modal").classList.remove("hidden");
+    // Slides que só podem desenhar com o popup visível (ex.: Plotly).
+    slides.forEach(({ aoAbrir }) => aoAbrir && aoAbrir());
+  }
+
+  function fecharHomeCarrossel() {
+    $("home-carrossel-modal").classList.add("hidden");
+  }
+
+  $("home-carrossel-prev").addEventListener("click", () => {
+    if (homeCarrosselIndex > 0) {
+      homeCarrosselIndex -= 1;
+      atualizarHomeCarrossel();
+    }
+  });
+  $("home-carrossel-next").addEventListener("click", () => {
+    if (homeCarrosselIndex < $("home-carrossel-track").children.length - 1) {
+      homeCarrosselIndex += 1;
+      atualizarHomeCarrossel();
+    }
+  });
+  $("btn-home-carrossel-fechar").addEventListener("click", fecharHomeCarrossel);
+  $("home-carrossel-modal").addEventListener("click", (e) => {
+    if (e.target.id === "home-carrossel-modal") fecharHomeCarrossel();
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("home-carrossel-modal").classList.contains("hidden")) return;
+    if (e.key === "Escape") fecharHomeCarrossel();
+    else if (e.key === "ArrowLeft") $("home-carrossel-prev").click();
+    else if (e.key === "ArrowRight") $("home-carrossel-next").click();
+  });
+
+  // "Fornecedor Responsável × Mês de Criação": os mesmos chamados (em
+  // "Aguardando Fornecedor") abertos por SEMANA, tudo numa tabela só: 1
+  // coluna por conjunto de 7 dias seguidos contados a partir de hoje (o
+  // último conjunto = últimos 7 dias, o anterior = 7 dias antes, e assim
+  // por diante), do mais antigo ao mais recente. Itens zerados ficam
+  // ocultos: conjunto sem nenhum chamado não vira coluna e linha sem
+  // chamado não existe. "campo" = propriedade de cada chamado que vira linha
+  // (ex.: "fornecedor", "status"), "rotuloLinha" = título da 1ª coluna.
+  // Devolve o conteúdo (info + tabela + soma) como um <div>.
+  function construirCorpoSemanas(chamados, campo, rotuloLinha) {
+    if (!chamados.length) {
+      const vazio = document.createElement("div");
+      vazio.className = "hint";
+      vazio.textContent = "Nenhum chamado para o filtro selecionado.";
+      return vazio;
+    }
+    const hoje = new Date();
+    hoje.setHours(12, 0, 0, 0);
+    const dd = (n) => String(n).padStart(2, "0");
+    const iso = (data) => `${data.getFullYear()}-${dd(data.getMonth() + 1)}-${dd(data.getDate())}`;
+    const curto = (data) => `${dd(data.getDate())}/${dd(data.getMonth() + 1)}`;
+
+    // conjunto (0 = últimos 7 dias) -> fornecedor -> keys
+    const porConjunto = new Map();
+    const totalPorFornecedor = new Map();
+    chamados.forEach((chamado) => {
+      const fornecedor = chamado[campo] || "(vazio)";
+      const { criado, key } = chamado;
+      const diasAtras = Math.max(0, Math.round((hoje - new Date(`${criado}T12:00:00`)) / 86400000));
+      const conjunto = Math.floor(diasAtras / 7);
+      if (!porConjunto.has(conjunto)) porConjunto.set(conjunto, new Map());
+      const doConjunto = porConjunto.get(conjunto);
+      if (!doConjunto.has(fornecedor)) doConjunto.set(fornecedor, []);
+      doConjunto.get(fornecedor).push(key);
+      totalPorFornecedor.set(fornecedor, (totalPorFornecedor.get(fornecedor) || 0) + 1);
+    });
+
+    // Mais antigo à esquerda, mais recente à direita.
+    const conjuntos = [...porConjunto.keys()].sort((a, b) => b - a);
+    const fornecedores = [...totalPorFornecedor.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([fornecedor]) => fornecedor);
+    const periodoDe = (c) => {
+      const fim = new Date(hoje);
+      fim.setDate(hoje.getDate() - c * 7);
+      const inicio = new Date(fim);
+      inicio.setDate(fim.getDate() - 6);
+      return { inicio, fim };
+    };
+
+    const el = document.createElement("div");
+    const info = document.createElement("div");
+    info.className = "pareto-subtitulo-info";
+    info.textContent = `${chamados.length} chamado${chamados.length === 1 ? "" : "s"} · cada coluna = conjunto de 7 dias (a última = últimos 7 dias, até hoje) · verde = dentro de 1 semana, vermelho = mais de 1 semana`;
+
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    const table = document.createElement("table");
+    table.className = "data-table home-dashboard-table home-semana-tabela";
+
+    const trHead = document.createElement("tr");
+    const thNome = document.createElement("th");
+    thNome.textContent = rotuloLinha;
+    trHead.append(thNome);
+    conjuntos.forEach((c) => {
+      const { inicio, fim } = periodoDe(c);
+      const th = document.createElement("th");
+      th.className = "home-semana-col-data";
+      // Texto na vertical (span próprio: o th em si fica como célula normal).
+      const rotulo = document.createElement("span");
+      rotulo.className = "home-semana-vertical";
+      rotulo.textContent = `${curto(inicio)} a ${curto(fim)}`;
+      th.append(rotulo);
+      th.title = `${formatarDataBR(iso(inicio))} a ${formatarDataBR(iso(fim))}`;
+      trHead.append(th);
+    });
+    const thTotal = document.createElement("th");
+    thTotal.textContent = "Total";
+    trHead.append(thTotal);
+    const thead = document.createElement("thead");
+    thead.append(trHead);
+
+    const tbody = document.createElement("tbody");
+    fornecedores.forEach((fornecedor) => {
+      const tr = document.createElement("tr");
+      const tdNome = document.createElement("td");
+      tdNome.textContent = fornecedor;
+      tr.append(tdNome);
+      conjuntos.forEach((c) => {
+        const keys = porConjunto.get(c).get(fornecedor) || [];
+        const td = document.createElement("td");
+        td.textContent = keys.length || "-";
+        if (keys.length) {
+          td.title = keys.join(", ");
+          td.classList.add(c === 0 ? "home-semana-no-prazo" : "home-semana-atrasado");
+        }
+        tr.append(td);
+      });
+      const tdTotal = document.createElement("td");
+      tdTotal.textContent = totalPorFornecedor.get(fornecedor);
+      tr.append(tdTotal);
+      tbody.append(tr);
+    });
+
+    const trTotal = document.createElement("tr");
+    trTotal.className = "data-table-total-row";
+    const tdLabel = document.createElement("td");
+    tdLabel.textContent = "Total (issues)";
+    trTotal.append(tdLabel);
+    [...conjuntos.map((c) => [...porConjunto.get(c).values()].reduce((soma, k) => soma + k.length, 0)), chamados.length].forEach(
+      (valor, indice) => {
+        const td = document.createElement("td");
+        td.textContent = valor;
+        // Colunas de semana (todas menos a última, o Total): mesma cor das células.
+        if (indice < conjuntos.length) td.classList.add(conjuntos[indice] === 0 ? "home-semana-no-prazo" : "home-semana-atrasado");
+        trTotal.append(td);
+      }
+    );
+    tbody.append(trTotal);
+
+    table.append(thead, tbody);
+    wrap.append(table);
+
+    // Soma estilo Excel na linha "Total (issues)": clicar numa célula
+    // seleciona (clicar de novo desmarca), arrastrar seleciona um
+    // intervalo, Ctrl/Shift+clique soma com a seleção atual. A soma das
+    // células selecionadas aparece abaixo da tabela.
+    const somaEl = document.createElement("div");
+    somaEl.className = "home-semana-soma hint";
+    const SOMA_DICA = "Selecione valores na linha Total (issues) (clique ou arraste) para ver a soma.";
+    somaEl.textContent = SOMA_DICA;
+
+    const celulasTotal = [...trTotal.children].slice(1);
+    const selecionadas = new Set();
+    function atualizarSoma() {
+      celulasTotal.forEach((td) => td.classList.toggle("home-semana-selecionada", selecionadas.has(td)));
+      if (!selecionadas.size) {
+        somaEl.textContent = SOMA_DICA;
+        somaEl.classList.remove("home-semana-soma--ativa");
+        return;
+      }
+      const soma = [...selecionadas].reduce((acc, td) => acc + (Number(td.textContent) || 0), 0);
+      somaEl.textContent = `Soma: ${soma} · ${selecionadas.size} célula${selecionadas.size === 1 ? "" : "s"} selecionada${selecionadas.size === 1 ? "" : "s"}`;
+      somaEl.classList.add("home-semana-soma--ativa");
+    }
+
+    let ancora = null;
+    let arrastando = false;
+    let selecaoAntes = null;
+    trTotal.addEventListener("mousedown", (e) => {
+      const td = e.target.closest("td");
+      const indice = celulasTotal.indexOf(td);
+      if (indice === -1) return;
+      e.preventDefault(); // sem seleção nativa de texto
+      const acumula = e.ctrlKey || e.metaKey || e.shiftKey;
+      selecaoAntes = acumula ? new Set(selecionadas) : new Set();
+      // Clique simples numa célula já selecionada (e sozinha) desmarca.
+      const desmarcar = !acumula && selecionadas.size === 1 && selecionadas.has(td);
+      ancora = indice;
+      arrastando = true;
+      selecionadas.clear();
+      selecaoAntes.forEach((c) => selecionadas.add(c));
+      if (desmarcar) {
+        selecionadas.clear();
+        arrastando = false;
+      } else {
+        selecionadas.add(td);
+      }
+      atualizarSoma();
+    });
+    trTotal.addEventListener("mouseover", (e) => {
+      if (!arrastando) return;
+      const indice = celulasTotal.indexOf(e.target.closest("td"));
+      if (indice === -1) return;
+      selecionadas.clear();
+      selecaoAntes.forEach((c) => selecionadas.add(c));
+      const [de, ate] = indice < ancora ? [indice, ancora] : [ancora, indice];
+      celulasTotal.slice(de, ate + 1).forEach((c) => selecionadas.add(c));
+      atualizarSoma();
+    });
+    document.addEventListener("mouseup", () => {
+      arrastando = false;
+    });
+
+    el.append(info, wrap, somaEl);
+    return el;
+  }
+
+  // Barra de checkboxes (ex.: Caixa: N1 N2 PROD) do popup — marcar/desmarcar
+  // altera o Set "ativos" e chama "aoMudar" na hora.
+  function construirBarraFiltro(filtro, ativos, aoMudar) {
+    const barra = document.createElement("div");
+    barra.className = "home-semana-filtro";
+    const titulo = document.createElement("span");
+    titulo.className = "home-semana-filtro-titulo";
+    titulo.textContent = `${filtro.titulo}:`;
+    barra.append(titulo);
+    filtro.opcoes.forEach((opcao) => {
+      const label = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = ativos.has(opcao);
+      cb.addEventListener("change", () => {
+        if (cb.checked) ativos.add(opcao);
+        else ativos.delete(opcao);
+        aoMudar();
+      });
+      label.append(cb, ` ${opcao}`);
+      barra.append(label);
+    });
+    return barra;
+  }
+
+  // Slide do popup por semana. "filtro" (opcional) = {campo, opcoes}: barra
+  // de checkboxes (ex.: N1/N2/PROD) que refiltra a tabela na hora — só
+  // entram os chamados cujo chamado[campo] está marcado.
+  function construirSlidesSemanas(chamados, campo, rotuloLinha, { rotulo = "Por semana", filtro = null } = {}) {
+    if (!chamados.length) return [];
+    const el = document.createElement("div");
+    const corpo = document.createElement("div");
+    const ativos = filtro ? new Set(filtro.opcoes) : null;
+
+    function renderizar() {
+      const lista = ativos ? chamados.filter((c) => ativos.has(c[filtro.campo])) : chamados;
+      corpo.replaceChildren(construirCorpoSemanas(lista, campo, rotuloLinha));
+    }
+
+    if (filtro) el.append(construirBarraFiltro(filtro, ativos, renderizar));
+
+    el.append(corpo);
+    renderizar();
+    return [{ rotulo, el }];
+  }
+
+  // Top N barras do Pareto de Classificação (mesmo valor de
+  // PARETO_SOLAR_TOP_N["classificacao"] em api/index.py).
+  const HOME_PARETO_TOP_N = 15;
+
+  // Mesma conta de _pareto_payload (api/index.py): barras = top N
+  // classificações, % e % acumulado relativos ao total de chamados COM
+  // classificação (não só à soma das top N).
+  function montarParetoClassificacao(chamados) {
+    const contagem = new Map();
+    chamados.forEach((c) => {
+      if (c.classificacao) contagem.set(c.classificacao, (contagem.get(c.classificacao) || 0) + 1);
+    });
+    const ordenadas = [...contagem.entries()].sort((a, b) => b[1] - a[1]);
+    const totalCategorizados = ordenadas.reduce((soma, [, qtd]) => soma + qtd, 0);
+    let acumulado = 0;
+    const categorias = ordenadas.slice(0, HOME_PARETO_TOP_N).map(([categoria, quantidade]) => {
+      const percentual = totalCategorizados ? Math.round((quantidade / totalCategorizados) * 1000) / 10 : 0;
+      acumulado += percentual;
+      return { categoria, quantidade, percentual, percentual_acumulado: Math.round(acumulado * 10) / 10 };
+    });
+    return { total_chamados: chamados.length, total_categorizados: totalCategorizados, categorias };
+  }
+
+  // Ranking (maior primeiro) de um campo dos chamados — linhas com posição,
+  // nome, barra proporcional ao maior, quantidade e % do total com valor.
+  // Rola dentro do bloco quando for muito longo.
+  function construirRanking(titulo, chamados, campo) {
+    const contagem = new Map();
+    chamados.forEach((c) => {
+      if (c[campo]) contagem.set(c[campo], (contagem.get(c[campo]) || 0) + 1);
+    });
+    const ordenados = [...contagem.entries()].sort((a, b) => b[1] - a[1]);
+    const total = ordenados.reduce((soma, [, qtd]) => soma + qtd, 0);
+
+    const bloco = document.createElement("div");
+    bloco.className = "home-ranking";
+    const tituloEl = document.createElement("div");
+    tituloEl.className = "pareto-titulo-destaque";
+    tituloEl.textContent = titulo;
+    const info = document.createElement("div");
+    info.className = "pareto-subtitulo-info";
+    info.textContent = `${chamados.length} chamados (${total} com ${titulo.split(" — ")[0]})`;
+    bloco.append(tituloEl, info);
+
+    if (!ordenados.length) {
+      const vazio = document.createElement("div");
+      vazio.className = "hint";
+      vazio.textContent = "Nenhum chamado com esse campo preenchido.";
+      bloco.append(vazio);
+      return bloco;
+    }
+
+    const lista = document.createElement("div");
+    lista.className = "home-ranking-lista";
+    const maximo = ordenados[0][1];
+    ordenados.forEach(([nome, qtd], i) => {
+      const linha = document.createElement("div");
+      linha.className = "home-ranking-linha";
+      const pos = document.createElement("span");
+      pos.className = "home-ranking-pos";
+      pos.textContent = `${i + 1}º`;
+      const nomeEl = document.createElement("span");
+      nomeEl.className = "home-ranking-nome";
+      nomeEl.textContent = nome;
+      nomeEl.title = nome;
+      const trilha = document.createElement("span");
+      trilha.className = "home-ranking-trilha";
+      const barra = document.createElement("span");
+      barra.className = "home-ranking-barra";
+      barra.style.width = `${(qtd / maximo) * 100}%`;
+      trilha.append(barra);
+      const qtdEl = document.createElement("span");
+      qtdEl.className = "home-ranking-qtd";
+      qtdEl.textContent = `${qtd} (${Math.round((qtd / total) * 1000) / 10}%)`;
+      linha.append(pos, nomeEl, trilha, qtdEl);
+      lista.append(linha);
+    });
+    bloco.append(lista);
+    return bloco;
+  }
+
+  // Slide com o Pareto de "Classificação" dos chamados do gráfico (mesmo
+  // desenho do Pareto Solar, ver construirParetoChart). "filtro" (opcional,
+  // mesmo formato de construirSlidesSemanas) refiltra o Pareto na hora.
+  // Clicar numa barra seleciona a Classificação (clicar de novo desmarca) e
+  // abre, abaixo do gráfico, o ranking de Sub-Classificações e, embaixo, o
+  // de localidades (PROP_Site) só dos chamados dessa Classificação (e das
+  // caixas marcadas no filtro).
+  function construirSlideParetoClassificacao(chamados, { filtro = null } = {}) {
+    const el = document.createElement("div");
+    const titulo = document.createElement("div");
+    titulo.className = "pareto-titulo-destaque";
+    titulo.textContent = "Pareto — Classificação";
+    const corpo = document.createElement("div");
+    const ativos = filtro ? new Set(filtro.opcoes) : null;
+    let selecionada = null;
+
+    function renderizar() {
+      const lista = ativos ? chamados.filter((c) => ativos.has(c[filtro.campo])) : chamados;
+      const pareto = montarParetoClassificacao(lista);
+      // Seleção que saiu do Pareto (filtro de caixa mudou) é descartada.
+      if (selecionada && !pareto.categorias.some((c) => c.categoria === selecionada)) selecionada = null;
+
+      const info = document.createElement("div");
+      info.className = "pareto-subtitulo-info";
+      info.textContent = `${pareto.total_chamados} chamados (${pareto.total_categorizados} com Classificação)`;
+      const grafico = construirParetoChart(pareto.categorias, (item) => {
+        selecionada = selecionada === item.categoria ? null : item.categoria;
+        renderizar();
+      });
+      const indice = pareto.categorias.findIndex((c) => c.categoria === selecionada);
+      if (indice !== -1) grafico.querySelectorAll(".pareto-bar")[indice]?.classList.add("pareto-bar-selecionada");
+
+      const detalhe = document.createElement("div");
+      detalhe.className = "home-ranking-detalhe";
+      if (selecionada) {
+        const dessa = lista.filter((c) => c.classificacao === selecionada);
+        detalhe.append(
+          construirRanking(`Sub-Classificação — ${selecionada}`, dessa, "subclassificacao"),
+          construirRanking(`Localidade — ${selecionada}`, dessa, "eps")
+        );
+      } else if (pareto.categorias.length) {
+        const dica = document.createElement("div");
+        dica.className = "hint";
+        dica.textContent = "Clique numa barra para ver o ranking de Sub-Classificações e de localidades daquela Classificação.";
+        detalhe.append(dica);
+      }
+      corpo.replaceChildren(info, grafico, detalhe);
+    }
+
+    el.append(titulo);
+    if (filtro) el.append(construirBarraFiltro(filtro, ativos, renderizar));
+    el.append(corpo);
+    renderizar();
+    return { rotulo: "Pareto por classificação", el };
+  }
+
+  // Torna a tabela de um widget da home clicável: o clique abre o popup por
+  // semana (construirSlidesSemanas) com "campo" como linha.
+  function tornarClicavelPorSemana(wrap, { caixa, dados, titulo, montarSlides }) {
+    wrap.classList.add("home-clicavel");
+    wrap.title = "Clique para ver os chamados por semana";
+    wrap.addEventListener("click", () => {
+      const slides = montarSlides();
+      if (!slides.length) return;
+      abrirHomeCarrossel(`${titulo} — ${HOME_CAIXA_LABEL[caixa] || caixa} (${dados.total_geral} chamados)`, slides);
+    });
   }
 
   async function carregarHomeFornecedorCriacao() {
@@ -1285,6 +1789,13 @@
         const wrap = document.createElement("div");
         wrap.className = "table-wrap";
         wrap.append(construirTabelaFornecedorCriacao(dados));
+        // Clicar na tabela abre o popup com os chamados por semana.
+        tornarClicavelPorSemana(wrap, {
+          caixa,
+          dados,
+          titulo: "Aguardando Fornecedor por semana",
+          montarSlides: () => construirSlidesSemanas(dados.chamados || [], "fornecedor", "Fornecedor Responsável"),
+        });
         container.append(homeCaixaSubbloco(caixa, wrap));
       });
     } catch (e) {
@@ -1298,8 +1809,13 @@
   // linha só por caixa, não uma linha por grupo. Como o mês inteiro não
   // cabe em 7 colunas fixas, os tiles quebram linha livremente
   // (home-criados-tiles).
-  function construirTilesCriados(dias) {
+  // "gmlsPorDia" (opcional, {"AAAA-MM-DD": [{ticket, status, relator}]}):
+  // marca com um * vermelho o tile dos dias que têm GML Concluído/Revisão
+  // Pós-Implementação com "Planned end" naquele dia; passar o mouse lista
+  // as GMLs (ver /api/home-gml-planned-end em api/index.py).
+  function construirTilesCriados(dias, gmlsPorDia) {
     const valores = dias.map((dia) => ({
+      data: dia.data,
       diaMes: parseInt(dia.data.slice(8, 10), 10),
       total: (dia.por_grupo || []).reduce((soma, g) => soma + g.total, 0),
       p0p1p2: (dia.por_grupo || []).reduce((soma, g) => soma + g.p0p1p2, 0),
@@ -1324,6 +1840,25 @@
 
       tile.append(diaLabel, valor);
 
+      const gmls = (gmlsPorDia && gmlsPorDia[v.data]) || [];
+      if (gmls.length) {
+        const estrela = document.createElement("span");
+        estrela.className = "home-violar-tile-gml";
+        estrela.textContent = "*";
+        estrela.setAttribute("aria-label", `${gmls.length} GML(s) com Planned end neste dia`);
+        tile.append(estrela);
+        tile.addEventListener("mouseenter", () => {
+          cancelHoverPopoverHide();
+          showParetoPopover(
+            tile,
+            [`${gmls.length} GML${gmls.length === 1 ? "" : "s"} — Planned end ${formatarDataBR(v.data)}`].concat(
+              gmls.map(({ ticket, status, relator }) => [ticket, status, relator].filter(Boolean).join(" · "))
+            )
+          );
+        });
+        tile.addEventListener("mouseleave", scheduleHoverPopoverHide);
+      }
+
       if (v.p0p1p2 > 0) {
         const p0p1p2El = document.createElement("span");
         p0p1p2El.className = "home-violar-tile-p0p1p2";
@@ -1338,6 +1873,20 @@
     return tiles;
   }
 
+  // GMLs Concluído/Revisão Pós-Implementação por dia do "Planned end"
+  // (mês atual), do cache GML local — ver /api/home-gml-planned-end em
+  // api/index.py. Se o cache GML não existir neste ambiente (ex.: Vercel)
+  // ou der erro, devolve {} e o calendário aparece sem as marcações.
+  async function carregarHomeGmlPlannedEnd(periodo) {
+    try {
+      const resp = await apiCall("/api/home-gml-planned-end", periodo || {});
+      if (!resp.ok) return {};
+      return (await resp.json()).por_dia || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
   async function carregarHomeCriadosMes() {
     const container = $("home-criados-mes");
     homeCardErro(container, "Carregando...");
@@ -1350,9 +1899,11 @@
         return;
       }
 
+      const gmlsPorDia = await carregarHomeGmlPlannedEnd();
       container.innerHTML = "";
       data.caixas.forEach(({ caixa, dias }) => {
-        container.append(homeCaixaSubbloco(caixa, construirTilesCriados(dias)));
+        // GMLs marcam só o calendário da Solar (o principal).
+        container.append(homeCaixaSubbloco(caixa, construirTilesCriados(dias, caixa === "solar" ? gmlsPorDia : null)));
       });
     } catch (e) {
       homeCardErro(container, "Não foi possível conectar ao servidor.");
@@ -1369,59 +1920,6 @@
     pie.style.setProperty("--pct", `${pct}%`);
     pie.title = `${percentualDentro}% dentro do prazo`;
     return pie;
-  }
-
-  // "Colaboradores": tabela por colaborador (Resolvidos/Violados/Reabertos +
-  // mini pizza de % dentro do prazo), do começo do mês até hoje.
-  function construirTabelaColaboradores(linhas) {
-    const table = document.createElement("table");
-    table.className = "data-table home-dashboard-table";
-
-    const thead = document.createElement("thead");
-    const trHead = document.createElement("tr");
-    ["Colaborador", "Resolvidos", "Violados", "Reabertos", "%"].forEach((texto) => {
-      const th = document.createElement("th");
-      th.textContent = texto;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-    table.append(thead);
-
-    const tbody = document.createElement("tbody");
-    if (!linhas.length) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.colSpan = 5;
-      td.className = "hint";
-      td.textContent = "Nenhum chamado resolvido ou reaberto no período.";
-      tr.append(td);
-      tbody.append(tr);
-    }
-    linhas.forEach(({ colaborador, resolvidos, violados, reabertos, percentual_dentro_prazo: percentual }) => {
-      const tr = document.createElement("tr");
-
-      const tdNome = document.createElement("td");
-      tdNome.textContent = colaborador;
-      tr.append(tdNome);
-
-      [resolvidos, violados, reabertos].forEach((valor) => {
-        const td = document.createElement("td");
-        td.textContent = valor;
-        tr.append(td);
-      });
-
-      const tdPct = document.createElement("td");
-      const pctWrap = document.createElement("div");
-      pctWrap.className = "home-colab-pct";
-      pctWrap.append(buildMiniPieEl(percentual), document.createTextNode(`${percentual}%`));
-      tdPct.append(pctWrap);
-      tr.append(tdPct);
-
-      tbody.append(tr);
-    });
-    table.append(tbody);
-
-    return table;
   }
 
   // "Colaboradores" com cache: uma coluna por mês, cada uma com 3 números
@@ -1546,56 +2044,10 @@
     }
   }
 
-  // Popover customizado (mesmo elemento flutuante compartilhado de
-  // getHoverPopover/hideHoverPopover) pra mostrar o top 5 de
-  // Sub-Classificação de uma barra do funil, no mousehover.
-  function showHomeFunilPopover(anchorEl, classificacao, porSub) {
-    const popover = getHoverPopover();
-    popover.innerHTML = "";
-
-    const titulo = document.createElement("div");
-    titulo.className = "hover-popover-title";
-    titulo.textContent = classificacao;
-    popover.append(titulo);
-
-    if (!porSub.length) {
-      const vazio = document.createElement("div");
-      vazio.className = "hint";
-      vazio.textContent = "Sem Sub-Classificação preenchida.";
-      popover.append(vazio);
-    } else {
-      porSub.forEach(({ sub_classificacao: sub, total }) => {
-        const linha = document.createElement("div");
-        linha.className = "home-funil-popover-row";
-        const nomeEl = document.createElement("span");
-        nomeEl.textContent = sub;
-        const totalEl = document.createElement("span");
-        totalEl.textContent = total;
-        linha.append(nomeEl, totalEl);
-        popover.append(linha);
-      });
-    }
-
-    popover.classList.remove("hidden");
-
-    const anchorRect = anchorEl.getBoundingClientRect();
-    const popoverRect = popover.getBoundingClientRect();
-    let top = anchorRect.bottom + 6;
-    let left = anchorRect.left;
-    if (left + popoverRect.width > window.innerWidth - 8) {
-      left = window.innerWidth - popoverRect.width - 8;
-    }
-    if (top + popoverRect.height > window.innerHeight - 8) {
-      top = anchorRect.top - popoverRect.height - 6;
-    }
-    popover.style.top = `${Math.max(8, top)}px`;
-    popover.style.left = `${Math.max(8, left)}px`;
-  }
-
   // Base de qualquer gráfico "funil" da tela: barras decrescentes alinhadas
   // à esquerda (a maior = 100% de largura), cores alternadas — usado tanto
-  // por "Classificação — Funil" (com hover de Sub-Classificação, via
-  // "onBar") quanto por "Análise de EPS" (sem hover). "itens" já vem
+  // por "Classificação — Funil" (com clique, via "onBar") quanto por
+  // "Análise de EPS" (sem interação). "itens" já vem
   // ordenado do maior pro menor (most_common do backend); "obterLabel"/
   // "obterValor" extraem o texto/número de cada item.
   function construirFunilBars(itens, obterLabel, obterValor, onBar, vazioTexto) {
@@ -1639,19 +2091,96 @@
   }
 
   // "Classificação — Funil": top 5 já vindo do backend (most_common(5)).
-  // Mousehover em cada barra mostra o top 5 de Sub-Classificação daquela
-  // Classificação (showHomeFunilPopover).
-  function construirFunilClassificacao(ranking) {
+  // Clicar numa barra (jornada = Classificação) abre o popup com o gráfico de
+  // linha interativo de chamados criados por dia daquela Classificação, no
+  // mês (Plotly, mesmo estilo do "Atendimento diário" do Material ICG),
+  // sempre com a linha tracejada do baseline (média diária do próprio mês
+  // atual). Os dados vêm do cache local (/api/home-funil-criados-dia),
+  // não do Jira.
+  function abrirGraficoCriadosJornada(item, caixa) {
+    const el = document.createElement("div");
+    const info = document.createElement("div");
+    info.className = "pareto-subtitulo-info";
+    info.textContent = "Carregando...";
+    const area = document.createElement("div");
+    el.append(info, area);
+
+    // O Plotly precisa do popup já visível pra medir a largura.
+    const desenhar = async () => {
+      try {
+        const resp = await apiCall("/api/home-funil-criados-dia", { caixa, classificacao: item.classificacao });
+        const dados = await resp.json();
+        if (!resp.ok) {
+          info.textContent = dados.error || "Erro ao carregar o gráfico.";
+          return;
+        }
+        info.textContent = `${dados.total} chamado${dados.total === 1 ? "" : "s"} criado${dados.total === 1 ? "" : "s"} · ${formatarDataBR(
+          dados.inicio
+        )} a ${formatarDataBR(dados.fim)} · baseline = média diária do mês atual · dados do cache`;
+        const grafico = icgAtendimentoCriarGrafico(area);
+        if (!grafico) return;
+
+        const datas = dados.serie.map((d) => d.data);
+        const valores = dados.serie.map((d) => d.total);
+        const baseline = dados.baseline;
+        const traceBaseline = {
+          type: "scatter",
+          mode: "lines",
+          name: `Baseline (${baseline.toLocaleString("pt-BR")}/dia)`,
+          legendgroup: "baseline",
+          x: [datas[0], datas[datas.length - 1]],
+          y: [baseline, baseline],
+          line: { color: ICG_ATENDIMENTO_CORES.criados, width: 1.5, dash: "dash" },
+          opacity: 0.75,
+          hoverinfo: "skip",
+        };
+        // Valor do baseline à esquerda da linha tracejada, na cor da série.
+        const anotacao = {
+          xref: "paper",
+          x: 0,
+          xanchor: "right",
+          xshift: -4,
+          y: baseline,
+          yref: "y",
+          text: baseline.toLocaleString("pt-BR"),
+          showarrow: false,
+          font: { color: ICG_ATENDIMENTO_CORES.criados, size: 11 },
+        };
+        const layout = icgAtendimentoLayout(
+          Math.max(...valores, baseline, 1),
+          datas[0],
+          datas[datas.length - 1],
+          { tickformat: "%d/%m", hoverformat: "%d/%m/%Y" },
+          [anotacao]
+        );
+        Plotly.newPlot(
+          grafico,
+          [icgAtendimentoSerie("criados", "Criados", datas, valores), traceBaseline],
+          layout,
+          icgAtendimentoConfig("criados-jornada")
+        );
+        // O número do baseline acompanha a legenda (liga/desliga junto).
+        grafico.on("plotly_restyle", () => {
+          const v = grafico.data[1].visible;
+          Plotly.relayout(grafico, { "annotations[0].visible": v === undefined || v === true });
+        });
+      } catch (e) {
+        info.textContent = "Não foi possível conectar ao servidor.";
+      }
+    };
+    abrirHomeCarrossel(`${item.classificacao} — criados por dia — ${HOME_CAIXA_LABEL[caixa] || caixa}`, [
+      { rotulo: "Criados por dia", el, aoAbrir: desenhar },
+    ]);
+  }
+
+  function construirFunilClassificacao(ranking, caixa) {
     return construirFunilBars(
       ranking,
       (item) => item.classificacao,
       (item) => item.total,
       (bar, item) => {
-        bar.addEventListener("mouseenter", () => {
-          cancelHoverPopoverHide();
-          showHomeFunilPopover(bar, item.classificacao, item.por_subclassificacao || []);
-        });
-        bar.addEventListener("mouseleave", scheduleHoverPopoverHide);
+        bar.style.cursor = "pointer";
+        bar.addEventListener("click", () => abrirGraficoCriadosJornada(item, caixa));
       },
       "Nenhum chamado classificado no período."
     );
@@ -1685,7 +2214,7 @@
 
       container.innerHTML = "";
       data.caixas.forEach(({ caixa, ranking }) => {
-        container.append(homeCaixaSubbloco(caixa, construirFunilClassificacao(ranking)));
+        container.append(homeCaixaSubbloco(caixa, construirFunilClassificacao(ranking, caixa)));
       });
     } catch (e) {
       homeCardErro(container, "Não foi possível conectar ao servidor.");
@@ -1883,6 +2412,15 @@
           "tone-accent"
         )
       );
+      // Planilha do mês ainda sem as colunas de prioridade (anterior a elas):
+      // os números acima não contam esses chamados até sincronizar o cache.
+      if (data.sem_prioridade) {
+        const aviso = document.createElement("div");
+        aviso.className = "hint";
+        aviso.style.flexBasis = "100%";
+        aviso.textContent = `${data.sem_prioridade} chamado(s) do mês ainda sem Prioridade no cache — sincronize o Cache Solar para atualizar.`;
+        container.append(aviso);
+      }
     } catch (e) {
       homeCardErro(container, "Não foi possível conectar ao servidor.");
     }
@@ -2019,198 +2557,211 @@
   });
 
   // --------------------------------------------------------- extração em lote
-  // Lista de queries (JQL + nome do arquivo), roda 1 de cada vez, em ordem
-  // — cada uma em 3 passos (preparar/lote/salvar, mesmo padrão de
-  // sincronizarCache em Cache de Chamados): preparar roda a JQL e traz as
-  // colunas base; lote preenche as 5 colunas calculadas aos poucos (até
-  // EXTRACAO_LOTE_TAMANHO chaves por vez, pra não pesar a API — pedido
-  // explícito do usuário); salvar grava o .xlsx pronto na pasta de
-  // destino. Só então segue pra próxima query da lista.
-  const EXTRACAO_LOTE_PASTA_PADRAO = "C:\\Users\\edufe\\OneDrive\\Área de Trabalho\\Cache\\TV";
-  const EXTRACAO_LOTE_COL_CHAVE = "Número do Chamado";
-  let extracaoLoteLinhas = [];
-  let extracaoLoteRodando = false;
+  // Tela de lote (usada por "Extração em Lote" e "Extrair GML"): lista de
+  // queries (JQL + nome do arquivo), roda 1 de cada vez, em ordem, e grava
+  // cada uma num arquivo na pasta de destino (/api/extracao-lote/salvar,
+  // com o "modelo" de colunas da tela) antes de seguir pra próxima.
+  // "buscarLinhas(jql, setStatus)" é o que muda entre as telas: devolve
+  // as linhas prontas de 1 query ou lança Error com a mensagem pra linha.
+  function configurarTelaLote({ prefixo, botaoId, pastaPadrao, modelo, placeholderJql, buscarLinhas }) {
+    const el = (sufixo) => $(`${prefixo}-${sufixo}`);
+    const btnIniciar = $(`btn-${prefixo}-iniciar`);
+    const btnAdd = $(`btn-${prefixo}-add`);
+    let linhasTela = [];
+    let rodando = false;
 
-  function extracaoLoteRenumerar() {
-    extracaoLoteLinhas.forEach(({ tdNum }, index) => {
-      tdNum.textContent = index + 1;
-    });
-  }
-
-  function extracaoLoteAtualizarRemover() {
-    const podeRemover = extracaoLoteLinhas.length > 1;
-    extracaoLoteLinhas.forEach(({ btnRemover }) => {
-      btnRemover.disabled = !podeRemover || extracaoLoteRodando;
-    });
-  }
-
-  function criarLinhaExtracaoLote() {
-    const tr = document.createElement("tr");
-
-    const tdNum = document.createElement("td");
-    tdNum.className = "extracao-lote-col-num";
-    tr.append(tdNum);
-
-    const tdJql = document.createElement("td");
-    const jqlEl = document.createElement("textarea");
-    jqlEl.className = "extracao-lote-input-jql";
-    jqlEl.rows = 2;
-    jqlEl.placeholder = 'Ex.: "Grupo Solucionador[...]" IN (...) AND created >= "2026-01-01 00:00" AND created <= "2026-01-31 23:59"';
-    tdJql.append(jqlEl);
-    tr.append(tdJql);
-
-    const tdNome = document.createElement("td");
-    tdNome.className = "extracao-lote-col-nome";
-    const nomeEl = document.createElement("input");
-    nomeEl.type = "text";
-    nomeEl.placeholder = "jan-2026";
-    tdNome.append(nomeEl);
-    tr.append(tdNome);
-
-    const tdStatus = document.createElement("td");
-    tdStatus.className = "extracao-lote-col-status extracao-lote-status--idle";
-    tdStatus.textContent = "Aguardando";
-    tr.append(tdStatus);
-
-    const tdBtn = document.createElement("td");
-    tdBtn.className = "extracao-lote-col-acao";
-    const btnRemover = document.createElement("button");
-    btnRemover.type = "button";
-    btnRemover.className = "btn-secondary";
-    btnRemover.textContent = "✕";
-    btnRemover.title = "Remover linha";
-    btnRemover.addEventListener("click", () => {
-      extracaoLoteLinhas = extracaoLoteLinhas.filter((l) => l.tr !== tr);
-      tr.remove();
-      extracaoLoteAtualizarRemover();
-      extracaoLoteRenumerar();
-    });
-    tdBtn.append(btnRemover);
-    tr.append(tdBtn);
-
-    const linha = { tr, tdNum, jqlEl, nomeEl, tdStatus, btnRemover };
-    extracaoLoteLinhas.push(linha);
-    $("extracao-lote-table").querySelector("tbody").append(tr);
-    extracaoLoteAtualizarRemover();
-    extracaoLoteRenumerar();
-    return linha;
-  }
-
-  // "tipo": idle (aguardando, antes de iniciar) | rodando (passo atual) |
-  // ok (salvo com sucesso) | erro (parou nessa linha). Texto nunca é
-  // cortado (ver CSS, sem nowrap/ellipsis) — mensagem de erro pode ser
-  // longa (ex.: caminho do arquivo, erro do Jira) e precisa aparecer
-  // inteira, mesmo que quebre em várias linhas dentro da célula.
-  function extracaoLoteSetStatus(linha, texto, tipo) {
-    linha.tdStatus.textContent = texto;
-    linha.tdStatus.className = `extracao-lote-col-status extracao-lote-status--${tipo}`;
-  }
-
-  $("btn-extracao-lote").addEventListener("click", () => {
-    closeAllDialogs();
-    $("extracao-lote-results").classList.remove("hidden");
-    if (!$("extracao-lote-pasta").value) {
-      $("extracao-lote-pasta").value = EXTRACAO_LOTE_PASTA_PADRAO;
-    }
-    if (!extracaoLoteLinhas.length) {
-      criarLinhaExtracaoLote();
-    }
-  });
-
-  $("btn-extracao-lote-add").addEventListener("click", () => {
-    criarLinhaExtracaoLote();
-  });
-
-  $("btn-extracao-lote-iniciar").addEventListener("click", async () => {
-    if (extracaoLoteRodando) return;
-
-    const pasta = $("extracao-lote-pasta").value.trim() || EXTRACAO_LOTE_PASTA_PADRAO;
-    const formato = $("extracao-lote-formato").value || "xlsx";
-    const fila = extracaoLoteLinhas.filter((l) => l.jqlEl.value.trim() && l.nomeEl.value.trim());
-    if (!fila.length) {
-      setBanner("Preencha ao menos 1 linha com query e nome do arquivo.", "error");
-      return;
+    function renumerar() {
+      linhasTela.forEach(({ tdNum }, index) => {
+        tdNum.textContent = index + 1;
+      });
     }
 
-    extracaoLoteRodando = true;
-    const btnIniciar = $("btn-extracao-lote-iniciar");
-    const btnAdd = $("btn-extracao-lote-add");
-    const statusEl = $("extracao-lote-status");
-    btnIniciar.disabled = true;
-    btnAdd.disabled = true;
-    $("extracao-lote-formato").disabled = true;
-    $("extracao-lote-pasta").disabled = true;
-    extracaoLoteLinhas.forEach((linha) => {
-      linha.jqlEl.disabled = true;
-      linha.nomeEl.disabled = true;
-      extracaoLoteSetStatus(linha, "Aguardando", "idle");
+    function atualizarRemover() {
+      const podeRemover = linhasTela.length > 1;
+      linhasTela.forEach(({ btnRemover }) => {
+        btnRemover.disabled = !podeRemover || rodando;
+      });
+    }
+
+    function criarLinha() {
+      const tr = document.createElement("tr");
+
+      const tdNum = document.createElement("td");
+      tdNum.className = "extracao-lote-col-num";
+      tr.append(tdNum);
+
+      const tdJql = document.createElement("td");
+      const jqlEl = document.createElement("textarea");
+      jqlEl.className = "extracao-lote-input-jql";
+      jqlEl.rows = 2;
+      jqlEl.placeholder = placeholderJql;
+      tdJql.append(jqlEl);
+      tr.append(tdJql);
+
+      const tdNome = document.createElement("td");
+      tdNome.className = "extracao-lote-col-nome";
+      const nomeEl = document.createElement("input");
+      nomeEl.type = "text";
+      nomeEl.placeholder = "jan-2026";
+      tdNome.append(nomeEl);
+      tr.append(tdNome);
+
+      const tdStatus = document.createElement("td");
+      tdStatus.className = "extracao-lote-col-status extracao-lote-status--idle";
+      tdStatus.textContent = "Aguardando";
+      tr.append(tdStatus);
+
+      const tdBtn = document.createElement("td");
+      tdBtn.className = "extracao-lote-col-acao";
+      const btnRemover = document.createElement("button");
+      btnRemover.type = "button";
+      btnRemover.className = "btn-secondary";
+      btnRemover.textContent = "✕";
+      btnRemover.title = "Remover linha";
+      btnRemover.addEventListener("click", () => {
+        linhasTela = linhasTela.filter((l) => l.tr !== tr);
+        tr.remove();
+        atualizarRemover();
+        renumerar();
+      });
+      tdBtn.append(btnRemover);
+      tr.append(tdBtn);
+
+      const linha = { tr, tdNum, jqlEl, nomeEl, tdStatus, btnRemover };
+      linhasTela.push(linha);
+      el("table").querySelector("tbody").append(tr);
+      atualizarRemover();
+      renumerar();
+      return linha;
+    }
+
+    // "tipo": idle (aguardando, antes de iniciar) | rodando (passo atual) |
+    // ok (salvo com sucesso) | erro (parou nessa linha). Texto nunca é
+    // cortado (ver CSS, sem nowrap/ellipsis) — mensagem de erro pode ser
+    // longa (ex.: caminho do arquivo, erro do Jira) e precisa aparecer
+    // inteira, mesmo que quebre em várias linhas dentro da célula.
+    function setStatus(linha, texto, tipo) {
+      linha.tdStatus.textContent = texto;
+      linha.tdStatus.className = `extracao-lote-col-status extracao-lote-status--${tipo}`;
+    }
+
+    function travar(travado) {
+      btnIniciar.disabled = travado;
+      btnAdd.disabled = travado;
+      el("formato").disabled = travado;
+      el("pasta").disabled = travado;
+      linhasTela.forEach(({ jqlEl, nomeEl }) => {
+        jqlEl.disabled = travado;
+        nomeEl.disabled = travado;
+      });
+      atualizarRemover();
+    }
+
+    $(botaoId).addEventListener("click", () => {
+      closeAllDialogs();
+      el("results").classList.remove("hidden");
+      if (!el("pasta").value) el("pasta").value = pastaPadrao;
+      if (!linhasTela.length) criarLinha();
     });
-    extracaoLoteAtualizarRemover();
 
-    for (let i = 0; i < fila.length; i++) {
-      const linha = fila[i];
-      const jql = linha.jqlEl.value.trim();
-      const nomeArquivo = linha.nomeEl.value.trim();
-      statusEl.textContent = `Executando ${i + 1}/${fila.length}...`;
+    btnAdd.addEventListener("click", () => criarLinha());
 
-      try {
-        extracaoLoteSetStatus(linha, "Executando a query...", "rodando");
-        const prepResp = await apiCall("/api/extracao-lote/preparar", { jql });
-        const prep = await prepResp.json();
-        if (!prepResp.ok) {
-          extracaoLoteSetStatus(linha, prep.error || "Erro ao executar a query.", "erro");
-          continue;
-        }
+    btnIniciar.addEventListener("click", async () => {
+      if (rodando) return;
 
-        const linhas = prep.linhas || [];
-        const porChave = Object.fromEntries(linhas.map((l) => [l[EXTRACAO_LOTE_COL_CHAVE], l]));
-        const lotes = dividirEmLotes(Object.keys(porChave), prep.lote || CACHE_SYNC_LOTE);
-
-        let falhou = false;
-        for (let b = 0; b < lotes.length; b++) {
-          extracaoLoteSetStatus(linha, `Lote ${b + 1}/${lotes.length}...`, "rodando");
-          const loteResp = await apiCall("/api/extracao-lote/lote", { chaves: lotes[b] });
-          const loteData = await loteResp.json();
-          if (!loteResp.ok) {
-            extracaoLoteSetStatus(linha, loteData.error || "Erro num lote.", "erro");
-            falhou = true;
-            break;
-          }
-          Object.entries(loteData.resultados).forEach(([chave, campos]) => {
-            if (porChave[chave]) Object.assign(porChave[chave], campos);
-          });
-        }
-        if (falhou) continue;
-
-        extracaoLoteSetStatus(linha, "Salvando o arquivo...", "rodando");
-        const salvarResp = await apiCall("/api/extracao-lote/salvar", {
-          pasta,
-          nome_arquivo: nomeArquivo,
-          linhas,
-          formato,
-        });
-        const salvarData = await salvarResp.json();
-        if (!salvarResp.ok) {
-          extracaoLoteSetStatus(linha, salvarData.error || "Erro ao salvar o arquivo.", "erro");
-          continue;
-        }
-        extracaoLoteSetStatus(linha, `${salvarData.total} chamado(s) salvos em "${salvarData.caminho}".`, "ok");
-      } catch (e) {
-        extracaoLoteSetStatus(linha, "Não foi possível conectar ao servidor.", "erro");
+      const pasta = el("pasta").value.trim() || pastaPadrao;
+      const formato = el("formato").value || "xlsx";
+      const fila = linhasTela.filter((l) => l.jqlEl.value.trim() && l.nomeEl.value.trim());
+      if (!fila.length) {
+        setBanner("Preencha ao menos 1 linha com query e nome do arquivo.", "error");
+        return;
       }
-    }
 
-    statusEl.textContent = "Concluído.";
-    extracaoLoteRodando = false;
-    btnIniciar.disabled = false;
-    btnAdd.disabled = false;
-    $("extracao-lote-formato").disabled = false;
-    $("extracao-lote-pasta").disabled = false;
-    extracaoLoteLinhas.forEach(({ jqlEl, nomeEl }) => {
-      jqlEl.disabled = false;
-      nomeEl.disabled = false;
+      rodando = true;
+      linhasTela.forEach((linha) => setStatus(linha, "Aguardando", "idle"));
+      travar(true);
+      const statusEl = el("status");
+
+      for (let i = 0; i < fila.length; i++) {
+        const linha = fila[i];
+        statusEl.textContent = `Executando ${i + 1}/${fila.length}...`;
+        try {
+          setStatus(linha, "Executando a query...", "rodando");
+          const linhas = await buscarLinhas(linha.jqlEl.value.trim(), (texto) => setStatus(linha, texto, "rodando"));
+
+          setStatus(linha, "Salvando o arquivo...", "rodando");
+          const salvarResp = await apiCall("/api/extracao-lote/salvar", {
+            pasta,
+            nome_arquivo: linha.nomeEl.value.trim(),
+            linhas,
+            formato,
+            modelo,
+          });
+          const salvarData = await salvarResp.json();
+          if (!salvarResp.ok) throw new Error(salvarData.error || "Erro ao salvar o arquivo.");
+          setStatus(linha, `${salvarData.total} chamado(s) salvos em "${salvarData.caminho}".`, "ok");
+        } catch (e) {
+          setStatus(linha, e instanceof TypeError ? "Não foi possível conectar ao servidor." : e.message, "erro");
+        }
+      }
+
+      statusEl.textContent = "Concluído.";
+      rodando = false;
+      travar(false);
     });
-    extracaoLoteAtualizarRemover();
+  }
+
+  // Chamada à API que devolve o JSON ou lança Error com a mensagem do
+  // servidor (usado pelos "buscarLinhas" das telas de lote).
+  async function apiJsonOuErro(path, body, mensagemPadrao) {
+    const resp = await apiCall(path, body);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || mensagemPadrao);
+    return data;
+  }
+
+  // "Extração em Lote": 3 passos por query (preparar/lote/salvar, mesmo
+  // padrão de sincronizarCache em Cache de Chamados): preparar roda a JQL e
+  // traz as colunas base; lote preenche as 5 colunas calculadas aos poucos
+  // (até EXTRACAO_LOTE_TAMANHO chaves por vez, pra não pesar a API —
+  // pedido explícito do usuário); salvar grava o arquivo com as colunas do
+  // cache.
+  const EXTRACAO_LOTE_COL_CHAVE = "Número do Chamado";
+  configurarTelaLote({
+    prefixo: "extracao-lote",
+    botaoId: "btn-extracao-lote",
+    pastaPadrao: "C:\\Users\\edufe\\OneDrive\\Área de Trabalho\\Cache\\TV",
+    modelo: "cache",
+    placeholderJql:
+      'Ex.: "Grupo Solucionador[...]" IN (...) AND created >= "2026-01-01 00:00" AND created <= "2026-01-31 23:59"',
+    async buscarLinhas(jql, setStatus) {
+      const prep = await apiJsonOuErro("/api/extracao-lote/preparar", { jql }, "Erro ao executar a query.");
+      const linhas = prep.linhas || [];
+      const porChave = Object.fromEntries(linhas.map((l) => [l[EXTRACAO_LOTE_COL_CHAVE], l]));
+      const lotes = dividirEmLotes(Object.keys(porChave), prep.lote || CACHE_SYNC_LOTE);
+      for (let b = 0; b < lotes.length; b++) {
+        setStatus(`Lote ${b + 1}/${lotes.length}...`);
+        const loteData = await apiJsonOuErro("/api/extracao-lote/lote", { chaves: lotes[b] }, "Erro num lote.");
+        Object.entries(loteData.resultados).forEach(([chave, campos]) => {
+          if (porChave[chave]) Object.assign(porChave[chave], campos);
+        });
+      }
+      return linhas;
+    },
+  });
+
+  // "Extrair GML": mesma tela, 1 passo de busca (/api/gml já traz as
+  // colunas fixas do GML prontas, sem colunas calculadas) + salvar.
+  configurarTelaLote({
+    prefixo: "gml-lote",
+    botaoId: "btn-gml",
+    pastaPadrao: "C:\\Users\\edufe\\OneDrive\\Área de Trabalho\\Cache\\GML",
+    modelo: "gml",
+    placeholderJql: 'Ex.: project = "XYZ" AND created >= "2026-01-01 00:00" AND created <= "2026-01-31 23:59"',
+    async buscarLinhas(jql) {
+      const data = await apiJsonOuErro("/api/gml", { jql }, "Erro ao executar a query.");
+      return data.linhas || [];
+    },
   });
 
   // Tons do mapa de calor (home dashboard "A violar"): só marca os dias com
@@ -2348,7 +2899,7 @@
   // Popover flutuante do Pareto Solar — só o nome por inteiro da categoria
   // (rótulo do eixo X vem truncado) + quantidade/%, sem reservar espaço
   // fixo na tela: aparece ancorado na barra só enquanto o mouse está em
-  // cima (mesmo popover/posicionamento de showHomeFunilPopover acima).
+  // cima (mesmo popover/posicionamento de showHoverPopover).
   // "texto": string (1 linha, comportamento original) ou array de strings
   // (1 tópico com marcador por linha, pedido explícito do usuário — "em
   // tópicos, com quebra de linha").
@@ -2605,71 +3156,6 @@
       const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), "chamados_jira.zip");
       triggerDownload(blob, filename);
       setBanner(`Arquivo gerado: ${filename}`, "success");
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  // ------------------------------------------------------------ colaboradores
-  // Tabela por colaborador (Resolvidos/Violados/Reabertos/% — construirTabelaColaboradores)
-  // de um único período, consultando o Jira na hora — diferente do widget
-  // "Colaboradores" da home (tag "Cacheado"), que não consulta o Jira e
-  // mostra uma coluna por mês a partir das planilhas de cache. Aqui é só
-  // da caixa/projetos selecionados no momento (não as duas caixas juntas)
-  // e com período escolhido pelo usuário.
-  $("btn-colaboradores").addEventListener("click", () => {
-    const dialog = $("colaboradores-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("colaboradores-dialog");
-    if (!jaAberto) {
-      if (!$("colaboradores-input-inicio").value) {
-        const hoje = new Date();
-        $("colaboradores-input-inicio").value = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10);
-        $("colaboradores-input-fim").value = hoje.toISOString().slice(0, 10);
-      }
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-colaboradores-cancelar").addEventListener("click", () => {
-    $("colaboradores-dialog").classList.remove("open");
-  });
-
-  $("btn-colaboradores-gerar").addEventListener("click", async () => {
-    const inicio = $("colaboradores-input-inicio").value;
-    const fim = $("colaboradores-input-fim").value;
-    if (!inicio || !fim) {
-      setBanner("Informe as duas datas.", "error");
-      return;
-    }
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    $("colaboradores-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados no Jira...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/colaboradores", { caixa: state.caixa, inicio, fim, projetos });
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao executar a ação.", "error");
-        return;
-      }
-
-      $("colaboradores-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-      const wrap = $("colaboradores-table-wrap");
-      wrap.innerHTML = "";
-      wrap.append(construirTabelaColaboradores(data.colaboradores));
-      $("colaboradores-results").classList.remove("hidden");
-      clearBanner();
     } catch (e) {
       setBanner("Não foi possível conectar ao servidor.", "error");
     } finally {
@@ -3061,13 +3547,23 @@
   // "prod" sai separado de "solar" (pedido explícito — ver CACHE_GRUPO_
   // PARA_CAIXA no servidor); "outros" (chamados cujo Grupo Solucionador
   // não bate com nenhuma caixa conhecida) é best-effort, normalmente 0.
-  const CACHE_CAIXA_COLUNAS = ["solar", "prod", "tv", "outros"];
+  const CACHE_CAIXA_TITULOS = { solar: "Solar", prod: "Prod", tv: "Claro Tv", outros: "Outros" };
 
-  // Preenche as 4 células de caixa de uma linha — "abertosPorCaixa" vem do
-  // servidor já sem chaves zeradas (CACHE_GRUPO_PARA_CAIXA só soma quem
-  // tem pelo menos 1 aberto), então toda caixa ausente vira 0 aqui.
+  // Colunas de contagem de cada seção: Solar não tem Claro Tv, Tv não tem
+  // Solar/Prod, e OM/GML (origem fora do Jira, sem Grupo Solucionador) não
+  // têm nenhuma.
+  function colunasCaixaDaSecao(secao) {
+    if (secao.origem && secao.origem !== "jira") return [];
+    if (secao.caixa === "tv") return ["tv", "outros"];
+    return ["solar", "prod", "outros"];
+  }
+
+  // Preenche as células de caixa de uma linha (só as que existem em "tds")
+  // — "abertosPorCaixa" vem do servidor já sem chaves zeradas
+  // (CACHE_GRUPO_PARA_CAIXA só soma quem tem pelo menos 1 aberto), então
+  // toda caixa ausente vira 0 aqui.
   function preencherCelulasCaixas(tds, abertosPorCaixa) {
-    CACHE_CAIXA_COLUNAS.forEach((caixaId) => {
+    Object.keys(tds).forEach((caixaId) => {
       const valor = abertosPorCaixa ? abertosPorCaixa[caixaId] || 0 : null;
       tds[caixaId].textContent = valor === null ? "—" : valor;
       // Destaca (negrito + cor de alerta) quem tem pelo menos 1 chamado em
@@ -3092,6 +3588,8 @@
   const CACHE_SECOES_PADRAO = [
     { id: "solar", label: "Cache Solar", caixa: "solar", pasta: "" },
     { id: "tv", label: "Cache Tv", caixa: "tv", pasta: "" },
+    { id: "om", label: "Cache OM", caixa: "om", pasta: "" },
+    { id: "gml", label: "Cache GML", caixa: "gml", pasta: "" },
   ];
 
   function carregarSecoesCacheSalvas() {
@@ -3110,7 +3608,7 @@
     try {
       localStorage.setItem(
         CACHE_SECOES_STORAGE_KEY,
-        JSON.stringify(secoes.map(({ id, label, caixa, pasta }) => ({ id, label, caixa, pasta })))
+        JSON.stringify(secoes.map(({ id, label, caixa, pasta, aberta }) => ({ id, label, caixa, pasta, aberta })))
       );
     } catch (e) {
       // segue sem lembrar entre recarregamentos.
@@ -3151,7 +3649,14 @@
       renderCacheSecoes();
     });
 
-    header.append(labelInput, btnRemover);
+    // Lista alternada (mesmo padrão dos dias de Material ICG): seta pra
+    // abrir/fechar a seção; clicar no fundo do cabeçalho também alterna.
+    const btnToggle = document.createElement("button");
+    btnToggle.type = "button";
+    btnToggle.className = "cache-secao-toggle";
+    btnToggle.setAttribute("aria-label", "Abrir/fechar seção");
+
+    header.append(btnToggle, labelInput, btnRemover);
 
     const toolbar = document.createElement("div");
     toolbar.className = "results-header cache-toolbar";
@@ -3165,6 +3670,8 @@
     [
       { id: "solar", nome: "Solar" },
       { id: "tv", nome: "Tv" },
+      { id: "om", nome: "OM (Salesforce)" },
+      { id: "gml", nome: "GML" },
     ].forEach(({ id, nome }) => {
       const opt = document.createElement("option");
       opt.value = id;
@@ -3215,20 +3722,31 @@
     const table = document.createElement("table");
     table.className = "data-table";
     const thead = document.createElement("thead");
-    const headRow = document.createElement("tr");
-    ["Planilha", "Status", "Solar", "Prod", "Claro Tv", "Outros", ""].forEach((titulo) => {
-      const th = document.createElement("th");
-      th.textContent = titulo;
-      headRow.append(th);
-    });
-    thead.append(headRow);
     const tbody = document.createElement("tbody");
     table.append(thead, tbody);
     tableWrap.append(table);
 
-    card.append(header, toolbar, statusEl, tableWrap);
+    const corpo = document.createElement("div");
+    corpo.className = "cache-secao-corpo";
+    corpo.append(toolbar, statusEl, tableWrap);
+    card.append(header, corpo);
 
-    secao.el = { card, labelInput, caixaSelect, pastaInput, btnEscolherPasta, btnSincronizarTudo, btnRecarregar, statusEl, tbody };
+    function alternarSecao() {
+      secao.aberta = !card.classList.contains("aberto");
+      card.classList.toggle("aberto", secao.aberta);
+      btnToggle.setAttribute("aria-expanded", String(secao.aberta));
+      salvarSecoesCache(cacheSecoes);
+    }
+    btnToggle.addEventListener("click", alternarSecao);
+    header.addEventListener("click", (event) => {
+      if (event.target === header) alternarSecao();
+    });
+    // Sem preferência salva, só a primeira seção começa aberta.
+    const aberta = secao.aberta ?? cacheSecoes.indexOf(secao) === 0;
+    card.classList.toggle("aberto", aberta);
+    btnToggle.setAttribute("aria-expanded", String(aberta));
+
+    secao.el = { card, labelInput, caixaSelect, pastaInput, btnEscolherPasta, btnSincronizarTudo, btnRecarregar, statusEl, tbody, thead };
     secao.linhas = [];
     secao.pastasPadrao = {};
 
@@ -3289,15 +3807,39 @@
     return card;
   }
 
+  function atualizarValoresAtualizacao(td, valor) {
+    td.textContent = valor === null || valor === undefined ? "—" : valor;
+    td.classList.toggle("cache-valor-positivo", Boolean(valor));
+  }
+
   function renderCacheTableSecao(secao, arquivos) {
     const { tbody } = secao.el;
     tbody.innerHTML = "";
     secao.linhas = [];
+    // OM (salesforce) e GML: colunas próprias, sem Grupo Solucionador
+    // (sem contagem por caixa), sincronizados por rota própria de 1
+    // chamada por planilha (sincronizarSecaoArquivo).
+    const semCaixas = Boolean(secao.origem) && secao.origem !== "jira";
+    const colunasCaixa = colunasCaixaDaSecao(secao);
+
+    // Cabeçalho refeito a cada render: as colunas dependem da caixa/origem
+    // da seção, que pode mudar no seletor de Caixa.
+    const headRow = document.createElement("tr");
+    const titulos = ["Planilha", "Status", ...colunasCaixa.map((c) => CACHE_CAIXA_TITULOS[c])];
+    if (semCaixas) titulos.push("Valores atualização");
+    titulos.push("");
+    titulos.forEach((titulo) => {
+      const th = document.createElement("th");
+      th.textContent = titulo;
+      headRow.append(th);
+    });
+    secao.el.thead.innerHTML = "";
+    secao.el.thead.append(headRow);
 
     if (!arquivos.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 7;
+      td.colSpan = 3 + colunasCaixa.length;
       td.className = "hint";
       td.textContent = "Nenhuma planilha encontrada na pasta de cache.";
       tr.append(td);
@@ -3315,23 +3857,35 @@
       tdStatus.textContent = cacheStatusTexto(arquivo.sincronizado_em);
 
       const tdsCaixas = {};
-      CACHE_CAIXA_COLUNAS.forEach((caixaId) => {
+      colunasCaixa.forEach((caixaId) => {
         tdsCaixas[caixaId] = document.createElement("td");
       });
-      preencherCelulasCaixas(tdsCaixas, arquivo.abertos === null || arquivo.abertos === undefined ? null : arquivo.abertos_por_caixa);
+      preencherCelulasCaixas(
+        tdsCaixas,
+        arquivo.abertos === null || arquivo.abertos === undefined ? null : arquivo.abertos_por_caixa
+      );
+
+      // OM/GML: nº de linhas que a próxima sincronização ainda reconsulta
+      // (OM sem DefectNumber, GML fora de Concluído/Encerrado/Cancelado).
+      const tdValores = semCaixas ? document.createElement("td") : null;
+      if (tdValores) atualizarValoresAtualizacao(tdValores, arquivo.valores_atualizacao);
 
       const tdAcao = document.createElement("td");
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn-secondary";
       btn.textContent = "Sincronizar";
-      btn.addEventListener("click", () => sincronizarSecaoCache(secao, arquivo.nome, tdStatus, tdsCaixas, btn));
+      btn.addEventListener("click", () =>
+        semCaixas
+          ? sincronizarSecaoArquivo(secao, arquivo.nome, tdStatus, btn, tdValores)
+          : sincronizarSecaoCache(secao, arquivo.nome, tdStatus, tdsCaixas, btn)
+      );
       tdAcao.append(btn);
 
-      tr.append(tdNome, tdStatus, ...CACHE_CAIXA_COLUNAS.map((c) => tdsCaixas[c]), tdAcao);
+      tr.append(tdNome, tdStatus, ...colunasCaixa.map((c) => tdsCaixas[c]), ...(tdValores ? [tdValores] : []), tdAcao);
       tbody.append(tr);
 
-      secao.linhas.push({ nome: arquivo.nome, tdStatus, tdsCaixas, btn });
+      secao.linhas.push({ nome: arquivo.nome, tdStatus, tdsCaixas, tdValores, btn });
     });
   }
 
@@ -3356,6 +3910,7 @@
         pastaInput.value = data.pasta;
       }
       secao.pasta = pastaInput.value;
+      secao.origem = data.origem;
       salvarSecoesCache(cacheSecoes);
       renderCacheTableSecao(secao, data.arquivos || []);
       statusEl.textContent = "";
@@ -3482,7 +4037,103 @@
   // menos 1 chamado dentro da regra de conferência — os demais são
   // pulados (nem passam pelo "finalizar"). Cada seção tem seu próprio
   // botão/estado — sincronizar uma não afeta as outras.
+  // OM (origem "salesforce") e GML (origem "gml"): 1 chamada só por
+  // planilha — o servidor faz a sincronização incremental inteira (OM:
+  // Salesforce CLI, atualiza quem está sem DefectNumber; GML: Jira,
+  // atualiza quem não está Concluído/Encerrado) e acrescenta os novos a
+  // partir da data mais recente da planilha (ver /api/cache/om-sincronizar
+  // e /api/cache/gml-sincronizar em api/index.py). "nome" vazio = mês
+  // corrente (cria se não existir).
+  const CACHE_SYNC_ARQUIVO_ROTA = {
+    salesforce: "/api/cache/om-sincronizar",
+    gml: "/api/cache/gml-sincronizar",
+  };
+
+  async function sincronizarSecaoArquivo(secao, nome, tdStatus, btn, tdValores) {
+    const statusEl = secao.el.statusEl;
+    const textoOriginal = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Consultando...";
+    }
+    statusEl.textContent = `Sincronizando${nome ? ` "${nome}"` : " o mês atual"}...`;
+    try {
+      const resp = await apiCall(CACHE_SYNC_ARQUIVO_ROTA[secao.origem], {
+        nome,
+        pasta: secao.el.pastaInput.value.trim(),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        statusEl.textContent = data.error || `Erro ao sincronizar "${nome}".`;
+        return false;
+      }
+      if (tdStatus) tdStatus.textContent = cacheStatusTexto(data.sincronizado_em);
+      if (tdValores) atualizarValoresAtualizacao(tdValores, data.valores_atualizacao);
+      const criterio = secao.origem === "gml" ? "em aberto" : "sem defeito";
+      statusEl.textContent = `"${data.nome}": ${data.verificados} ${criterio} verificado(s), ${data.atualizados} atualizado(s), ${data.novos} novo(s).`;
+      return true;
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+      return false;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+      }
+    }
+  }
+
+  // "Sincronizar tudo" do OM/GML: cria/atualiza o mês corrente se ainda
+  // não tiver planilha e depois refaz cada planilha listada, uma de cada vez.
+  async function sincronizarTudoArquivo(secao) {
+    const btnTudo = secao.el.btnSincronizarTudo;
+    const textoOriginal = btnTudo.textContent;
+    const linhas = secao.linhas;
+    const hoje = new Date();
+    // OM: mês em UTC, igual ao servidor (as planilhas do OM são por mês
+    // UTC); GML: mês local, igual ao cache de chamados.
+    const utc = secao.origem === "salesforce";
+    const mesAtual = utc ? hoje.getUTCMonth() : hoje.getMonth();
+    const anoAtual = utc ? hoje.getUTCFullYear() : hoje.getFullYear();
+    const nomeMesAtual = `${OM_MESES_ABREV[mesAtual]}-${anoAtual}.xlsx`;
+    const criarMesAtual = !linhas.some((l) => l.nome === nomeMesAtual);
+    const total = linhas.length + (criarMesAtual ? 1 : 0);
+
+    btnTudo.disabled = true;
+    linhas.forEach(({ btn }) => {
+      btn.disabled = true;
+    });
+
+    let passo = 0;
+    if (criarMesAtual) {
+      btnTudo.textContent = `Sincronizando ${++passo}/${total}...`;
+      if (!(await sincronizarSecaoArquivo(secao, "", null, null))) {
+        btnTudo.disabled = false;
+        btnTudo.textContent = textoOriginal;
+        linhas.forEach(({ btn }) => {
+          btn.disabled = false;
+        });
+        return;
+      }
+    }
+    for (const { nome, tdStatus, tdValores, btn } of linhas) {
+      btnTudo.textContent = `Sincronizando ${++passo}/${total}...`;
+      if (!(await sincronizarSecaoArquivo(secao, nome, tdStatus, btn, tdValores))) break;
+    }
+
+    btnTudo.disabled = false;
+    btnTudo.textContent = textoOriginal;
+    linhas.forEach(({ btn }) => {
+      btn.disabled = false;
+    });
+    if (criarMesAtual) carregarSecaoCache(secao);
+  }
+
   async function sincronizarTudoSecao(secao) {
+    if (secao.origem === "salesforce" || secao.origem === "gml") {
+      await sincronizarTudoArquivo(secao);
+      return;
+    }
     const btnTudo = secao.el.btnSincronizarTudo;
     const textoOriginal = btnTudo.textContent;
     const linhas = secao.linhas;
@@ -4021,6 +4672,276 @@
     carregarParetoSolar();
     carregarParetoSolarFornecedor();
   });
+
+  // ---------------------------------------------------- Mapa de calor OM
+  // Tipo de erro (linha) x dia (coluna) dos meses escolhidos no filtro
+  // (padrão: últimos 3) — cada célula é o nº de pedidos distintos com
+  // aquele erro naquele dia (ver /api/om-mapa-calor em api/index.py). As
+  // linhas já vêm ordenadas pelo total nos meses escolhidos (maior em
+  // cima). Intensidade da cor proporcional ao maior valor da tabela
+  // inteira (não por linha), pra dar pra comparar erros entre si.
+  const OM_MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  // Meses ("AAAA-MM") confirmados no filtro; null = deixa o servidor usar o
+  // padrão (últimos 3) e adota o que ele devolver.
+  let omMesesSelecionados = null;
+
+  function rotuloMesOm(chave) {
+    const [ano, mes] = chave.split("-");
+    return `${OM_MESES_ABREV[Number(mes) - 1]}/${ano}`;
+  }
+
+  // Intensidade (0..1) -> % de --danger misturado ao fundo da célula vazia.
+  // Piso de 22% pra 1 pedido já se destacar de uma célula vazia.
+  function intensidadeOm(valor, maximo) {
+    return Math.round(22 + (valor / maximo) * 78);
+  }
+
+  function construirLegendaOm(maximo) {
+    const legenda = $("om-mapa-calor-legenda");
+    legenda.innerHTML = "";
+    legenda.append("Menos");
+    [0, 0.25, 0.5, 0.75, 1].forEach((fracao) => {
+      const quadrado = document.createElement("span");
+      quadrado.className = "om-legenda-quadrado";
+      if (fracao > 0) quadrado.style.setProperty("--intensidade", `${intensidadeOm(fracao * maximo, maximo)}%`);
+      else quadrado.classList.add("om-legenda-vazio");
+      legenda.append(quadrado);
+    });
+    legenda.append(`Mais (máx. ${maximo} pedidos/dia)`);
+    legenda.classList.remove("hidden");
+  }
+
+  function construirMapaCalorOm(dias, linhas) {
+    const table = document.createElement("table");
+    table.className = "data-table om-mapa-calor";
+
+    if (!linhas.length) {
+      $("om-mapa-calor-legenda").classList.add("hidden");
+      const tbody = document.createElement("tbody");
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.className = "hint";
+      td.textContent = "Nenhum pedido com erro nos meses escolhidos.";
+      tr.append(td);
+      tbody.append(tr);
+      table.append(tbody);
+      return table;
+    }
+
+    const maximo = Math.max(1, ...linhas.flatMap((l) => l.por_dia));
+    construirLegendaOm(maximo);
+    const datas = dias.map((d) => new Date(`${d}T00:00:00`));
+    const mesmoMes = (a, b) => a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
+    const inicioMes = datas.map((data, i) => i > 0 && !mesmoMes(data, datas[i - 1]));
+
+    // Cabeçalho em 2 linhas: mês (colspan dos dias dele) e dia do mês.
+    const thead = document.createElement("thead");
+    const trMes = document.createElement("tr");
+    const thErro = document.createElement("th");
+    thErro.textContent = "Error Handle";
+    thErro.rowSpan = 2;
+    thErro.className = "om-col-erro";
+    const thTotal = document.createElement("th");
+    thTotal.textContent = "Total";
+    thTotal.rowSpan = 2;
+    thTotal.className = "om-col-total";
+    const thDefeito = document.createElement("th");
+    thDefeito.textContent = "Defeito";
+    thDefeito.rowSpan = 2;
+    thDefeito.className = "om-col-defeito";
+    trMes.append(thErro, thDefeito, thTotal);
+    datas.forEach((data, i) => {
+      if (i > 0 && mesmoMes(data, datas[i - 1])) return;
+      const th = document.createElement("th");
+      th.colSpan = datas.filter((d) => mesmoMes(d, data)).length;
+      th.textContent = `${OM_MESES_ABREV[data.getMonth()]}/${data.getFullYear()}`;
+      th.className = "om-mes";
+      trMes.append(th);
+    });
+    const trDia = document.createElement("tr");
+    datas.forEach((data, i) => {
+      const th = document.createElement("th");
+      th.textContent = data.getDate();
+      th.className = "om-dia";
+      if (data.getDay() === 0 || data.getDay() === 6) th.classList.add("om-fim-semana");
+      if (inicioMes[i]) th.classList.add("om-inicio-mes");
+      trDia.append(th);
+    });
+    thead.append(trMes, trDia);
+    table.append(thead);
+
+    const tbody = document.createElement("tbody");
+    linhas.forEach(({ erro, total, defeitos, por_dia: porDia }) => {
+      const tr = document.createElement("tr");
+      const tdErro = document.createElement("td");
+      tdErro.className = "om-col-erro";
+      tdErro.title = erro;
+      const erroTexto = document.createElement("div");
+      erroTexto.className = "om-erro-texto";
+      erroTexto.textContent = erro;
+      tdErro.append(erroTexto);
+      const tdTotal = document.createElement("td");
+      tdTotal.className = "om-col-total";
+      tdTotal.textContent = total;
+      // Defeitos relacionados (DefectNumber__c), mais frequente primeiro,
+      // com o nº de pedidos de cada um.
+      const tdDefeito = document.createElement("td");
+      tdDefeito.className = "om-col-defeito";
+      (defeitos || []).forEach(({ defeito, pedidos }) => {
+        const item = document.createElement("div");
+        item.className = "om-defeito";
+        item.title = `${defeito} — ${pedidos} pedido(s)`;
+        const nome = document.createElement("span");
+        nome.className = "om-defeito-nome";
+        nome.textContent = defeito;
+        const qtd = document.createElement("span");
+        qtd.className = "om-defeito-qtd";
+        qtd.textContent = pedidos;
+        item.append(nome, qtd);
+        tdDefeito.append(item);
+      });
+      tr.append(tdErro, tdDefeito, tdTotal);
+
+      porDia.forEach((valor, i) => {
+        const td = document.createElement("td");
+        td.className = "om-celula";
+        if (inicioMes[i]) td.classList.add("om-inicio-mes");
+        // Quadrado interno de tamanho fixo: a linha pode ficar mais alta
+        // (Error Handle quebra em até 3 linhas) sem esticar o quadrado.
+        const quadrado = document.createElement("span");
+        quadrado.className = "om-quadrado";
+        if (valor) {
+          const intensidade = intensidadeOm(valor, maximo);
+          quadrado.textContent = valor;
+          quadrado.style.setProperty("--intensidade", `${intensidade}%`);
+          quadrado.classList.add("om-celula-ativa");
+          if (intensidade >= 55) quadrado.classList.add("om-celula-forte");
+        }
+        td.append(quadrado);
+        td.title = `${formatarDataBR(dias[i])} — ${valor} pedido(s)\n${erro}`;
+        tr.append(td);
+      });
+      tbody.append(tr);
+    });
+    table.append(tbody);
+    return table;
+  }
+
+  // Filtro de meses estilo Excel: "(Selecionar tudo)" + 1 checkbox por mês
+  // disponível; só aplica (refaz o fetch) no "Confirmar", "Cancelar" ou
+  // clicar fora descarta. Confirmar fica desabilitado sem nenhum mês.
+  const omFiltroRaiz = $("om-filtro-meses");
+  const omFiltroPainel = omFiltroRaiz.querySelector(".icg-filtro-grupo-painel");
+  const omFiltroLista = omFiltroRaiz.querySelector(".om-filtro-meses-lista");
+  const omFiltroTudo = omFiltroRaiz.querySelector('.om-filtro-meses-tudo input');
+  const omFiltroConfirmar = omFiltroRaiz.querySelector(".icg-filtro-grupo-confirmar");
+  let omMesesDisponiveis = [];
+
+  function omFiltroCheckboxes() {
+    return Array.from(omFiltroLista.querySelectorAll('input[type="checkbox"]'));
+  }
+
+  function omFiltroAtualizarTudo() {
+    const caixas = omFiltroCheckboxes();
+    const marcados = caixas.filter((cb) => cb.checked).length;
+    omFiltroTudo.checked = marcados === caixas.length && marcados > 0;
+    omFiltroTudo.indeterminate = marcados > 0 && marcados < caixas.length;
+    omFiltroConfirmar.disabled = marcados === 0;
+  }
+
+  function omFiltroAtualizarRotulo() {
+    const label = omFiltroRaiz.querySelector(".icg-filtro-grupo-label");
+    const meses = omMesesSelecionados || [];
+    if (meses.length && meses.length === omMesesDisponiveis.length) label.textContent = "Todos";
+    else if (meses.length <= 3) label.textContent = meses.map(rotuloMesOm).join(", ") || "—";
+    else label.textContent = `${meses.length} meses`;
+  }
+
+  function omFiltroAbrir() {
+    omFiltroLista.innerHTML = "";
+    omMesesDisponiveis.forEach((chave) => {
+      const opcao = document.createElement("label");
+      opcao.className = "icg-filtro-grupo-opcao";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = chave;
+      cb.checked = (omMesesSelecionados || []).includes(chave);
+      opcao.append(cb, ` ${rotuloMesOm(chave)}`);
+      omFiltroLista.append(opcao);
+    });
+    omFiltroAtualizarTudo();
+    omFiltroPainel.classList.remove("hidden");
+  }
+
+  function omFiltroFechar() {
+    omFiltroPainel.classList.add("hidden");
+  }
+
+  omFiltroRaiz.querySelector(".icg-filtro-grupo-btn").addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (omFiltroPainel.classList.contains("hidden")) omFiltroAbrir();
+    else omFiltroFechar();
+  });
+
+  omFiltroPainel.addEventListener("click", (event) => event.stopPropagation());
+
+  omFiltroPainel.addEventListener("change", (event) => {
+    if (event.target === omFiltroTudo) {
+      omFiltroCheckboxes().forEach((cb) => {
+        cb.checked = omFiltroTudo.checked;
+      });
+    }
+    omFiltroAtualizarTudo();
+  });
+
+  omFiltroRaiz.querySelector(".icg-filtro-grupo-cancelar").addEventListener("click", omFiltroFechar);
+
+  omFiltroConfirmar.addEventListener("click", () => {
+    const marcados = omFiltroCheckboxes()
+      .filter((cb) => cb.checked)
+      .map((cb) => cb.value);
+    if (!marcados.length) return;
+    omMesesSelecionados = marcados;
+    omFiltroAtualizarRotulo();
+    omFiltroFechar();
+    carregarMapaCalorOm();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!omFiltroPainel.classList.contains("hidden") && !omFiltroRaiz.contains(event.target)) omFiltroFechar();
+  });
+
+  async function carregarMapaCalorOm() {
+    const statusEl = $("om-mapa-calor-status");
+    const wrap = $("om-mapa-calor-wrap");
+    statusEl.textContent = "Carregando...";
+    try {
+      const resp = await apiCall("/api/om-mapa-calor", omMesesSelecionados ? { meses: omMesesSelecionados } : {});
+      const data = await resp.json();
+      if (!resp.ok) {
+        statusEl.textContent = data.error || "Erro ao carregar.";
+        wrap.innerHTML = "";
+        $("om-mapa-calor-legenda").classList.add("hidden");
+        return;
+      }
+      omMesesDisponiveis = data.meses_disponiveis || [];
+      omMesesSelecionados = data.meses;
+      omFiltroAtualizarRotulo();
+      wrap.innerHTML = "";
+      wrap.append(construirMapaCalorOm(data.dias, data.linhas));
+      statusEl.textContent = "";
+    } catch (e) {
+      statusEl.textContent = "Não foi possível conectar ao servidor.";
+    }
+  }
+
+  $("btn-om-mapa-calor").addEventListener("click", () => {
+    closeAllDialogs();
+    $("om-mapa-calor-results").classList.remove("hidden");
+    carregarMapaCalorOm();
+  });
+
+  $("btn-om-mapa-calor-recarregar").addEventListener("click", carregarMapaCalorOm);
 
   // ------------------------------------------------------- Material ICG
   // FCA's (Fato/Causa/Ação) — pedido explícito do usuário: lista alternada
@@ -4742,6 +5663,33 @@
   // que permita interação") — toolbar com zoom por caixa, pan, zoom +/-,
   // voltar ao início e salvar PNG (só no eixo X, dentro do período);
   // clicar na legenda liga/desliga a série e duplo clique isola (realce).
+  // GMLs Concluído/Revisão Pós-Implementação marcadas com um * vermelho
+  // no dia do "Planned end" (linha fixa perto do topo do gráfico, pra não
+  // cobrir as séries); o hover do dia lista as GMLs. Vêm do cache GML
+  // local (/api/home-gml-planned-end) depois que o gráfico já está na
+  // tela — sem cache GML/erro, o gráfico fica como estava.
+  async function adicionarGmlsAoAtendimento(grafico, inicio, fim, maiorValor) {
+    const porDia = await carregarHomeGmlPlannedEnd({ inicio, fim });
+    const dias = Object.keys(porDia).sort();
+    if (!dias.length || !grafico.isConnected || !grafico.data) return;
+    Plotly.addTraces(grafico, {
+      type: "scatter",
+      mode: "markers",
+      name: "GMLs (Planned end)",
+      legendgroup: "gml",
+      x: dias,
+      y: dias.map(() => Math.max(1, maiorValor) * 1.04),
+      marker: { symbol: "asterisk", size: 14, color: "#f2555c", line: { color: "#f2555c", width: 2 } },
+      text: dias.map((dia) => {
+        const gmls = porDia[dia];
+        return [`${gmls.length} GML${gmls.length === 1 ? "" : "s"} (Planned end)`]
+          .concat(gmls.map(({ ticket, status, relator }) => [ticket, status, relator].filter(Boolean).join(" · ")))
+          .join("<br>");
+      }),
+      hovertemplate: "%{text}<extra></extra>",
+    });
+  }
+
   function renderizarIcgAtendimentoDiarioChart(container, serieDiaria, baselineCriados, baselineResolvidos) {
     const grafico = icgAtendimentoCriarGrafico(container);
     if (!grafico) return;
@@ -4800,6 +5748,7 @@
     );
 
     Plotly.newPlot(grafico, traces, layout, icgAtendimentoConfig("atendimento-diario"));
+    adicionarGmlsAoAtendimento(grafico, primeiraData, ultimaData, maiorValor);
 
     // Número do baseline (anotação à esquerda) acompanha o filtro da
     // legenda (pedido explícito do usuário): anotação não some sozinha
