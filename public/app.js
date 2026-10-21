@@ -12,14 +12,11 @@
   const appView = $("app-view");
   const loginError = $("login-error");
   const resultBanner = $("result-banner");
-  const resultsCard = $("results-card");
 
   const otherActionButtons = [
-    $("btn-violados"),
     $("btn-gml"),
     $("btn-report-vini"),
     $("btn-tv-resolvidos-reabertos"),
-    $("btn-report-diario"),
     $("btn-cache"),
     $("btn-pareto-solar"),
     $("btn-om-mapa-calor"),
@@ -196,21 +193,19 @@
     return Array.from(container.querySelectorAll("input:checked")).map((el) => el.dataset.value);
   }
 
-  // Painel "PROJETOS": sempre visível, marcado com os dois por padrão.
-  // Lido na hora em cada ação (não guardado em "state") — mesmo padrão dos
-  // checkboxes de grupos/status da Extração completa.
-  buildCheckboxes($("projetos-checkboxes"), PROJETOS_DISPONIVEIS, "projeto");
   buildCheckboxes($("vini-pdf-secoes-checkboxes"), VINI_PDF_SECOES, "vini-pdf-secao");
 
+  // Seletor de PROJETOS removido do menu (pedido explícito do usuário) —
+  // toda ação passa a considerar sempre os dois (INC+PDST), sem opção de
+  // desmarcar um deles.
   function projetosSelecionados() {
-    return checkedValues($("projetos-checkboxes"));
+    return PROJETOS_DISPONIVEIS.map((p) => p.value);
   }
 
   // Só um painel de opções fica aberto por vez: ao clicar em qualquer botão
   // (abra ele um painel próprio ou dispare uma ação na hora), os outros que
   // estavam abertos retraem primeiro.
   const ALL_DIALOG_IDS = [
-    "violados-dialog",
     "report-vini-dialog",
     "tv-resolvidos-reabertos-dialog",
   ];
@@ -229,14 +224,13 @@
   // heatmap semanal quando é o caso — ou as tabelas de categorias). Evita
   // mostrar dois de uma vez.
   function hideAllResults() {
-    resultsCard.classList.add("hidden");
     $("report-vini-results").classList.add("hidden");
-    $("report-diario-results").classList.add("hidden");
     $("cache-results").classList.add("hidden");
     $("pareto-solar-results").classList.add("hidden");
     $("om-mapa-calor-results").classList.add("hidden");
     $("extracao-lote-results").classList.add("hidden");
     $("gml-lote-results").classList.add("hidden");
+    $("extrato-categoria-results").classList.add("hidden");
     $("material-icg-results").classList.add("hidden");
     $("pareto-sub-modal").classList.add("hidden");
     hideHoverPopover();
@@ -247,55 +241,44 @@
   // essa checagem em cada handler, observa as classes dos próprios
   // elementos e recalcula sozinho sempre que algum deles muda.
   const RESULT_BLOCK_IDS = [
-    "results-card",
     "report-vini-results",
-    "report-diario-results",
     "cache-results",
     "pareto-solar-results",
     "om-mapa-calor-results",
     "extracao-lote-results",
     "gml-lote-results",
+    "extrato-categoria-results",
     "material-icg-results",
   ];
 
   // Qual item do menu lateral corresponde a cada diálogo/resultado — usado só
   // pra destacar visualmente (.active) a ação atualmente aberta na tela,
-  // igual um CRM marca a seção corrente no menu. "results-card" é
-  // compartilhado por várias ações (Extração completa/por Query, A violar,
-  // Violados, Reabertos, Jornada), então esse caso usa "lastAction" (já
-  // existe mais abaixo, pro botão "Baixar arquivo") em vez do id do bloco.
+  // igual um CRM marca a seção corrente no menu.
   const DIALOG_TO_NAV = {
-    "violados-dialog": "btn-violados",
     "report-vini-dialog": "btn-report-vini",
     "tv-resolvidos-reabertos-dialog": "btn-tv-resolvidos-reabertos",
   };
 
   const RESULT_TO_NAV = {
     "report-vini-results": "btn-report-vini",
-    "report-diario-results": "btn-report-diario",
     "cache-results": "btn-cache",
     "pareto-solar-results": "btn-pareto-solar",
     "om-mapa-calor-results": "btn-om-mapa-calor",
     "extracao-lote-results": "btn-extracao-lote",
     "gml-lote-results": "btn-gml",
+    "extrato-categoria-results": "btn-extrato-categoria",
     "material-icg-results": "btn-material-icg",
   };
 
-  const LAST_ACTION_TO_NAV = {
-    violados: "btn-violados",
-  };
-
-  // "btn-report-diario" não tem diálogo próprio (ação direta, sempre "hoje")
-  // — não aparece em DIALOG_TO_NAV, então entra à parte aqui.
   const NAV_ITEM_IDS = [
     ...new Set([
       ...Object.values(DIALOG_TO_NAV),
-      "btn-report-diario",
       "btn-cache",
       "btn-pareto-solar",
       "btn-om-mapa-calor",
       "btn-extracao-lote",
       "btn-gml",
+      "btn-extrato-categoria",
       "btn-material-icg",
     ]),
   ];
@@ -306,13 +289,9 @@
     if (dialogAberto) {
       activeNavId = DIALOG_TO_NAV[dialogAberto];
     } else {
-      const resultVisivel = RESULT_BLOCK_IDS.find(
-        (id) => id !== "results-card" && !$(id).classList.contains("hidden")
-      );
+      const resultVisivel = RESULT_BLOCK_IDS.find((id) => !$(id).classList.contains("hidden"));
       if (resultVisivel) {
         activeNavId = RESULT_TO_NAV[resultVisivel] || null;
-      } else if (!resultsCard.classList.contains("hidden")) {
-        activeNavId = LAST_ACTION_TO_NAV[lastAction] || null;
       }
     }
     NAV_ITEM_IDS.forEach((id) => $(id).classList.toggle("active", id === activeNavId));
@@ -427,25 +406,6 @@
     if (label && !item.title) item.title = label.textContent.trim();
   });
 
-  // Ação/caixa/filtros da última extração exibida na tela — usado pelo botão
-  // "Baixar arquivo" para refazer exatamente a mesma busca, já pedindo o
-  // formato de arquivo (mesmo que o usuário troque a caixa depois de ver o
-  // resultado). "lastExtraBody" carrega parâmetros específicos da ação
-  // (grupos/status/período na Extração completa, por exemplo).
-  let lastAction = null;
-  let lastCaixa = null;
-  let lastExtraBody = {};
-
-  const ACTION_LABELS = {
-    violados: "Chamados violados",
-  };
-
-  // Tom de cor do card de total, de acordo com o significado da ação
-  // (mesma paleta de status usada no resto do app: informativo, alerta, crítico).
-  const ACTION_TONE = {
-    violados: "tone-danger",
-  };
-
   // Usa classList (não "className = ...") de propósito: setBusy() liga/
   // desliga "is-loading" nesse mesmo elemento (o spinner do banner) de forma
   // independente — reatribuir className aqui apagaria essa classe sempre
@@ -470,23 +430,7 @@
   function setBusy(busy) {
     resultBanner.classList.toggle("is-loading", busy);
     $("loading-overlay").classList.toggle("hidden", !busy);
-    [
-      ...otherActionButtons,
-      $("btn-download"),
-      $("btn-violados-gerar"),
-      $("btn-vini-gerar"),
-    ].forEach((btn) => (btn.disabled = busy));
-  }
-
-  // Data vigente (data local do navegador), pra exibir discretamente junto
-  // dos resultados — não é usada em nenhum cálculo, só contexto visual de
-  // "isso reflete o Jira em tal dia".
-  function dataVigente(offsetDias = 0) {
-    const data = new Date();
-    data.setDate(data.getDate() + offsetDias);
-    const dd = String(data.getDate()).padStart(2, "0");
-    const mm = String(data.getMonth() + 1).padStart(2, "0");
-    return `${dd}/${mm}/${data.getFullYear()}`;
+    [...otherActionButtons, $("btn-vini-gerar")].forEach((btn) => (btn.disabled = busy));
   }
 
   // Converte "aaaa-mm-dd" (valor de <input type="date"> e do campo "data" dos
@@ -494,21 +438,6 @@
   function formatarDataBR(isoDate) {
     const [ano, mes, dia] = isoDate.split("-");
     return `${dia}/${mes}/${ano}`;
-  }
-
-  function rotuloDataResultado() {
-    return dataVigente(0);
-  }
-
-  function escapeText(value) {
-    if (value === null || value === undefined) return "";
-    // Defesa extra: se algum campo chegar como objeto/lista não tratado no
-    // servidor, mostra algo legível em vez de "[object Object]".
-    if (typeof value === "object") {
-      if (Array.isArray(value)) return value.map(escapeText).filter(Boolean).join(", ");
-      return value.name || value.displayName || value.value || JSON.stringify(value);
-    }
-    return String(value);
   }
 
   async function apiCall(path, extraBody) {
@@ -653,9 +582,6 @@
     $("input-email").value = "";
     $("input-token").value = "";
     hideAllResults();
-    lastAction = null;
-    lastCaixa = null;
-    lastExtraBody = {};
     closeAllDialogs();
     clearBanner();
     appView.classList.add("hidden");
@@ -2435,9 +2361,6 @@
 
       // Resultado/report exibido é da caixa anterior — some até rodar de novo.
       hideAllResults();
-      lastAction = null;
-      lastCaixa = null;
-      lastExtraBody = {};
       closeAllDialogs();
       clearBanner();
       atualizarBotaoReportVini();
@@ -2447,113 +2370,20 @@
     });
   });
 
-  // Menu "AÇÕES" (barra lateral) expande/recolhe a lista de botões — mesmo
-  // padrão .collapse/.open já usado em todos os outros painéis do app.
-  $("btn-acoes-toggle").addEventListener("click", () => {
-    const grid = $("acoes-grid");
-    const abrindo = !grid.classList.contains("open");
-    grid.classList.toggle("open", abrindo);
-    $("acoes-toggle-icon").textContent = abrindo ? "▾" : "▸";
-  });
-
-  // Menu "REPORTS" (barra lateral) — mesmo padrão de expandir/recolher do
-  // menu "AÇÕES" acima.
-  $("btn-reports-toggle").addEventListener("click", () => {
-    const grid = $("reports-grid");
-    const abrindo = !grid.classList.contains("open");
-    grid.classList.toggle("open", abrindo);
-    $("reports-toggle-icon").textContent = abrindo ? "▾" : "▸";
-  });
-
-  // ------------------------------------------------------------- ações
-  const ACTION_ENDPOINTS = {
-    violados: "/api/violados",
-  };
-
-  // --------------------------------------------------------------- violados
-  // Abre um painel de opções (mesmo efeito do botão Categorias de
-  // Encerramento) em vez de buscar na hora: "Tudo" (comportamento de sempre,
-  // sem filtro de data), "Hoje" ou um período personalizado — filtrando pelo
-  // horário em que o SLA estourou.
-  $("btn-violados").addEventListener("click", () => {
-    const dialog = $("violados-dialog");
-    const jaAberto = dialog.classList.contains("open");
-    closeAllDialogs("violados-dialog");
-    if (!jaAberto) {
-      const hoje = new Date().toISOString().slice(0, 10);
-      if (!$("violados-input-inicio").value) $("violados-input-inicio").value = hoje;
-      if (!$("violados-input-fim").value) $("violados-input-fim").value = hoje;
-    }
-    dialog.classList.add("open");
-  });
-
-  $("btn-violados-cancelar").addEventListener("click", () => {
-    $("violados-dialog").classList.remove("open");
-  });
-
-  document.querySelectorAll('input[name="violados-modo"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      const personalizado = document.querySelector('input[name="violados-modo"]:checked').value === "personalizado";
-      $("violados-periodo-fields").style.display = personalizado ? "flex" : "none";
+  // Menus da barra lateral (EXTRAÇÕES/PREPARADOR DE REUNIÕES/SETTINGS)
+  // expandem/recolhem a lista de botões — mesmo padrão .collapse/.open já
+  // usado em todos os outros painéis do app, 1 listener por grupo.
+  [
+    { toggle: "btn-acoes-toggle", grid: "acoes-grid", icon: "acoes-toggle-icon" },
+    { toggle: "btn-preparador-toggle", grid: "preparador-grid", icon: "preparador-toggle-icon" },
+    { toggle: "btn-settings-toggle", grid: "settings-grid", icon: "settings-toggle-icon" },
+  ].forEach(({ toggle, grid, icon }) => {
+    $(toggle).addEventListener("click", () => {
+      const gridEl = $(grid);
+      const abrindo = !gridEl.classList.contains("open");
+      gridEl.classList.toggle("open", abrindo);
+      $(icon).textContent = abrindo ? "▾" : "▸";
     });
-  });
-
-  $("btn-violados-gerar").addEventListener("click", async () => {
-    const modo = document.querySelector('input[name="violados-modo"]:checked').value;
-
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    let inicio = "";
-    let fim = "";
-    if (modo === "hoje") {
-      const hoje = new Date().toISOString().slice(0, 10);
-      inicio = hoje;
-      fim = hoje;
-    } else if (modo === "personalizado") {
-      inicio = $("violados-input-inicio").value;
-      fim = $("violados-input-fim").value;
-      if (!inicio || !fim) {
-        setBanner("Informe as duas datas.", "error");
-        return;
-      }
-    }
-
-    const extraBody = { projetos };
-    if (inicio && fim) {
-      extraBody.inicio = inicio;
-      extraBody.fim = fim;
-    }
-
-    $("violados-dialog").classList.remove("open");
-    setBusy(true);
-    setBanner("Buscando chamados no Jira...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/violados", { caixa: state.caixa, ...extraBody });
-      const data = await resp.json();
-
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao executar a ação.", "error");
-        return;
-      }
-
-      lastAction = "violados";
-      lastCaixa = state.caixa;
-      lastExtraBody = extraBody;
-      renderResults("violados", data);
-      if (inicio && fim) {
-        $("results-date").textContent = `${formatarDataBR(inicio)} a ${formatarDataBR(fim)}`;
-      }
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
   });
 
   // --------------------------------------------------------- extração em lote
@@ -2764,6 +2594,340 @@
     },
   });
 
+  // "Extrato por Categoria": mesmo visual/fluxo de configurarTelaLote
+  // (lista de linhas, roda 1 de cada vez, salva na pasta de destino), mas
+  // cada linha é Categoria de Encerramento + período em vez de JQL livre —
+  // precisa de 3 inputs por linha (categoria/início/fim), então é uma
+  // função própria em vez de forçar esses 3 campos dentro de
+  // configurarTelaLote (que assume 1 textarea de JQL só).
+  function configurarTelaExtratoCategoria() {
+    const prefixo = "extrato-categoria";
+    const el = (sufixo) => $(`${prefixo}-${sufixo}`);
+    const btnIniciar = $(`btn-${prefixo}-iniciar`);
+    const btnAdd = $(`btn-${prefixo}-add`);
+    const pastaPadrao = "C:\\Users\\edufe\\OneDrive\\Área de Trabalho\\Cache\\Categoria";
+    let linhasTela = [];
+    let rodando = false;
+    let sugestoesOfensor = [];
+
+    function renumerar() {
+      linhasTela.forEach(({ tdNum }, index) => {
+        tdNum.textContent = index + 1;
+      });
+    }
+
+    function atualizarRemover() {
+      const podeRemover = linhasTela.length > 1;
+      linhasTela.forEach(({ btnRemover }) => {
+        btnRemover.disabled = !podeRemover || rodando;
+      });
+    }
+
+    function criarLinha() {
+      const tr = document.createElement("tr");
+
+      const tdNum = document.createElement("td");
+      tdNum.className = "extracao-lote-col-num";
+      tr.append(tdNum);
+
+      // Coluna de ofensores: 1 box de texto por ofensor (em vez de 1 campo
+      // só com separador — o nome da categoria pode ter vírgula, então
+      // juntar tudo num campo só sempre arrisca um separador errado). O
+      // "+" ao lado de cada box adiciona outra logo abaixo; o "✕" remove
+      // (desabilitado quando só sobra 1 box).
+      const tdCategoria = document.createElement("td");
+      tdCategoria.className = "extrato-categoria-col-ofensores";
+      const ofensoresEl = document.createElement("div");
+      ofensoresEl.className = "extrato-categoria-ofensores";
+      tdCategoria.append(ofensoresEl);
+      tr.append(tdCategoria);
+
+      function atualizarRemoverOfensor() {
+        const boxes = Array.from(ofensoresEl.children);
+        boxes.forEach((box) => {
+          box.querySelector(".extrato-categoria-ofensor-remover").disabled = boxes.length <= 1;
+        });
+      }
+
+      function criarOfensorBox() {
+        const box = document.createElement("div");
+        box.className = "extrato-categoria-ofensor-box";
+
+        // Textarea (não input) pra permitir quebra de linha visual — nome
+        // de categoria costuma ser uma frase longa; cresce sozinha
+        // conforme digita (redimensionar). "list"/<datalist> não funciona
+        // em textarea (só em <input>), então o autocomplete aqui é um
+        // dropdown próprio (sugestoesEl), filtrando sugestoesOfensor.
+        const campo = document.createElement("div");
+        campo.className = "extrato-categoria-ofensor-campo";
+
+        const textarea = document.createElement("textarea");
+        textarea.rows = 1;
+        textarea.placeholder = "Categoria de Encerramento (ofensor)";
+        textarea.className = "extrato-categoria-ofensor-input";
+
+        // Fica fora da tabela, direto no <body>, com "position: fixed" —
+        // dentro de ".table-wrap" (overflow: auto) uma lista "absolute"
+        // comum fica cortada pelo scroll; "fixed" + reposicionar na mão
+        // (seguindoCampo) deixa esticar a largura da TELA toda, não só a
+        // do box, pro nome de categoria (frase longa) caber sem quebrar
+        // palavra por palavra.
+        const sugestoesEl = document.createElement("ul");
+        sugestoesEl.className = "extrato-categoria-ofensor-sugestoes hidden";
+        document.body.append(sugestoesEl);
+
+        function redimensionar() {
+          textarea.style.height = "auto";
+          textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+
+        function seguirCampo() {
+          const rect = textarea.getBoundingClientRect();
+          const gutter = 16;
+          sugestoesEl.style.left = `${gutter}px`;
+          sugestoesEl.style.top = `${rect.bottom + 4}px`;
+          sugestoesEl.style.width = `${window.innerWidth - gutter * 2}px`;
+        }
+
+        function fecharSugestoes() {
+          sugestoesEl.classList.add("hidden");
+          sugestoesEl.innerHTML = "";
+        }
+
+        function mostrarSugestoes() {
+          const termo = textarea.value.trim().toLowerCase();
+          // Ofensor já escolhido em OUTRO box desta mesma linha some da
+          // lista — evita selecionar a mesma categoria 2x na mesma busca.
+          const jaEscolhidos = new Set(
+            Array.from(ofensoresEl.querySelectorAll("textarea"))
+              .filter((t) => t !== textarea)
+              .map((t) => t.value.trim())
+              .filter(Boolean)
+          );
+          const disponiveis = sugestoesOfensor.filter((c) => !jaEscolhidos.has(c));
+          const opcoes = (
+            termo ? disponiveis.filter((c) => c.toLowerCase().includes(termo)) : disponiveis
+          ).slice(0, 20);
+          if (!opcoes.length) {
+            fecharSugestoes();
+            return;
+          }
+          sugestoesEl.innerHTML = "";
+          opcoes.forEach((categoria) => {
+            const li = document.createElement("li");
+            li.textContent = categoria;
+            li.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              textarea.value = categoria;
+              redimensionar();
+              fecharSugestoes();
+            });
+            sugestoesEl.append(li);
+          });
+          seguirCampo();
+          sugestoesEl.classList.remove("hidden");
+        }
+
+        textarea.addEventListener("input", () => {
+          redimensionar();
+          mostrarSugestoes();
+        });
+        textarea.addEventListener("focus", mostrarSugestoes);
+        textarea.addEventListener("blur", () => setTimeout(fecharSugestoes, 150));
+        window.addEventListener("scroll", fecharSugestoes, true);
+        window.addEventListener("resize", fecharSugestoes);
+
+        campo.append(textarea);
+        box.append(campo);
+
+        const btnMais = document.createElement("button");
+        btnMais.type = "button";
+        btnMais.className = "btn-secondary extrato-categoria-ofensor-add";
+        btnMais.textContent = "+";
+        btnMais.title = "Adicionar outro ofensor";
+        btnMais.addEventListener("click", () => {
+          box.after(criarOfensorBox());
+          atualizarRemoverOfensor();
+        });
+        box.append(btnMais);
+
+        const btnMenos = document.createElement("button");
+        btnMenos.type = "button";
+        btnMenos.className = "btn-secondary extrato-categoria-ofensor-remover";
+        btnMenos.textContent = "✕";
+        btnMenos.title = "Remover este ofensor";
+        btnMenos.addEventListener("click", () => {
+          box.remove();
+          sugestoesEl.remove();
+          atualizarRemoverOfensor();
+        });
+        box.append(btnMenos);
+
+        ofensoresEl.append(box);
+        redimensionar();
+        return box;
+      }
+
+      criarOfensorBox();
+      atualizarRemoverOfensor();
+
+      const tdInicio = document.createElement("td");
+      const inicioEl = document.createElement("input");
+      inicioEl.type = "date";
+      tdInicio.append(inicioEl);
+      tr.append(tdInicio);
+
+      const tdFim = document.createElement("td");
+      const fimEl = document.createElement("input");
+      fimEl.type = "date";
+      tdFim.append(fimEl);
+      tr.append(tdFim);
+
+      const tdNome = document.createElement("td");
+      tdNome.className = "extracao-lote-col-nome";
+      const nomeEl = document.createElement("input");
+      nomeEl.type = "text";
+      nomeEl.placeholder = "jan-2026";
+      tdNome.append(nomeEl);
+      tr.append(tdNome);
+
+      const tdStatus = document.createElement("td");
+      tdStatus.className = "extracao-lote-col-status extracao-lote-status--idle";
+      tdStatus.textContent = "Aguardando";
+      tr.append(tdStatus);
+
+      const tdBtn = document.createElement("td");
+      tdBtn.className = "extracao-lote-col-acao";
+      const btnRemover = document.createElement("button");
+      btnRemover.type = "button";
+      btnRemover.className = "btn-secondary";
+      btnRemover.textContent = "✕";
+      btnRemover.title = "Remover linha";
+      btnRemover.addEventListener("click", () => {
+        linhasTela = linhasTela.filter((l) => l.tr !== tr);
+        ofensoresEl.querySelectorAll(".extrato-categoria-ofensor-sugestoes").forEach((n) => n.remove());
+        tr.remove();
+        atualizarRemover();
+        renumerar();
+      });
+      tdBtn.append(btnRemover);
+      tr.append(tdBtn);
+
+      const linha = { tr, tdNum, ofensoresEl, atualizarRemoverOfensor, inicioEl, fimEl, nomeEl, tdStatus, btnRemover };
+      linhasTela.push(linha);
+      el("table").querySelector("tbody").append(tr);
+      atualizarRemover();
+      renumerar();
+      return linha;
+    }
+
+    function setStatus(linha, texto, tipo) {
+      linha.tdStatus.textContent = texto;
+      linha.tdStatus.className = `extracao-lote-col-status extracao-lote-status--${tipo}`;
+    }
+
+    function ofensoresDe(linha) {
+      return Array.from(linha.ofensoresEl.querySelectorAll("textarea"))
+        .map((textarea) => textarea.value.trim())
+        .filter(Boolean);
+    }
+
+    function travar(travado) {
+      btnIniciar.disabled = travado;
+      btnAdd.disabled = travado;
+      el("formato").disabled = travado;
+      el("pasta").disabled = travado;
+      linhasTela.forEach(({ ofensoresEl, atualizarRemoverOfensor, inicioEl, fimEl, nomeEl }) => {
+        ofensoresEl.querySelectorAll("textarea, button").forEach((campo) => {
+          campo.disabled = travado;
+        });
+        if (!travado) atualizarRemoverOfensor();
+        inicioEl.disabled = travado;
+        fimEl.disabled = travado;
+        nomeEl.disabled = travado;
+      });
+      atualizarRemover();
+    }
+
+    async function carregarSugestoesOfensor() {
+      try {
+        const resp = await apiCall("/api/extrato-categoria/categorias", { caixa: state.caixa });
+        const data = await resp.json();
+        if (!resp.ok) return;
+        sugestoesOfensor = data.categorias || [];
+      } catch (e) {
+        // Autocomplete é só uma ajuda — sem sugestões, a tela continua
+        // funcionando normal (campo de texto livre).
+      }
+    }
+
+    $("btn-extrato-categoria").addEventListener("click", () => {
+      closeAllDialogs();
+      el("results").classList.remove("hidden");
+      if (!el("pasta").value) el("pasta").value = pastaPadrao;
+      if (!linhasTela.length) criarLinha();
+      carregarSugestoesOfensor();
+    });
+
+    btnAdd.addEventListener("click", () => criarLinha());
+
+    btnIniciar.addEventListener("click", async () => {
+      if (rodando) return;
+
+      const pasta = el("pasta").value.trim() || pastaPadrao;
+      const formato = el("formato").value || "xlsx";
+      const fila = linhasTela.filter(
+        (l) => ofensoresDe(l).length && l.inicioEl.value && l.fimEl.value && l.nomeEl.value.trim()
+      );
+      if (!fila.length) {
+        setBanner("Preencha ao menos 1 linha com categoria, período e nome do arquivo.", "error");
+        return;
+      }
+
+      rodando = true;
+      linhasTela.forEach((linha) => setStatus(linha, "Aguardando", "idle"));
+      travar(true);
+      const statusEl = el("status");
+
+      for (let i = 0; i < fila.length; i++) {
+        const linha = fila[i];
+        statusEl.textContent = `Executando ${i + 1}/${fila.length}...`;
+        try {
+          setStatus(linha, "Buscando chamados do cache local...", "rodando");
+          const categorias = ofensoresDe(linha);
+          const inicio = linha.inicioEl.value;
+          const fim = linha.fimEl.value;
+          const prep = await apiJsonOuErro(
+            "/api/extrato-categoria/preparar",
+            { categorias, inicio, fim, caixa: state.caixa },
+            "Erro ao buscar a categoria."
+          );
+          const linhas = prep.linhas || [];
+
+          setStatus(linha, "Salvando o arquivo...", "rodando");
+          const salvarResp = await apiCall("/api/extracao-lote/salvar", {
+            pasta,
+            nome_arquivo: linha.nomeEl.value.trim(),
+            linhas,
+            formato,
+            modelo: "cache",
+          });
+          const salvarData = await salvarResp.json();
+          if (!salvarResp.ok) throw new Error(salvarData.error || "Erro ao salvar o arquivo.");
+          setStatus(linha, `${salvarData.total} chamado(s) salvos em "${salvarData.caminho}".`, "ok");
+        } catch (e) {
+          setStatus(linha, e instanceof TypeError ? "Não foi possível conectar ao servidor." : e.message, "erro");
+        }
+      }
+
+      statusEl.textContent = "Concluído.";
+      rodando = false;
+      travar(false);
+    });
+  }
+
+  configurarTelaExtratoCategoria();
+
   // Tons do mapa de calor (home dashboard "A violar"): só marca os dias com
   // carga MAIOR em relação ao pior dia da semana visível — o resto fica na
   // cor neutra do card, sem chamar atenção à toa (dia com 0 ou pouca coisa
@@ -2776,25 +2940,12 @@
     return "";
   }
 
-  // --------------------------------------------------------- resultados
-  const MAX_ROWS_RENDERED = 500;
-
-  function renderResults(action, data) {
-    $("results-title").textContent = `RESULTADOS — ${ACTION_LABELS[action]}`;
-    $("results-date").textContent = rotuloDataResultado();
-    renderSummary(action, data.summary, data.por_turno);
-    renderPorDiaViolados(data.por_dia, data.rows);
-    renderTable(data.fields, data.rows);
-    resultsCard.classList.remove("hidden");
-    resultsCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }
-
   // ------------------------------------------------ popover de hover (copiar)
-  // Um único elemento flutuante reaproveitado por todas as células "Quantidade"
-  // da tabela VIOLADOS POR DIA — passar o mouse mostra as keys daquele dia,
-  // clicar numa key copia ela pra área de transferência. Some com um pequeno
-  // atraso (não no mouseleave direto) pra dar tempo do cursor entrar no
-  // próprio popover sem ele fechar no meio do caminho.
+  // Um único elemento flutuante reaproveitado pelo Pareto Solar (ver
+  // showParetoPopover) — passar o mouse mostra o conteúdo, clicar fora/sair
+  // fecha. Some com um pequeno atraso (não no mouseleave direto) pra dar
+  // tempo do cursor entrar no próprio popover sem ele fechar no meio do
+  // caminho.
   let hoverPopoverEl = null;
   let hoverPopoverHideTimeout = null;
 
@@ -2826,80 +2977,10 @@
     hoverPopoverHideTimeout = setTimeout(hideHoverPopover, 200);
   }
 
-  async function copiarTexto(texto) {
-    try {
-      await navigator.clipboard.writeText(texto);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function showHoverPopover(anchorEl, keys) {
-    const popover = getHoverPopover();
-    popover.innerHTML = "";
-
-    const titulo = document.createElement("div");
-    titulo.className = "hover-popover-title";
-    titulo.textContent = `${keys.length} chamado${keys.length === 1 ? "" : "s"}`;
-    popover.append(titulo);
-
-    // Copia tudo de uma vez, no formato 'KEY1', 'KEY2', 'KEY3' — pronto pra
-    // colar num "key IN (...)" de JQL, por exemplo.
-    const copiarTodos = document.createElement("div");
-    copiarTodos.className = "hover-popover-copy-all";
-    copiarTodos.textContent = "Copiar todos";
-    copiarTodos.addEventListener("click", async () => {
-      const texto = keys.map((key) => `'${key}'`).join(", ");
-      const copiou = await copiarTexto(texto);
-      copiarTodos.textContent = copiou ? "Copiado!" : "Erro ao copiar";
-      setTimeout(() => {
-        copiarTodos.textContent = "Copiar todos";
-      }, 900);
-    });
-    popover.append(copiarTodos);
-
-    // Lista com altura fixa (~4 linhas) e rolagem — evita um popover gigante
-    // quando o dia tem dezenas de chamados.
-    const lista = document.createElement("div");
-    lista.className = "hover-popover-list";
-    keys.forEach((key) => {
-      const item = document.createElement("span");
-      item.className = "hover-popover-key";
-      item.textContent = key;
-      item.addEventListener("click", async () => {
-        const copiou = await copiarTexto(key);
-        item.textContent = copiou ? "Copiado!" : "Erro ao copiar";
-        item.classList.add(copiou ? "copiado" : "erro-copia");
-        setTimeout(() => {
-          item.textContent = key;
-          item.classList.remove("copiado", "erro-copia");
-        }, 900);
-      });
-      lista.append(item);
-    });
-    popover.append(lista);
-
-    popover.classList.remove("hidden");
-
-    const anchorRect = anchorEl.getBoundingClientRect();
-    const popoverRect = popover.getBoundingClientRect();
-    let top = anchorRect.bottom + 6;
-    let left = anchorRect.left;
-    if (left + popoverRect.width > window.innerWidth - 8) {
-      left = window.innerWidth - popoverRect.width - 8;
-    }
-    if (top + popoverRect.height > window.innerHeight - 8) {
-      top = anchorRect.top - popoverRect.height - 6;
-    }
-    popover.style.top = `${Math.max(8, top)}px`;
-    popover.style.left = `${Math.max(8, left)}px`;
-  }
-
   // Popover flutuante do Pareto Solar — só o nome por inteiro da categoria
   // (rótulo do eixo X vem truncado) + quantidade/%, sem reservar espaço
   // fixo na tela: aparece ancorado na barra só enquanto o mouse está em
-  // cima (mesmo popover/posicionamento de showHoverPopover).
+  // cima.
   // "texto": string (1 linha, comportamento original) ou array de strings
   // (1 tópico com marcador por linha, pedido explícito do usuário — "em
   // tópicos, com quebra de linha").
@@ -2937,86 +3018,6 @@
     popover.style.left = `${Math.max(8, left)}px`;
   }
 
-  // Só existe em Violados — quantidade de violados por dia, dias sem nenhum
-  // violado não vêm no "por_dia" (o servidor já não os inclui). "rows" (os
-  // chamados completos, já disponíveis na resposta) alimenta o hover da
-  // coluna "Quantidade": passar o mouse mostra as keys daquele dia, com opção
-  // de clicar em cada uma pra copiar.
-  function renderPorDiaViolados(porDia, rows) {
-    const block = $("por-dia-violados-block");
-    const thead = document.querySelector("#por-dia-violados-table thead");
-    const tbody = document.querySelector("#por-dia-violados-table tbody");
-    thead.innerHTML = "";
-    tbody.innerHTML = "";
-    hideHoverPopover();
-
-    if (!porDia || !porDia.length) {
-      block.classList.add("hidden");
-      return;
-    }
-
-    const chavesPorDia = {};
-    (rows || []).forEach((row) => {
-      if (!row.sla_estourou_em) return;
-      const dia = row.sla_estourou_em.slice(0, 10);
-      (chavesPorDia[dia] = chavesPorDia[dia] || []).push(row.key);
-    });
-
-    // "Previsto" (quem tinha prazo pra violar naquele dia, violado ou não)
-    // só vem preenchido com período definido (Hoje/Personalizado) — no modo
-    // "Tudo" a coluna nem aparece, em vez de mostrar 0 pra tudo.
-    const temPrevisto = porDia.some((d) => d.previsto !== undefined);
-
-    const trHead = document.createElement("tr");
-    const colunas = ["Data"];
-    if (temPrevisto) colunas.push("Previsto pra violar");
-    colunas.push("Violados");
-    colunas.push("Reaberto?");
-    colunas.forEach((label) => {
-      const th = document.createElement("th");
-      th.textContent = label;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    porDia.forEach(({ data: diaIso, total, previsto, previsto_chaves: previstoChaves, reaberto }) => {
-      const tr = document.createElement("tr");
-      const tdData = document.createElement("td");
-      tdData.textContent = formatarDataBR(diaIso);
-      tr.append(tdData);
-      if (temPrevisto) {
-        const tdPrevisto = document.createElement("td");
-        tdPrevisto.textContent = previsto;
-        tdPrevisto.className = "violados-qtd-hover";
-        tdPrevisto.addEventListener("mouseenter", () => {
-          cancelHoverPopoverHide();
-          showHoverPopover(tdPrevisto, previstoChaves || []);
-        });
-        tdPrevisto.addEventListener("mouseleave", scheduleHoverPopoverHide);
-        tr.append(tdPrevisto);
-      }
-      const tdTotal = document.createElement("td");
-      tdTotal.textContent = total;
-      tdTotal.className = "violados-qtd-hover";
-      const keysDoDia = chavesPorDia[diaIso] || [];
-      tdTotal.addEventListener("mouseenter", () => {
-        cancelHoverPopoverHide();
-        showHoverPopover(tdTotal, keysDoDia);
-      });
-      tdTotal.addEventListener("mouseleave", scheduleHoverPopoverHide);
-      tr.append(tdTotal);
-      const tdReaberto = document.createElement("td");
-      const tag = document.createElement("span");
-      tag.className = `tag ${reaberto ? "tag-sim" : "tag-nao"}`;
-      tag.textContent = reaberto ? "Sim" : "Não";
-      tdReaberto.append(tag);
-      tr.append(tdReaberto);
-      tbody.append(tr);
-    });
-
-    block.classList.remove("hidden");
-  }
-
   function summaryCard(value, label, tone, topAssignees) {
     const card = document.createElement("div");
     card.className = "summary-card" + (tone ? ` ${tone}` : "");
@@ -3051,117 +3052,6 @@
 
     return card;
   }
-
-  function renderSummary(action, summary, porTurno) {
-    const totalCardsEl = $("summary-cards");
-    totalCardsEl.innerHTML = "";
-    totalCardsEl.append(summaryCard(summary.total, "Total de chamados", ACTION_TONE[action]));
-
-    // Só existe em Violados — contagem de chamados violados por turno do dia.
-    const porTurnoBlock = $("por-turno-block");
-    const porTurnoCardsEl = $("por-turno-cards");
-    porTurnoCardsEl.innerHTML = "";
-    if (porTurno && porTurno.length) {
-      porTurno.forEach(({ turno, total }) => {
-        porTurnoCardsEl.append(summaryCard(total, turno));
-      });
-      porTurnoBlock.classList.remove("hidden");
-    } else {
-      porTurnoBlock.classList.add("hidden");
-    }
-
-    const assigneesEl = $("top-assignees");
-    assigneesEl.innerHTML = "";
-    if (summary.top_assignees && summary.top_assignees.length) {
-      const title = document.createElement("div");
-      title.className = "top-assignees-title";
-      title.textContent = "Top responsáveis";
-      assigneesEl.append(title);
-
-      const ol = document.createElement("ol");
-      summary.top_assignees.forEach(([nome, count]) => {
-        const li = document.createElement("li");
-        const nameSpan = document.createElement("span");
-        nameSpan.textContent = nome;
-        const countSpan = document.createElement("span");
-        countSpan.className = "count";
-        countSpan.textContent = ` — ${count}`;
-        li.append(nameSpan, countSpan);
-        ol.append(li);
-      });
-      assigneesEl.append(ol);
-    }
-  }
-
-  function renderTable(fields, rows) {
-    const thead = document.querySelector("#results-table thead");
-    const tbody = document.querySelector("#results-table tbody");
-    thead.innerHTML = "";
-    tbody.innerHTML = "";
-
-    if (!rows || !rows.length) {
-      $("table-note").textContent = "Nenhum chamado encontrado para os critérios atuais.";
-      return;
-    }
-
-    const trHead = document.createElement("tr");
-    fields.forEach((field) => {
-      const th = document.createElement("th");
-      th.textContent = field;
-      trHead.append(th);
-    });
-    thead.append(trHead);
-
-    const shown = rows.slice(0, MAX_ROWS_RENDERED);
-    shown.forEach((row) => {
-      const tr = document.createElement("tr");
-      fields.forEach((field) => {
-        const td = document.createElement("td");
-        td.textContent = escapeText(row[field]);
-        tr.append(td);
-      });
-      tbody.append(tr);
-    });
-
-    $("table-note").textContent =
-      rows.length > MAX_ROWS_RENDERED
-        ? `Mostrando ${MAX_ROWS_RENDERED} de ${rows.length} chamados — baixe o arquivo para ver todos.`
-        : `${rows.length} chamado${rows.length === 1 ? "" : "s"}.`;
-  }
-
-  $("btn-download").addEventListener("click", async () => {
-    if (!lastAction) return;
-    const endpoint = ACTION_ENDPOINTS[lastAction];
-    const format = $("download-format").value;
-
-    setBusy(true);
-    setBanner("Gerando arquivo...", "info");
-    try {
-      const resp = await apiCall(endpoint, { format, caixa: lastCaixa, ...lastExtraBody });
-
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        setBanner(data.error || "Erro ao gerar arquivo.", "error");
-        return;
-      }
-
-      const contentType = resp.headers.get("Content-Type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await resp.json();
-        setBanner(data.message || "Nenhum resultado encontrado.", "info");
-        return;
-      }
-
-      const blob = await resp.blob();
-      const filename = filenameFromDisposition(resp.headers.get("Content-Disposition"), "chamados_jira.zip");
-      triggerDownload(blob, filename);
-      setBanner(`Arquivo gerado: ${filename}`, "success");
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
 
   // ---------------------------------------------------------- report vini
   $("btn-report-vini").addEventListener("click", () => {
@@ -3463,60 +3353,10 @@
     }
   });
 
-  // ---------------------------------------------------- report diário
-  // Ação direta (sem diálogo, sempre "hoje") — consolida num resultado só o
-  // que hoje é visto espalhado em 3 ações (A violar, Violados, Reabertos,
-  // todas escopadas ao dia atual) mais o ranking de quem mais resolveu hoje
-  // ("Top analistas do dia", mesmo summaryCard com ranking embutido já
-  // usado nos cards "por grupo" de Criados x Resolvidos/A violar).
-  // Funciona nas duas caixas — não é restrito a Solar nem a Claro Tv.
-  function renderReportDiario(data) {
-    $("report-diario-date").textContent = formatarDataBR(data.data);
-
-    const cardsEl = $("report-diario-summary-cards");
-    cardsEl.innerHTML = "";
-    cardsEl.append(summaryCard(data.a_violar_hoje, "A violar no dia", "tone-warning"));
-    cardsEl.append(summaryCard(data.violados_hoje, "Violados no dia", "tone-danger"));
-    cardsEl.append(summaryCard(data.reabertos_hoje, "Reabertos", "tone-warning"));
-
-    const topEl = $("report-diario-top-cards");
-    topEl.innerHTML = "";
-    topEl.append(summaryCard(data.resolvidos_hoje, "Resolvidos hoje", "tone-accent", data.top_analistas));
-
-    $("report-diario-results").classList.remove("hidden");
-  }
-
-  $("btn-report-diario").addEventListener("click", async () => {
-    const projetos = projetosSelecionados();
-    if (!projetos.length) {
-      setBanner("Selecione ao menos um projeto.", "error");
-      return;
-    }
-
-    closeAllDialogs();
-    setBusy(true);
-    setBanner("Gerando Report Diário...", "info");
-    hideAllResults();
-    try {
-      const resp = await apiCall("/api/report-diario", { caixa: state.caixa, projetos });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setBanner(data.error || "Erro ao gerar o Report Diário.", "error");
-        return;
-      }
-      renderReportDiario(data);
-      clearBanner();
-    } catch (e) {
-      setBanner("Não foi possível conectar ao servidor.", "error");
-    } finally {
-      setBusy(false);
-    }
-  });
-
   // -------------------------------------------------------- cache de chamados
   // Lista as planilhas .xlsx da pasta de cache local (uma por mês, ver
-  // CACHE_DIR em api/index.py) — ação direta, sem diálogo, igual Report
-  // Diário. A planilha do mês corrente é criada sozinha (sem botão, sem
+  // CACHE_DIR em api/index.py) — ação direta, sem diálogo. A planilha do
+  // mês corrente é criada sozinha (sem botão, sem
   // avisar) assim que a tela carrega com o usuário logado — ver
   // _cache_garantir_mes_atual em api/index.py. Cada linha mostra quantos
   // chamados daquela planilha ainda estão em aberto (Status fora de

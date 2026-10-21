@@ -757,52 +757,6 @@ def fetch_chamados_violados(
     return rows
 
 
-def fetch_previstos_violar_por_dia(config, start_date, end_date):
-    """Pra cada dia do período, as keys dos chamados que tinham a data
-    PREVISTA de estouro do SLA ("sla_estoura_em") caindo naquele dia — inclui
-    os que acabaram sendo resolvidos antes de violar (evitaram a violação),
-    que fetch_chamados_violados não pega (ela só busca quem já violou de
-    fato, "Tempo de Resolução" < 0h). Devolve {dia: [keys]} — a quantidade é
-    só len() disso, mas as keys também dão pra listar no hover da tela.
-
-    Escopo da busca: TODO chamado do grupo/projeto, em qualquer status,
-    exceto "Cancelado" — mas limitado a quem foi CRIADO entre (início do
-    período − 7 dias) e o fim do período. Sem esse limite a busca varre o
-    histórico inteiro do grupo/projeto e não termina em tempo nenhum
-    (testado: estourou 5 minutos sem terminar); com ele, cobre até prazos de
-    SLA de até 7 dias antes do início do período. Só faz sentido com período
-    limitado (nunca no modo "Tudo", sem período, de Violados).
-    """
-    base_jql = config["jql"]
-    if not base_jql:
-        raise JiraExtractorError("Nenhuma JQL base definida.")
-
-    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
-    criado_desde = (start_date - timedelta(days=7)).strftime("%Y-%m-%d")
-    criado_ate = end_date.strftime("%Y-%m-%d")
-    jql = (
-        f'({base_jql}) AND status != "Cancelado" '
-        f'AND created >= "{criado_desde} 00:00" AND created <= "{criado_ate} 23:59"'
-    )
-
-    log.info("Buscando previstos para violar por dia com JQL: %s", jql)
-    issues = fetch_issues(config, jql, SLA_RESOLUTION_FIELDS)
-
-    window_start = datetime.combine(start_date, datetime.min.time(), tzinfo=BRAZIL_TZ)
-    window_end = datetime.combine(end_date, datetime.min.time(), tzinfo=BRAZIL_TZ).replace(
-        hour=23, minute=59, second=59
-    )
-
-    chaves_por_dia = {}
-    for issue in issues:
-        _campo, breach_dt, _breached = extract_sla_breach(issue.get("fields", {}))
-        if breach_dt and window_start <= breach_dt <= window_end:
-            dia = breach_dt.strftime("%Y-%m-%d")
-            chaves_por_dia.setdefault(dia, []).append(issue.get("key"))
-
-    return chaves_por_dia
-
-
 def fetch_chamados_reabertos(config, start_date, end_date, incluir_fornecedor=False):
     """Busca chamados que passaram por 'Reaberto' (status WAS "Reaberto")
     dentro do período informado, reaproveitando os filtros base (grupo/
@@ -1027,29 +981,6 @@ def fetch_chamados_classificacao(
 
     rows.sort(key=lambda r: r["key"])
     return rows
-
-
-def fetch_resolvidos_hoje_assignees(config):
-    """Assignee de cada chamado com status "Resolvido" e resolutiondate no dia
-    atual (fuso BRAZIL_TZ), reaproveitando os filtros base (grupo/projeto) da
-    JQL configurada. Usado só pelo ranking "Top analista do dia" do Report
-    Diário consolidado — não busca nenhum outro campo, já que não existe
-    tabela de linhas pra mostrar, só a contagem por analista."""
-    base_jql = config["jql"]
-    if not base_jql:
-        raise JiraExtractorError("Nenhuma JQL base definida.")
-
-    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
-    hoje = datetime.now(BRAZIL_TZ).date()
-    start_str = f"{hoje.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{hoje.strftime('%Y-%m-%d')} 23:59"
-    jql = (
-        f'({base_jql}) AND status = "Resolvido" '
-        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
-    )
-
-    issues = fetch_issues(config, jql, ["assignee"])
-    return [_extract(issue.get("fields", {}).get("assignee"), "displayName") for issue in issues]
 
 
 def fetch_total_criados_periodo(config, start_date, end_date):
@@ -2803,8 +2734,8 @@ def fetch_criados_por_dia_grupo(
 
     Duas buscas no total (não uma por dia/grupo): todos os criados no
     período e, à parte, só os que já foram P0/P1/P2 — depois bucketiza por
-    (dia, grupo) em Python, mesmo truque de fetch_previstos_violar_por_dia/
-    fetch_chamados_violados usado no widget "Violados — Últimos 30 dias".
+    (dia, grupo) em Python, mesmo truque de fetch_chamados_violados usado
+    no widget "Violados — Últimos 30 dias".
 
     Devolve (total_por_dia_grupo, p0p1p2_por_dia_grupo): dois dicts
     {(dia_iso, grupo): quantidade} — quem monta a lista dia a dia (com

@@ -132,7 +132,6 @@ main {
    display:none reconstrói a caixa do elemento, a animação toca de novo a
    cada vez que a página aparece, sem precisar de nenhum código em app.js. */
 #home-view:not(.hidden),
-#results-card:not(.hidden),
 #categorias-results:not(.hidden),
 #criados-resolvidos-results:not(.hidden),
 #distribuicao-results:not(.hidden),
@@ -140,8 +139,7 @@ main {
 #eps-results:not(.hidden),
 #analista-detalhe:not(.hidden),
 #om-mapa-calor-results:not(.hidden),
-#report-vini-results:not(.hidden),
-#report-diario-results:not(.hidden) {
+#report-vini-results:not(.hidden) {
   animation: viewEnter 0.32s ease;
 }
 
@@ -576,24 +574,67 @@ button {
   color: rgba(255, 255, 255, 0.45);
 }
 
+/* Caixa Solucionadora: estilo slide — os 2 botões lado a lado dentro de
+   uma trilha, com uma pílula de fundo que desliza (transform) pro lado
+   ativo em vez de trocar de cor nos 2 de uma vez. ::before é a pílula;
+   ":has()" lê qual botão tem .active pra decidir o lado sem precisar de
+   JS novo (o toggle de .active já existia). */
 .sidebar .caixa-toggle {
-  background: rgba(255, 255, 255, 0.07);
+  position: relative;
+  display: flex;
+  gap: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 4px;
   width: 100%;
 }
 
+.sidebar .caixa-toggle::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 8px;
+  background: rgba(201, 162, 39, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.5);
+  transition: transform 0.2s ease;
+}
+
+.sidebar .caixa-toggle:has(.caixa-btn[data-caixa="tv"].active)::before {
+  transform: translateX(100%);
+}
+
 .sidebar .caixa-btn {
+  position: relative;
+  z-index: 1;
   flex: 1;
-  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.sidebar .caixa-btn:hover {
+  color: var(--text);
 }
 
 .sidebar .caixa-btn.active {
-  background: rgba(201, 162, 39, 0.16);
   color: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.4);
 }
 
-.sidebar .radio-row label {
-  border-right-color: rgba(255, 255, 255, 0.12);
+.sidebar .caixa-btn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sidebar .caixa-btn-label {
+  font-weight: 600;
 }
 
 /* Dentro do menu lateral, um item só cabe por linha (a coluna é estreita
@@ -682,7 +723,8 @@ button {
 }
 
 #acoes-toggle-icon,
-#reports-toggle-icon {
+#preparador-toggle-icon,
+#settings-toggle-icon {
   color: var(--muted);
   font-size: 11px;
 }
@@ -1016,22 +1058,7 @@ button {
   gap: 6px;
 }
 
-/* quantidade de violados por dia: sublinhado pontilhado sinaliza que passar o
-   mouse mostra as keys dos chamados daquele dia (via atributo title) */
-.violados-qtd-hover {
-  cursor: help;
-  text-decoration: underline dotted;
-  text-decoration-color: var(--muted);
-  text-underline-offset: 3px;
-}
-
-.violados-qtd-hover:hover {
-  color: var(--accent-soft);
-  text-decoration-color: var(--accent-soft);
-}
-
-/* popover flutuante com as keys do dia (hover na Quantidade) — clique em uma
-   key copia ela pra área de transferência. */
+/* popover flutuante do Pareto Solar (hover numa barra). */
 .hover-popover {
   position: fixed;
   /* Precisa ficar acima de #pareto-sub-modal (110) — senão o popover de
@@ -1074,53 +1101,6 @@ button {
   position: absolute;
   left: 0;
   color: var(--muted);
-}
-
-/* Copia todas as keys de uma vez, formatadas 'KEY1', 'KEY2' — fica entre o
-   título e a lista rolável, como uma ação separada de copiar uma por uma. */
-.hover-popover-copy-all {
-  display: block;
-  padding: 4px 6px;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  border-bottom: 1px solid var(--card-border);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.hover-popover-copy-all:hover {
-  background: var(--secondary-bg);
-}
-
-/* Altura de ~4 linhas de .hover-popover-key, com rolagem pro resto — evita
-   um popover gigante quando o dia tem dezenas de chamados. */
-.hover-popover-list {
-  max-height: 108px;
-  overflow-y: auto;
-}
-
-.hover-popover-key {
-  display: block;
-  padding: 4px 6px;
-  border-radius: 4px;
-  color: var(--accent-soft);
-  cursor: pointer;
-  font-family: "Consolas", "Courier New", monospace;
-  font-size: 12px;
-}
-
-.hover-popover-key:hover {
-  background: var(--secondary-bg);
-}
-
-.hover-popover-key.copiado {
-  color: var(--success);
-}
-
-.hover-popover-key.erro-copia {
-  color: var(--danger);
 }
 
 /* linha de totais no fim de uma tabela (ex.: Grupo Solucionador × Mês de
@@ -1338,14 +1318,6 @@ button {
   margin-bottom: 14px;
 }
 
-#por-turno-block:not(.hidden) {
-  margin-bottom: 14px;
-}
-
-#por-dia-violados-block:not(.hidden) {
-  margin-bottom: 14px;
-}
-
 .top-assignees {
   margin-bottom: 14px;
   font-size: 13px;
@@ -1430,8 +1402,13 @@ button {
   flex-shrink: 0;
 }
 
+/* Sem teto de altura (ao contrário de ".table-wrap" base, que tem
+   max-height: 480px + scroll interno) — a tabela cresce com as linhas
+   até o fim da página de verdade, em vez de ficar numa caixinha de
+   scroll no meio dela. */
 .extracao-lote-table-wrap {
-  max-height: calc(100vh - 420px);
+  max-height: none;
+  overflow: visible;
   min-height: 160px;
 }
 
@@ -1525,6 +1502,88 @@ button {
   outline-offset: -1px;
 }
 
+/* "Extrato por Categoria": 1 box de texto por ofensor (em vez de 1 campo
+   com separador) — "+" ao lado de cada box adiciona outra logo abaixo.
+   table-layout é "fixed" (.data-table) — "Data início"/"fim" ganham
+   largura fixa pequena (.extrato-categoria-col-data) e esta coluna, sem
+   width própria, abocanha todo o resto da largura da tabela sozinha. */
+.extrato-categoria-col-data {
+  width: 150px;
+}
+
+.extrato-categoria-ofensores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.extrato-categoria-ofensor-box {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.extrato-categoria-ofensor-campo {
+  position: relative;
+  flex: 1 1 auto;
+}
+
+.extrato-categoria-ofensor-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--card-bg-elevated);
+  color: var(--text);
+  resize: none;
+  overflow: hidden;
+  min-height: 36px;
+  line-height: 1.4;
+}
+
+.extrato-categoria-ofensor-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Fica no <body> (não dentro de ".table-wrap", que tem "overflow: auto"
+   e cortaria uma "position: absolute" tão larga) — "position: fixed" +
+   left/top/width calculados na mão (seguirCampo, em app.js) esticam a
+   lista pra largura da TELA toda, não só a do box. */
+.extrato-categoria-ofensor-sugestoes {
+  position: fixed;
+  z-index: 50;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.extrato-categoria-ofensor-sugestoes li {
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.extrato-categoria-ofensor-sugestoes li:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.extrato-categoria-ofensor-add,
+.extrato-categoria-ofensor-remover {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  align-self: flex-start;
+}
+
 /* Destaca (negrito + cor de alerta) a célula de Solar/Prod/Claro Tv/Outros
    que tem pelo menos 1 chamado em aberto — bate o olho em vez de precisar
    ler número por número. */
@@ -1533,7 +1592,6 @@ button {
   font-weight: 700;
 }
 
-#results-table,
 .data-table {
   border-collapse: collapse;
   width: 100%;
@@ -1541,8 +1599,6 @@ button {
   table-layout: fixed;
 }
 
-#results-table th,
-#results-table td,
 .data-table th,
 .data-table td {
   text-align: left;
@@ -1553,7 +1609,6 @@ button {
   word-break: break-word;
 }
 
-#results-table th,
 .data-table th {
   background: var(--card-bg-elevated);
   color: var(--muted);
@@ -1568,7 +1623,6 @@ button {
 
 /* Zebra sutil nas linhas — mais fácil de acompanhar uma linha na horizontal
    em tabelas densas, visual mais "planilha executiva". */
-#results-table tbody tr:nth-child(even),
 .data-table tbody tr:nth-child(even) {
   background: rgba(255, 255, 255, 0.015);
 }
@@ -1589,7 +1643,6 @@ button {
   width: 13%;
 }
 
-#results-table tbody tr:hover,
 .data-table tbody tr:hover {
   background: rgba(201, 162, 39, 0.08);
 }
@@ -2587,7 +2640,7 @@ footer {
   white-space: nowrap;
 }
 
-/* #results-table/.data-table th é sticky (top: 0) pra header ficar visível
+/* .data-table th é sticky (top: 0) pra header ficar visível
    ao rolar. Nessa tabela as células têm 3 linhas (resolvidos/violados/
    reabertos) em vez de 1 — ao rolar, o header sticky (fundo opaco) acaba
    cobrindo a linha de cima (resolvidos) da primeira linha visível,

@@ -49,19 +49,20 @@
       <div class="card sidebar-collapsible">
         <div class="section-label">CAIXA SOLUCIONADORA</div>
         <div class="caixa-toggle" id="caixa-toggle">
-          <button type="button" class="caixa-btn active" data-caixa="solar">Solar</button>
-          <button type="button" class="caixa-btn" data-caixa="tv">Claro Tv</button>
+          <button type="button" class="caixa-btn active" data-caixa="solar">
+            <span class="caixa-btn-icon">☀️</span>
+            <span class="caixa-btn-label">Solar</span>
+          </button>
+          <button type="button" class="caixa-btn" data-caixa="tv">
+            <span class="caixa-btn-icon">📺</span>
+            <span class="caixa-btn-label">Claro Tv</span>
+          </button>
         </div>
-      </div>
-
-      <div class="card sidebar-collapsible">
-        <div class="section-label" style="margin-bottom: 8px">PROJETOS</div>
-        <div class="radio-row" id="projetos-checkboxes" style="margin-bottom: 0"></div>
       </div>
 
       <div class="card">
         <button class="section-label acoes-toggle sidebar-collapsible" id="btn-acoes-toggle" type="button">
-          <span>AÇÕES</span>
+          <span>EXTRAÇÕES</span>
           <span id="acoes-toggle-icon">▾</span>
         </button>
         <div class="actions-grid collapse open" id="acoes-grid">
@@ -72,11 +73,11 @@
           <button id="btn-extracao-lote" class="nav-item" type="button">
             <span class="nav-icon">🧾</span><span class="nav-label">Extração em Lote</span>
           </button>
+          <button id="btn-extrato-categoria" class="nav-item" type="button">
+            <span class="nav-icon">🏷️</span><span class="nav-label">Extrato por Categoria</span>
+          </button>
           <button id="btn-gml" class="nav-item" type="button">
             <span class="nav-icon">📄</span><span class="nav-label">Extrair GML</span>
-          </button>
-          <button id="btn-violados" class="nav-item" type="button">
-            <span class="nav-icon">🔴</span><span class="nav-label">Violados</span>
           </button>
           <button id="btn-report-vini" class="nav-item hidden" type="button">
             <span class="nav-icon">🎯</span><span class="nav-label">Report Vini</span>
@@ -84,9 +85,15 @@
           <button id="btn-tv-resolvidos-reabertos" class="nav-item hidden" type="button">
             <span class="nav-icon">🗂️</span><span class="nav-label">Resolvidos e Reabertos (Excel)</span>
           </button>
-          <button id="btn-cache" class="nav-item" type="button">
-            <span class="nav-icon">💾</span><span class="nav-label">Cache de Chamados</span>
-          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <button class="section-label acoes-toggle sidebar-collapsible" id="btn-preparador-toggle" type="button">
+          <span>PREPARADOR DE REUNIÕES</span>
+          <span id="preparador-toggle-icon">▾</span>
+        </button>
+        <div class="actions-grid collapse open" id="preparador-grid">
           <button id="btn-pareto-solar" class="nav-item" type="button">
             <span class="nav-icon">📊</span><span class="nav-label">Pareto Solar</span>
           </button>
@@ -100,13 +107,13 @@
       </div>
 
       <div class="card">
-        <button class="section-label acoes-toggle sidebar-collapsible" id="btn-reports-toggle" type="button">
-          <span>REPORTS</span>
-          <span id="reports-toggle-icon">▾</span>
+        <button class="section-label acoes-toggle sidebar-collapsible" id="btn-settings-toggle" type="button">
+          <span>SETTINGS</span>
+          <span id="settings-toggle-icon">▾</span>
         </button>
-        <div class="actions-grid collapse open" id="reports-grid">
-          <button id="btn-report-diario" class="nav-item" type="button">
-            <span class="nav-icon">📝</span><span class="nav-label">Report Diário</span>
+        <div class="actions-grid collapse open" id="settings-grid">
+          <button id="btn-cache" class="nav-item" type="button">
+            <span class="nav-icon">💾</span><span class="nav-label">Cache</span>
           </button>
         </div>
       </div>
@@ -298,18 +305,6 @@
 
             <dt>
               <button class="query-dict-toggle" type="button" aria-expanded="false">
-                <span>🔴 Violados</span><span class="query-dict-arrow">▸</span>
-              </button>
-            </dt>
-            <dd>
-              <p>Chamados cujo SLA de resolução já estourou, com contagem por turno e por dia.</p>
-              <div class="collapse">
-                <code>"Grupo Solucionador" IN (grupos da caixa) AND project IN (projetos marcados) AND ("Tempo de Resolução" &lt; 0h OR "Tempo de resolução" &lt; 0h)</code>
-              </div>
-            </dd>
-
-            <dt>
-              <button class="query-dict-toggle" type="button" aria-expanded="false">
                 <span>🏷️ Categorias de Encerramento</span><span class="query-dict-arrow">▸</span>
               </button>
             </dt>
@@ -417,18 +412,6 @@
               </div>
             </dd>
 
-            <dt>
-              <button class="query-dict-toggle" type="button" aria-expanded="false">
-                <span>📝 Report Diário</span><span class="query-dict-arrow">▸</span>
-              </button>
-            </dt>
-            <dd>
-              <p>Ação direta, sempre "hoje" — consolida A violar, Violados, Reabertos e o Top analista do dia. Disponível nas duas caixas.</p>
-              <div class="collapse">
-                <p>Combina, numa chamada só, as mesmas queries de "A violar", "Violados" e "Reabertos" acima escopadas ao dia de hoje, mais o ranking de quem mais resolveu hoje:</p>
-                <code>status = "Resolvido" AND resolutiondate no dia de hoje (00:00 às 23:59)</code>
-              </div>
-            </dd>
           </dl>
           </div>
 
@@ -437,28 +420,6 @@
           </p>
         </div>
 
-        <!-- Violados: Tudo (padrão, sem filtro de data) / Hoje / Personalizado -->
-        <div id="violados-dialog" class="collapse">
-          <div class="radio-row" style="margin-bottom: 10px">
-            <label><input type="radio" name="violados-modo" value="tudo" checked /> Tudo</label>
-            <label><input type="radio" name="violados-modo" value="hoje" /> Hoje</label>
-            <label><input type="radio" name="violados-modo" value="personalizado" /> Personalizado</label>
-          </div>
-          <div id="violados-periodo-fields" class="dialog-row" style="display: none">
-            <div class="field">
-              <label for="violados-input-inicio">Data início</label>
-              <input id="violados-input-inicio" type="date" />
-            </div>
-            <div class="field">
-              <label for="violados-input-fim">Data fim</label>
-              <input id="violados-input-fim" type="date" />
-            </div>
-          </div>
-          <div class="dialog-row" style="margin-top: 0">
-            <button id="btn-violados-gerar" class="btn-primary" type="button">Gerar</button>
-            <button id="btn-violados-cancelar" class="btn-secondary" type="button">Cancelar</button>
-          </div>
-        </div>
 
         <!-- Extração em Lote: lista de queries (JQL + nome do arquivo),
              roda uma de cada vez, em ordem — ao terminar uma (sempre em
@@ -568,6 +529,67 @@
           </div>
         </div>
 
+        <!-- Extrato por Categoria: mesma tela/fluxo de "Extração em Lote"
+             (lista de linhas, 1 de cada vez, salva na pasta de destino com
+             as colunas do cache), mas em vez de JQL livre consultando o
+             Jira na hora, cada linha é Categoria de Encerramento + período
+             — puxado direto das planilhas de cache local (CACHE_DIR, mesma
+             fonte do Pareto Solar/Cache de Chamados), já com as colunas
+             calculadas prontas (ver /api/extrato-categoria/preparar em
+             api/index.py). Só funciona rodando localmente, com o cache já
+             sincronizado (mesma limitação de Cache de Chamados/Pareto
+             Solar). -->
+        <div id="extrato-categoria-results" class="hidden extracao-lote-screen">
+          <div class="extracao-lote-intro">
+            <h2 style="margin: 0">Extrato por Categoria</h2>
+            <p class="hint" style="margin: 4px 0 0">
+              Cada linha é 1 ou mais Categorias de Encerramento (1 box de texto por ofensor — clique no "+" ao lado
+              pra adicionar outro) + período — ao clicar em "Iniciar", a lista roda em ordem, uma de cada vez, e
+              traz do cache local todos os chamados encerrados de qualquer um dos ofensores informados no período
+              (sem consultar o Jira na hora).
+            </p>
+          </div>
+
+          <div class="extracao-lote-toolbar">
+            <div class="field" style="margin-bottom: 0">
+              <label for="extrato-categoria-pasta">Pasta de destino</label>
+              <input id="extrato-categoria-pasta" type="text" />
+            </div>
+            <div class="field extracao-lote-field-formato" style="margin-bottom: 0">
+              <label for="extrato-categoria-formato">Formato</label>
+              <select id="extrato-categoria-formato">
+                <option value="xlsx" selected>Excel (.xlsx)</option>
+                <option value="csv">CSV (.csv)</option>
+              </select>
+            </div>
+            <div class="extracao-lote-toolbar-botoes">
+              <button id="btn-extrato-categoria-add" class="btn-secondary" type="button">+ Adicionar linha</button>
+              <button id="btn-extrato-categoria-iniciar" class="btn-primary" type="button">▶ Iniciar</button>
+            </div>
+          </div>
+
+          <div class="table-wrap extracao-lote-table-wrap">
+            <table class="data-table extracao-lote-table" id="extrato-categoria-table">
+              <thead>
+                <tr>
+                  <th class="extracao-lote-col-num">#</th>
+                  <th class="extrato-categoria-col-ofensores">Categoria de Encerramento (ofensor — "+" pra mais de 1)</th>
+                  <th class="extrato-categoria-col-data">Data início</th>
+                  <th class="extrato-categoria-col-data">Data fim</th>
+                  <th class="extracao-lote-col-nome">Nome do arquivo</th>
+                  <th class="extracao-lote-col-status">Status</th>
+                  <th class="extracao-lote-col-acao"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="extracao-lote-rodape">
+            <div id="extrato-categoria-status" class="hint"></div>
+          </div>
+        </div>
+
         <!-- Report Vini: específico de Mops Tv do Futuro (botão some fora
              dela) — consolida num resultado só o que hoje é visto espalhado
              em 3 ações (Criados x Resolvidos com TMA/SLA, Reabertos,
@@ -637,22 +659,6 @@
             <button id="btn-tv-rr-cancelar" class="btn-secondary" type="button">Cancelar</button>
           </div>
           <div id="tv-rr-status" class="hint" style="margin-top: 10px"></div>
-        </div>
-
-        <!-- Report Diário: ação direta (sem diálogo, sempre "hoje"), igual
-             era antes — mas agora consolidada num resultado só, reaproveitando
-             as mesmas buscas de A violar/Violados/Reabertos/top analista.
-             Funciona nas duas caixas. -->
-        <div id="report-diario-results" class="hidden" style="margin-top: 14px">
-          <div class="results-header" style="margin-bottom: 10px">
-            <span class="date-badge" id="report-diario-date"></span>
-          </div>
-
-          <div class="section-label" style="margin-bottom: 8px">RESUMO DO DIA</div>
-          <div id="report-diario-summary-cards" class="summary-cards"></div>
-
-          <div class="section-label" style="margin: 14px 0 8px">TOP ANALISTAS DO DIA</div>
-          <div id="report-diario-top-cards" class="summary-cards"></div>
         </div>
 
         <!-- Cache de Chamados: ação direta (sem diálogo) — 1 seção por
@@ -941,51 +947,6 @@
           </div>
         </div>
 
-      <!-- ===== Tela de resultados: KPIs + tabela da última extração ===== -->
-      <section id="results-card" class="card hidden">
-        <div class="results-header">
-          <div class="section-label" id="results-title" style="margin: 0">RESULTADOS</div>
-          <span class="date-badge" id="results-date"></span>
-          <span class="spacer"></span>
-          <select id="download-format">
-            <option value="csv">CSV</option>
-            <option value="excel">Excel</option>
-            <option value="both" selected>Ambos (.zip)</option>
-          </select>
-          <button id="btn-download" class="btn-secondary" type="button">⬇ Baixar arquivo</button>
-        </div>
-
-        <div id="summary-cards" class="summary-cards"></div>
-
-        <!-- Só aparece em Violados -->
-        <div id="por-turno-block" class="hidden">
-          <div class="section-label" style="margin-bottom: 8px">VIOLADOS POR TURNO</div>
-          <div id="por-turno-cards" class="summary-cards"></div>
-        </div>
-
-        <!-- Só aparece em Violados: quantidade de violados por dia (dias sem
-             nenhum violado não entram na tabela). -->
-        <div id="por-dia-violados-block" class="hidden">
-          <div class="section-label" style="margin-bottom: 8px">VIOLADOS POR DIA</div>
-          <div class="table-wrap">
-            <table class="data-table" id="por-dia-violados-table">
-              <thead></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div id="top-assignees" class="top-assignees"></div>
-
-        <div class="table-wrap" id="results-table-wrap">
-          <table id="results-table">
-            <thead></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div id="table-note" class="hint" style="margin-top: 8px"></div>
-
-      </section>
       </div><!-- /content-area -->
       </div><!-- /app-layout -->
 

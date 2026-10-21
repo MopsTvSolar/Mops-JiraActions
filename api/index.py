@@ -60,13 +60,11 @@ from jira_extractor import (  # noqa: E402
     fetch_chamados_reabertos,
     fetch_chamados_violados,
     fetch_criados_por_dia_grupo,
-    fetch_previstos_violar_por_dia,
     fetch_criados_x_resolvidos,
     fetch_grupo_criacao_mensal,
     fetch_fornecedor_criacao_mensal,
     fetch_reabertos_analitico,
     fetch_resolvidos_encerrados_analitico,
-    fetch_resolvidos_hoje_assignees,
     fetch_a_violar_abertos_por_grupo,
     fetch_aguardando_fornecedor_por_grupo,
     fetch_pdst_abertos_por_grupo,
@@ -722,82 +720,6 @@ def _por_grupo_a_violar(rows, grupos):
                 "por_status": status_counts.most_common(),
             }
         )
-    return resultado
-
-
-# Turnos fixos para o detalhamento de "Violados" — intervalos em minutos desde
-# 00:00, extremos inclusivos. Cobrem 07:00–23:59; fora disso (madrugada) cai
-# no bucket "Fora do horário" (só aparece se houver algum chamado nele).
-TURNOS_VIOLADOS = [
-    {"label": "Turno 1 (07:00–09:00)", "inicio_min": 7 * 60, "fim_min": 9 * 60},
-    {"label": "Turno comercial (09:01–18:00)", "inicio_min": 9 * 60 + 1, "fim_min": 18 * 60},
-    {"label": "Turno 2 (18:01–23:59)", "inicio_min": 18 * 60 + 1, "fim_min": 23 * 60 + 59},
-]
-TURNO_FORA_HORARIO = "Fora do horário (00:00–06:59)"
-
-
-def _por_turno_violados(rows):
-    """Conta, para cada turno fixo, quantos chamados violados têm o horário de
-    estouro do SLA ("sla_estourou_em") dentro daquele intervalo. Não faz
-    nenhuma busca extra no Jira: só agrupa as linhas já retornadas pela busca
-    principal de Violados. Chamados sem SLA estourado preenchido (não deveria
-    acontecer nesta ação, mas por segurança) não entram em nenhum turno."""
-    contagem = Counter()
-    for row in rows:
-        sla_estourou_em = row.get("sla_estourou_em")
-        if not sla_estourou_em or len(sla_estourou_em) < 16:
-            continue
-        try:
-            hora, minuto = int(sla_estourou_em[11:13]), int(sla_estourou_em[14:16])
-        except ValueError:
-            continue
-        minutos_totais = hora * 60 + minuto
-
-        turno_encontrado = TURNO_FORA_HORARIO
-        for turno in TURNOS_VIOLADOS:
-            if turno["inicio_min"] <= minutos_totais <= turno["fim_min"]:
-                turno_encontrado = turno["label"]
-                break
-        contagem[turno_encontrado] += 1
-
-    resultado = [{"turno": t["label"], "total": contagem.get(t["label"], 0)} for t in TURNOS_VIOLADOS]
-    if contagem.get(TURNO_FORA_HORARIO):
-        resultado.append({"turno": TURNO_FORA_HORARIO, "total": contagem[TURNO_FORA_HORARIO]})
-    return resultado
-
-
-def _por_dia_violados(rows, previstos_por_dia=None):
-    """Conta, por dia, quantos chamados tiveram o SLA estourado nesse dia (com
-    base em "sla_estourou_em"). Não faz nenhuma busca extra no Jira: só
-    agrupa as linhas já retornadas pela busca principal de Violados (que já
-    vêm com "reaberto" calculado). "reaberto" no dia é True se ao menos um
-    dos chamados daquele dia já passou por status "Reaberto".
-
-    "previstos_por_dia" (opcional): dict {dia: [keys]} de
-    fetch_previstos_violar_por_dia — chamados que tinham a data PREVISTA de
-    estouro naquele dia, violado ou não (a quantidade é só len() da lista).
-    Só entra como coluna extra nos dias que já aparecem aqui (que tiveram
-    violado de fato); dias sem nenhum violado não entram na tabela mesmo que
-    tenham previstos. As keys vão junto pra alimentar o hover da coluna."""
-    contagem = Counter()
-    tem_reaberto = set()
-    for row in rows:
-        sla_estourou_em = row.get("sla_estourou_em")
-        if not sla_estourou_em or len(sla_estourou_em) < 10:
-            continue
-        dia = sla_estourou_em[:10]
-        contagem[dia] += 1
-        if row.get("reaberto") == "Sim":
-            tem_reaberto.add(dia)
-
-    resultado = []
-    for dia, total in sorted(contagem.items()):
-        entry = {"data": dia, "total": total, "reaberto": dia in tem_reaberto}
-        if previstos_por_dia is not None:
-            chaves = previstos_por_dia.get(dia, [])
-            entry["previsto"] = len(chaves)
-            entry["previsto_chaves"] = chaves
-        resultado.append(entry)
     return resultado
 
 
@@ -1637,6 +1559,127 @@ def extracao_lote_preparar():
     return jsonify({"linhas": linhas, "lote": EXTRACAO_LOTE_TAMANHO})
 
 
+@app.route("/api/extrato-categoria/categorias", methods=["POST"])
+def extrato_categoria_categorias():
+    """Lista (ordenada) de todas as "Categoria de Encerramento" distintas
+    já vistas no cache da caixa informada — alimenta o autocomplete (um
+    <datalist> por ofensor) da tela "Extrato por Categoria". Mesma fonte/
+    "caixa" de extrato_categoria_preparar, só que sem filtro de
+    categoria/período: varre tudo que tiver na pasta."""
+    body = request.get_json(silent=True) or {}
+    particao = _cache_resolve_particao(body)
+    pasta_cache = particao["pasta"]
+    if not os.path.isdir(pasta_cache):
+        return jsonify({"categorias": []})
+
+    nomes = [n for n in os.listdir(pasta_cache) if n.lower().endswith(".xlsx") and not n.startswith("~$")]
+    categorias = set()
+    for nome in nomes:
+        try:
+            wb = load_workbook(os.path.join(pasta_cache, nome), read_only=True, data_only=True)
+        except Exception:
+            app.logger.exception('Falha ao ler a planilha de cache "%s"', nome)
+            continue
+        try:
+            ws = wb.active
+            linhas_ws = ws.iter_rows(values_only=True)
+            header = next(linhas_ws, None)
+            if not header or CACHE_COL_CATEGORIA not in header:
+                continue
+            i = header.index(CACHE_COL_CATEGORIA)
+            for linha in linhas_ws:
+                if linha is None or i >= len(linha):
+                    continue
+                valor = linha[i]
+                if valor:
+                    categorias.add(str(valor))
+        finally:
+            wb.close()
+
+    return jsonify({"categorias": sorted(categorias)})
+
+
+@app.route("/api/extrato-categoria/preparar", methods=["POST"])
+def extrato_categoria_preparar():
+    """"Extrato por Categoria": puxa direto das planilhas de cache local
+    (mesma fonte do Pareto Solar/Cache de Chamados, nenhuma consulta ao
+    Jira), em vez de rodar JQL na hora. "caixa" ("solar"/"tv", igual Cache
+    de Chamados — ver _cache_resolve_particao) decide QUAL pasta de cache
+    varrer; sem "caixa" cai em CACHE_PARTICAO_PADRAO ("solar"), então uma
+    categoria que só existe nos chamados da caixa Tv não aparece se a
+    tela não mandar "caixa": "tv" — mesmo motivo de "categorias" não
+    acharem nada antes dessa opção existir. Recebe também "categorias"
+    (1 ou mais nomes de Categoria de Encerramento/ofensor — lista, ou
+    "categoria" com os nomes separados por quebra de linha, pra
+    compatibilidade; NUNCA por vírgula — o nome da categoria pode ter
+    vírgula dentro dele, ex.: "... AO ACESSAR V360, ERRO DE
+    CARREGAMENTO ...") + "inicio"/"fim" (período pela "Data de Resolução", mesma população
+    de fetch_categoria_encerrados/Pareto Solar: só projeto Central de
+    Incidentes — chave "INC-...", status Resolvido ou Encerrado).
+
+    Já devolve as linhas com TODAS as colunas do cache (CACHE_COLUNAS,
+    incluindo as 5 "calculadas" — Violado/Já foi Reaberto/Data de
+    Resolução/PROP_Site/Sub-Classificação/Prioridade), porque a própria
+    planilha de cache já tem elas prontas — diferente de
+    /api/extracao-lote/preparar (JQL livre, direto do Jira), não precisa
+    de um 2º passo em /api/extracao-lote/lote pra completar; a tela manda
+    essas linhas direto pra /api/extracao-lote/salvar."""
+    body = request.get_json(silent=True) or {}
+    categorias_raw = body.get("categorias")
+    if isinstance(categorias_raw, list):
+        categorias = {c.strip() for c in categorias_raw if isinstance(c, str) and c.strip()}
+    else:
+        categorias = {c.strip() for c in (body.get("categoria") or "").split("\n") if c.strip()}
+    if not categorias:
+        raise JiraExtractorError("Informe a Categoria de Encerramento (ofensor).")
+    inicio, fim = _parse_periodo(body)
+    particao = _cache_resolve_particao(body)
+    pasta_cache = particao["pasta"]
+    if not os.path.isdir(pasta_cache):
+        raise JiraExtractorError(f'Pasta de cache não encontrada neste ambiente: "{pasta_cache}".')
+
+    nomes = [n for n in os.listdir(pasta_cache) if n.lower().endswith(".xlsx") and not n.startswith("~$")]
+    chamados = {}
+    for nome in nomes:
+        try:
+            wb = load_workbook(os.path.join(pasta_cache, nome), read_only=True, data_only=True)
+        except Exception:
+            app.logger.exception('Falha ao ler a planilha de cache "%s"', nome)
+            continue
+        try:
+            ws = wb.active
+            linhas_ws = ws.iter_rows(values_only=True)
+            header = next(linhas_ws, None)
+            if not header or any(c not in header for c in CACHE_COLUNAS):
+                continue
+            idx = {c: header.index(c) for c in CACHE_COLUNAS}
+
+            for linha in linhas_ws:
+                if linha is None or all(v is None for v in linha):
+                    continue
+
+                def valor(col, linha=linha):
+                    i = idx[col]
+                    return linha[i] if i < len(linha) else None
+
+                chave_chamado = str(valor(CACHE_COL_CHAVE) or "")
+                if chave_chamado.split("-")[0].upper() != "INC":
+                    continue
+                if valor(CACHE_COL_CATEGORIA) not in categorias:
+                    continue
+                if valor(CACHE_COL_STATUS) not in CACHE_STATUS_RESOLVIDOS:
+                    continue
+                resolucao = _cache_parse_data_iso(valor(CACHE_COL_RESOLUCAO))
+                if not resolucao or not (inicio <= resolucao.date() <= fim):
+                    continue
+                chamados[chave_chamado] = {coluna: valor(coluna) for coluna in CACHE_COLUNAS}
+        finally:
+            wb.close()
+
+    linhas = sorted(chamados.values(), key=lambda c: c[CACHE_COL_CHAVE])
+    return jsonify({"linhas": linhas, "total": len(linhas)})
+
+
 @app.route("/api/extracao-lote/lote", methods=["POST"])
 def extracao_lote_lote():
     """2º passo (chamado repetidas vezes, um lote de até
@@ -1733,31 +1776,6 @@ def extracao_lote_salvar():
         raise JiraExtractorError(f'Não foi possível salvar "{caminho}": {e}')
 
     return jsonify({"pasta": pasta, "nome_arquivo": nome_arquivo, "caminho": caminho, "total": len(linhas)})
-
-
-@app.route("/api/violados", methods=["POST"])
-def violados():
-    body = request.get_json(silent=True) or {}
-    caixa_id = _resolve_caixa(body)
-    projetos = _projetos_selecionados(body)
-    config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
-    inicio, fim = _parse_periodo_opcional(body)
-    rows = fetch_chamados_violados(config, incluir_fornecedor=True, start_date=inicio, end_date=fim)
-
-    extra = None
-    if not _is_download(body):
-        # "previsto" (quem tinha prazo pra violar naquele dia, violado ou
-        # não) só entra com período definido — no modo "Tudo" a busca de
-        # fetch_previstos_violar_por_dia ficaria sem limite nenhum.
-        previstos_por_dia = None
-        if inicio and fim:
-            try:
-                previstos_por_dia = fetch_previstos_violar_por_dia(config, inicio, fim)
-            except Exception:
-                app.logger.exception("Falha ao buscar previstos para violar por dia")
-        extra = {"por_turno": _por_turno_violados(rows), "por_dia": _por_dia_violados(rows, previstos_por_dia)}
-
-    return _respond(rows, "chamados_violados", body, extra=extra)
 
 
 
@@ -2817,40 +2835,6 @@ def tv_resolvidos_reabertos():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name=f"tv_resolvidos_reabertos_{timestamp}.xlsx",
-    )
-
-
-@app.route("/api/report-diario", methods=["POST"])
-def report_diario():
-    """Report Diário consolidado: junta, numa chamada só, os mesmos números
-    que já existem espalhados noutras ações — tudo escopado a "hoje" — "A
-    violar" (fetch_chamados_a_violar, days_ahead=0), "Violados"
-    (fetch_chamados_violados do dia), "Reabertos" (fetch_chamados_reabertos
-    do dia) e "Top analista do dia" (quem mais resolveu hoje). Funciona nas
-    duas caixas: cada busca já usa os grupos/projetos/JQL da caixa
-    selecionada, sem nenhuma regra extra específica de caixa aqui."""
-    body = request.get_json(silent=True) or {}
-    caixa_id = _resolve_caixa(body)
-    projetos = _projetos_selecionados(body)
-    config = dict(_config_from_request(body), jql=_build_base_jql(caixa_id, projetos))
-    hoje = datetime.now(BRAZIL_TZ).date()
-
-    a_violar_hoje = len(fetch_chamados_a_violar(config, days_ahead=0))
-    violados_hoje = len(fetch_chamados_violados(config, start_date=hoje, end_date=hoje))
-    reabertos_hoje = len(fetch_chamados_reabertos(config, hoje, hoje))
-
-    assignees = fetch_resolvidos_hoje_assignees(config)
-    top_analistas = Counter(a for a in assignees if a).most_common(TOP_ASSIGNEES_LIMIT)
-
-    return jsonify(
-        {
-            "data": hoje.strftime("%Y-%m-%d"),
-            "a_violar_hoje": a_violar_hoje,
-            "violados_hoje": violados_hoje,
-            "reabertos_hoje": reabertos_hoje,
-            "resolvidos_hoje": len(assignees),
-            "top_analistas": top_analistas,
-        }
     )
 
 
