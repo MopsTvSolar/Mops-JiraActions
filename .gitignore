@@ -15,3 +15,6 @@ dist/
 .agents/
 Cavemen/
 skills-lock.json
+
+# Cache local de planilhas/sqlite — gerado em cada máquina.
+Cache/
