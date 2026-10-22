@@ -86,89 +86,6 @@
   // significa "todas de uma vez" — espelha JORNADA_GERAL em api/index.py.
   const JORNADA_GERAL = "__geral__";
 
-  // Valores do campo "Classificação" (JQL: "Classificação" = "..."), usados
-  // pelo dropdown de Análise de Jornada — a lista muda conforme a caixa
-  // solucionadora, mesmo campo/valor nas duas, só o conjunto de opções
-  // válidas é diferente (curadoria passada manualmente, não vem do Jira).
-  const CLASSIFICACAO_OPCOES = {
-    solar: [
-      "Ache aqui",
-      "Canais críticos",
-      "Comercial PF",
-      "CTI",
-      "Filtro VT",
-      "Financeiro",
-      "Indisponibilidade",
-      "Jornada CAP",
-      "Lentidão",
-      "LGPD",
-      "Mudança de endereço",
-      "PME fixa",
-      "PME móvel",
-      "Proactive monitoring",
-      "Rentabilização móvel",
-      "Rentabilização Residencial",
-      "Residencial/Multi para Móvel",
-      "Retenção móvel",
-      "Retenção Residencial",
-      "Suporte a Vendas - BackOffice Comercial",
-      "Técnica",
-      "Troca de plano n1",
-      "V360",
-    ],
-    tv: [
-      "Cadastro - Mídia social",
-      "Cadastro - Móvel",
-      "Cadastro - Netsms",
-      "Cadastro - Novo BSS",
-      "Cancelamento - Novo BSS",
-      "Compras - Mídia social",
-      "Compras - Móvel",
-      "Compras - Netsms",
-      "Compras - Novo BSS",
-      "Conectividade - Mídia social",
-      "Conectividade - Netsms",
-      "Conectividade - Novo BSS",
-      "Entrada - Mídia social",
-      "Entrada - Móvel",
-      "Entrada - Netsms",
-      "Entrada - Novo BSS",
-      "Financeiro - Mídia social",
-      "Financeiro - Móvel",
-      "Financeiro - Netsms",
-      "Financeiro - Novo BSS",
-      "Fraude",
-      "Informações da conta - Mídia social",
-      "Informações da conta - Móvel",
-      "Informações da conta - Netsms",
-      "Informações da conta - Novo BSS",
-      "Legenda - Mídia social",
-      "Legenda - Móvel",
-      "Legenda - Netsms",
-      "Legenda - Novo BSS",
-      "Lentidão",
-      "Lentidão - Mídia social",
-      "Lentidão - Móvel",
-      "Lentidão - Netsms",
-      "Lentidão - Novo BSS",
-      "Play - Mídia social",
-      "Play - Móvel",
-      "Play - Netsms",
-      "Play - Novo BSS",
-      "Programas regionais - Mídia social",
-      "Programas regionais - Móvel",
-      "Programas regionais - Netsms",
-      "Programas regionais - Novo BSS",
-      "Qualidade da imagem - Mídia social",
-      "Qualidade da imagem - Novo BSS",
-      "Relatórios e dados - Novo BSS",
-      "Segurança - Mídia social",
-      "Segurança - Móvel",
-      "Segurança - Netsms",
-      "Segurança - Novo BSS",
-    ],
-  };
-
   // "options" aceita string simples (valor = rótulo, ex.: STATUS_OPTIONS)
   // ou {value, label} quando o texto mostrado precisa ser diferente do
   // valor enviado ao servidor (ex.: PROJETOS_DISPONIVEIS, "INC" na tela
@@ -232,6 +149,8 @@
     $("gml-lote-results").classList.add("hidden");
     $("extrato-categoria-results").classList.add("hidden");
     $("material-icg-results").classList.add("hidden");
+    $("jornada-results").classList.add("hidden");
+    $("colaboradores-det-results").classList.add("hidden");
     $("pareto-sub-modal").classList.add("hidden");
     hideHoverPopover();
   }
@@ -249,6 +168,8 @@
     "gml-lote-results",
     "extrato-categoria-results",
     "material-icg-results",
+    "jornada-results",
+    "colaboradores-det-results",
   ];
 
   // Qual item do menu lateral corresponde a cada diálogo/resultado — usado só
@@ -268,6 +189,8 @@
     "gml-lote-results": "btn-gml",
     "extrato-categoria-results": "btn-extrato-categoria",
     "material-icg-results": "btn-material-icg",
+    "jornada-results": "btn-jornada",
+    "colaboradores-det-results": "btn-colaboradores-det",
   };
 
   const NAV_ITEM_IDS = [
@@ -280,6 +203,8 @@
       "btn-gml",
       "btn-extrato-categoria",
       "btn-material-icg",
+      "btn-jornada",
+      "btn-colaboradores-det",
     ]),
   ];
 
@@ -368,6 +293,9 @@
   function aplicarHomeCaixaFiltro(caixa) {
     homeViewEl.dataset.caixaFiltro = caixa;
     homeCaixaFiltroSelect.value = caixa;
+    // Gráfico Plotly que estava escondido (display: none) foi medido com
+    // largura 0 — o resize faz o "responsive" dele recalcular.
+    window.dispatchEvent(new Event("resize"));
   }
 
   let homeCaixaFiltroSalva = "solar";
@@ -395,6 +323,12 @@
   // initialization", já que "const" fica em temporal dead zone até a
   // linha da declaração rodar, diferente de function que é hoisted).
   $("btn-home-reload-geral").addEventListener("click", () => {
+    if (!homeJaCarregada) {
+      homeJaCarregada = true;
+      $("home-iniciar-wrap").style.display = "none";
+      $("home-dashboards").classList.remove("hidden");
+      $("home-colaboradores-card").classList.remove("hidden");
+    }
     carregarHomeDashboardsGradual();
   });
 
@@ -479,9 +413,7 @@
       carregarHomeReabertosMes,
       carregarHomeGrupoCriacao,
       carregarHomeFornecedorCriacao,
-      carregarHomeCriadosMes,
       carregarHomeColaboradoresCache,
-      carregarHomeClassificacaoFunil,
       carregarHomeViolarSemanal,
       carregarHomeCotiMes,
     ];
@@ -498,12 +430,14 @@
   const HOME_WIDGET_RELOAD_REGISTRO = [
     ["home-sla-mes", carregarHomeSlaCache],
     ["home-criados-resolvidos-mes", carregarHomeCriadosResolvidosCache],
+    ["home-cr-kpi", carregarHomeCriadosResolvidosCache],
+    ["home-cr-tabela", carregarHomeCriadosResolvidosCache],
     ["home-grupo-criacao", carregarHomeGrupoCriacao],
     ["home-fornecedor-criacao", carregarHomeFornecedorCriacao],
-    ["home-criados-mes", carregarHomeCriadosMes],
+    ["home-forn-ranking", carregarHomeFornecedorCriacao],
+    ["home-forn-kpi", carregarHomeFornecedorCriacao],
     ["home-reabertos-mes", carregarHomeReabertosMes],
     ["home-colaboradores-mes", carregarHomeColaboradoresCache],
-    ["home-classificacao-funil", carregarHomeClassificacaoFunil],
     ["home-violados-abertos", carregarHomeViolarSemanal],
     ["home-violar-semanal", carregarHomeViolarSemanal],
     ["home-coti-mes", carregarHomeCotiMes],
@@ -527,13 +461,238 @@
   }
   aplicarHomeReloadButtons();
 
+  // "Fila dinâmica": carrossel de 3 páginas da home. A altura do viewport
+  // acompanha o slide ativo (senão a página mais baixa fica com o vão da
+  // mais alta) e é reajustada quando o conteúdo dos loaders chega.
+  function iniciarHomeFilaCarrossel() {
+    const raiz = $("home-fila");
+    const viewport = raiz.querySelector(".pareto-sub-modal-viewport");
+    const track = raiz.querySelector(".home-fila-track");
+    const slides = Array.from(track.children);
+    const tabs = Array.from(raiz.querySelectorAll(".home-fila-tab"));
+    const dots = Array.from(raiz.querySelectorAll(".home-fila-dots .pareto-sub-modal-dot"));
+    const prev = raiz.querySelector(".home-fila-prev");
+    const next = raiz.querySelector(".home-fila-next");
+    let atual = 0;
+
+    function ajustarAltura() {
+      const h = slides[atual].offsetHeight;
+      if (h) viewport.style.height = `${h}px`;
+    }
+
+    function irPara(i) {
+      atual = Math.max(0, Math.min(slides.length - 1, i));
+      track.style.transform = `translateX(-${atual * 100}%)`;
+      tabs.forEach((t, k) => t.classList.toggle("active", k === atual));
+      dots.forEach((d, k) => d.classList.toggle("active", k === atual));
+      prev.disabled = atual === 0;
+      next.disabled = atual === slides.length - 1;
+      ajustarAltura();
+      // Plotly dentro de slide recém-exibido recalcula a largura.
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    tabs.forEach((t) => t.addEventListener("click", () => irPara(Number(t.dataset.slide))));
+    dots.forEach((d) => d.addEventListener("click", () => irPara(Number(d.dataset.slide))));
+    prev.addEventListener("click", () => irPara(atual - 1));
+    next.addEventListener("click", () => irPara(atual + 1));
+    const obs = new ResizeObserver(ajustarAltura);
+    slides.forEach((s) => obs.observe(s));
+    irPara(0);
+  }
+  iniciarHomeFilaCarrossel();
+
   // ------------------------------------------------------------ conexão
+  let homeJaCarregada = false;
+
   function entrarNoApp(displayName, email) {
     $("status-identity").textContent = `Conectado como ${displayName} (${email})`;
     loginCard.classList.add("hidden");
     appView.classList.remove("hidden");
-    carregarHomeDashboardsGradual();
+    if (!homeJaCarregada) carregarHomeCacheStatus();
   }
+
+  // Tela de largada: frescor de cada partição do cache (selo pela idade da
+  // última sincronização). Clicar num card abre a tela de Cache.
+  const HOME_CACHE_FRESCOR = [
+    { ateHoras: 24, tom: "success", texto: "Atualizado" },
+    { ateHoras: 72, tom: "warning", texto: "Desatualizando" },
+    { ateHoras: Infinity, tom: "danger", texto: "Desatualizado" },
+  ];
+
+  function homeTempoRelativo(horas) {
+    if (horas < 1) return "há menos de 1 h";
+    if (horas < 24) return `há ${Math.floor(horas)} h`;
+    const dias = Math.floor(horas / 24);
+    return `há ${dias} dia${dias === 1 ? "" : "s"}`;
+  }
+
+  async function carregarHomeCacheStatus() {
+    const grid = $("home-cache-status");
+    homeCardErro(grid, "Carregando...");
+    try {
+      // Mesmas seções da tela de Cache (localStorage) — removida lá, some aqui.
+      const secoes = cacheSecoes.map(({ id, label, caixa, pasta }) => ({ id, label, caixa, pasta }));
+      const resp = await apiCall("/api/home-cache-status", { secoes });
+      const data = await resp.json();
+      if (!resp.ok) {
+        homeCardErro(grid, data.error || "Erro ao carregar.");
+        return;
+      }
+      grid.innerHTML = "";
+      const agora = new Date(data.agora);
+      data.particoes.forEach((p) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "home-cache-card";
+        card.dataset.secaoId = p.id;
+        card.addEventListener("click", () => $("btn-cache").click());
+
+        let selo = { tom: "neutro", texto: p.existe ? "Sem planilhas" : "Pasta não encontrada" };
+        let quando = "—";
+        if (p.ultima_sync) {
+          const sync = new Date(p.ultima_sync);
+          const horas = (agora - sync) / 3600000;
+          selo = HOME_CACHE_FRESCOR.find((f) => horas <= f.ateHoras);
+          quando = `${sync.toLocaleDateString("pt-BR")} ${sync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${homeTempoRelativo(horas)}`;
+        }
+        card.classList.add(`home-cache-card--${selo.tom}`);
+
+        const topo = document.createElement("div");
+        topo.className = "home-cache-card-topo";
+        const nome = document.createElement("strong");
+        nome.textContent = p.label;
+        const tag = document.createElement("span");
+        tag.className = "home-cache-selo";
+        tag.textContent = selo.texto;
+        topo.append(nome, tag);
+
+        const linhaSync = document.createElement("div");
+        linhaSync.className = "home-cache-card-sync";
+        linhaSync.textContent = quando;
+
+        const linhaInfo = document.createElement("div");
+        linhaInfo.className = "home-cache-card-info";
+        linhaInfo.textContent = `${p.planilhas} planilha${p.planilhas === 1 ? "" : "s"} · ${(p.tamanho_bytes / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`;
+
+        card.append(topo, linhaSync, linhaInfo);
+        grid.append(card);
+      });
+      // A sincronização re-renderiza os cards no meio (salvarSecoesCache) —
+      // reaplica a barra no card que está rodando.
+      aplicarBarraSyncHome();
+    } catch (e) {
+      homeCardErro(grid, "Não foi possível conectar ao servidor.");
+    }
+  }
+
+  // Barra de progresso no rodapé do card da seção sincronizando agora
+  // ({id, pct} enquanto roda, null fora disso).
+  let homeCacheSyncAtivo = null;
+
+  function aplicarBarraSyncHome() {
+    if (!homeCacheSyncAtivo) return;
+    const card = Array.from(document.querySelectorAll("#home-cache-status .home-cache-card")).find(
+      (c) => c.dataset.secaoId === homeCacheSyncAtivo.id
+    );
+    if (!card) return;
+    card.classList.add("home-cache-card--rodando");
+    let barra = card.querySelector(".home-cache-card-barra");
+    if (!barra) {
+      barra = document.createElement("span");
+      barra.className = "home-cache-card-barra";
+      barra.append(document.createElement("span"));
+      card.append(barra);
+    }
+    const pct = Math.round(homeCacheSyncAtivo.pct * 100);
+    barra.firstElementChild.style.width = `${Math.max(3, pct)}%`;
+    const selo = card.querySelector(".home-cache-selo");
+    if (selo) selo.textContent = `Sincronizando ${pct}%`;
+  }
+
+  // Progresso da seção a partir dos textos que o "Sincronizar tudo" já
+  // atualiza: botão da seção ("Sincronizando 2/10...") = arquivo atual/total;
+  // status ("lote 03/10", "buscando chamados novos") = fração dentro do arquivo.
+  function progressoSyncSecao(secao) {
+    const arq = /(\d+)\s*\/\s*(\d+)/.exec(secao.el.btnSincronizarTudo.textContent || "");
+    if (!arq) return 0;
+    const atual = Number(arq[1]);
+    const total = Number(arq[2]) || 1;
+    const status = secao.el.statusEl.textContent || "";
+    const lote = /lote\s+(\d+)\s*\/\s*(\d+)/i.exec(status);
+    let frac = 0;
+    if (lote) frac = (Number(lote[1]) - 1) / (Number(lote[2]) || 1);
+    else if (/chamados novos/i.test(status)) frac = 0.95;
+    return Math.min(1, (atual - 1 + frac) / total);
+  }
+
+  // ↻ da tela de largada: sincroniza TODAS as seções da tela de Cache, na
+  // ordem dela, uma de cada vez — cada seção pelo mesmo "Sincronizar tudo"
+  // da tela de Cache (sincronizarTudoSecao: um arquivo por vez, lotes de
+  // CACHE_SYNC_LOTE chamados), nunca em paralelo, pra não pesar a API.
+  // Seção ainda não aberta na tela de Cache ganha o DOM dela fora da tela
+  // (construirSecaoCache); o texto de status de cada uma é espelhado aqui.
+  let cacheSyncGeralRodando = false;
+
+  async function sincronizarTodosCaches() {
+    if (cacheSyncGeralRodando) return;
+    if (!window.confirm("Sincronizar todos os caches agora? Roda seção por seção, em lotes, e pode levar alguns minutos.")) return;
+    cacheSyncGeralRodando = true;
+    const btn = $("btn-home-cache-status");
+    const statusEl = $("home-cache-sync-status");
+    btn.disabled = true;
+    btn.classList.add("home-reload-btn--girando");
+    const secoes = [...cacheSecoes];
+    try {
+      for (let i = 0; i < secoes.length; i++) {
+        const secao = secoes[i];
+        const prefixo = `${i + 1}/${secoes.length} · ${secao.label}`;
+        statusEl.textContent = `${prefixo}: listando planilhas...`;
+        if (!secao.el) construirSecaoCache(secao);
+        homeCacheSyncAtivo = { id: secao.id, pct: 0 };
+        aplicarBarraSyncHome();
+        const espelho = new MutationObserver(() => {
+          const t = secao.el.statusEl.textContent;
+          if (t) statusEl.textContent = `${prefixo}: ${t}`;
+          homeCacheSyncAtivo.pct = Math.max(homeCacheSyncAtivo.pct, progressoSyncSecao(secao));
+          aplicarBarraSyncHome();
+        });
+        const opcoes = { childList: true, characterData: true, subtree: true };
+        espelho.observe(secao.el.statusEl, opcoes);
+        espelho.observe(secao.el.btnSincronizarTudo, opcoes);
+        try {
+          await carregarSecaoCache(secao);
+          await sincronizarTudoSecao(secao);
+        } finally {
+          espelho.disconnect();
+          homeCacheSyncAtivo = null;
+        }
+        await carregarHomeCacheStatus();
+      }
+      statusEl.textContent = `Sincronização concluída (${secoes.length} seç${secoes.length === 1 ? "ão" : "ões"}).`;
+    } catch (e) {
+      statusEl.textContent = "Sincronização interrompida: não foi possível conectar ao servidor.";
+    } finally {
+      cacheSyncGeralRodando = false;
+      btn.disabled = false;
+      btn.classList.remove("home-reload-btn--girando");
+    }
+  }
+
+  $("btn-home-cache-status").addEventListener("click", sincronizarTodosCaches);
+
+  document.querySelectorAll(".home-atalho").forEach((btn) => {
+    btn.addEventListener("click", () => $(btn.dataset.alvo).click());
+  });
+
+  $("btn-home-iniciar").addEventListener("click", () => {
+    if (homeJaCarregada) return;
+    homeJaCarregada = true;
+    $("home-iniciar-wrap").style.display = "none";
+    $("home-dashboards").classList.remove("hidden");
+    $("home-colaboradores-card").classList.remove("hidden");
+    carregarHomeDashboardsGradual();
+  });
 
   $("btn-connect").addEventListener("click", async () => {
     const email = $("input-email").value.trim();
@@ -655,6 +814,60 @@
     container.append(p);
   }
 
+  // KPI "hero" da Fila dinâmica: número grande + rótulo, barra de proporção
+  // (segmentos sobre "total") e legenda com os valores — cada cor sempre
+  // com o mesmo significado (tom: danger/warning/accent/success/neutro).
+  function construirHomeKpi({ valor, tom, rotulo, segmentos = [], total = 0, legenda = [], rodape }) {
+    const kpi = document.createElement("div");
+    kpi.className = "home-kpi";
+
+    const valorEl = document.createElement("div");
+    valorEl.className = `home-kpi-valor home-kpi--${tom}`;
+    valorEl.textContent = valor;
+    const rotuloEl = document.createElement("div");
+    rotuloEl.className = "home-kpi-rotulo";
+    rotuloEl.textContent = rotulo;
+    kpi.append(valorEl, rotuloEl);
+
+    if (segmentos.length) {
+      const barra = document.createElement("div");
+      barra.className = "home-kpi-barra";
+      segmentos.forEach((s) => {
+        const seg = document.createElement("span");
+        seg.className = `home-kpi-seg home-kpi--${s.tom}`;
+        seg.style.width = `${total > 0 ? Math.min(100, (s.valor / total) * 100) : 0}%`;
+        barra.append(seg);
+      });
+      kpi.append(barra);
+    }
+
+    if (legenda.length) {
+      const lista = document.createElement("ul");
+      lista.className = "home-kpi-legenda";
+      legenda.forEach((item) => {
+        const li = document.createElement("li");
+        const dot = document.createElement("span");
+        dot.className = `home-kpi-dot home-kpi--${item.tom}`;
+        const texto = document.createElement("span");
+        texto.className = "home-kpi-legenda-texto";
+        texto.textContent = item.texto;
+        const v = document.createElement("strong");
+        v.textContent = item.valor;
+        li.append(dot, texto, v);
+        lista.append(li);
+      });
+      kpi.append(lista);
+    }
+
+    if (rodape) {
+      const r = document.createElement("div");
+      r.className = "home-kpi-rodape";
+      r.textContent = rodape;
+      kpi.append(r);
+    }
+    return kpi;
+  }
+
   // Monta um sub-bloco "rótulo da caixa + conteúdo" — mesmo cabeçalho nos
   // dois widgets (Grupo Solucionador × Mês e A violar semanal).
   function homeCaixaSubbloco(caixa, conteudoEl) {
@@ -676,8 +889,7 @@
   // Responsável (valores descobertos nos dados, já vem ordenado do maior
   // pro menor). "colunaLabel" é o texto do cabeçalho da 1ª coluna;
   // "obterLabelLinha" extrai o texto de cada linha.
-  // "mesesVerticais": cabeçalho dos meses na vertical, no formato "10/2026".
-  function construirTabelaMesCriacao(dados, colunaLabel, obterLabelLinha, { mesesVerticais = false } = {}) {
+  function construirTabelaMesCriacao(dados, colunaLabel, obterLabelLinha) {
     const table = document.createElement("table");
     table.className = "data-table home-dashboard-table";
 
@@ -688,16 +900,7 @@
     trHead.append(thGrupo);
     dados.meses.forEach((mes) => {
       const th = document.createElement("th");
-      if (mesesVerticais) {
-        th.className = "home-semana-col-data";
-        const rotulo = document.createElement("span");
-        rotulo.className = "home-semana-vertical";
-        rotulo.textContent = `${mes.slice(5, 7)}/${mes.slice(0, 4)}`;
-        th.append(rotulo);
-        th.title = formatarMesAno(mes);
-      } else {
-        th.textContent = formatarMesAno(mes);
-      }
+      th.textContent = formatarMesAno(mes);
       trHead.append(th);
     });
     const thTotal = document.createElement("th");
@@ -705,6 +908,10 @@
     trHead.append(thTotal);
     thead.append(trHead);
     table.append(thead);
+
+    // Mapa de calor: intensidade da célula proporcional ao maior valor da
+    // tabela (sem contar totais) — destaca na hora onde está o acúmulo.
+    const maxCelula = Math.max(0, ...dados.linhas.flatMap((l) => l.por_mes));
 
     const tbody = document.createElement("tbody");
     dados.linhas.forEach((linha, i) => {
@@ -718,6 +925,10 @@
       linha.por_mes.forEach((valor) => {
         const td = document.createElement("td");
         td.textContent = valor || "-";
+        if (valor > 0 && maxCelula > 0) {
+          td.className = "home-heat-cell";
+          td.style.setProperty("--heat", (valor / maxCelula).toFixed(3));
+        }
         tr.append(td);
       });
       const tdTotal = document.createElement("td");
@@ -746,9 +957,7 @@
   }
 
   function construirTabelaGrupoCriacao(dados) {
-    return construirTabelaMesCriacao(dados, "Grupo Solucionador", (linha) => GRUPO_LABEL_CURTO[linha.grupo] || linha.grupo, {
-      mesesVerticais: true,
-    });
+    return construirTabelaMesCriacao(dados, "Grupo Solucionador", (linha) => GRUPO_LABEL_CURTO[linha.grupo] || linha.grupo);
   }
 
   function construirTabelaFornecedorCriacao(dados) {
@@ -866,14 +1075,20 @@
         return;
       }
 
-      data.caixas.forEach(({ caixa, percentual_reabertura: percentualReabertura, total_criados_periodo: totalCriadosPeriodo }) => {
-        const card = summaryCard(
-          `${percentualReabertura}% / ${totalCriadosPeriodo}`,
-          HOME_CAIXA_LABEL[caixa] || caixa,
-          "tone-warning"
-        );
-        card.dataset.caixa = caixa;
-        reabertosEl.append(card);
+      data.caixas.forEach(({ caixa, percentual_reabertura: pct, total_criados_periodo: criados, total_reabertos: reabertos }) => {
+        const kpi = construirHomeKpi({
+          valor: `${pct.toLocaleString("pt-BR")}%`,
+          tom: "warning",
+          rotulo: `Reabertura — ${HOME_CAIXA_LABEL[caixa] || caixa}`,
+          segmentos: [{ valor: reabertos, tom: "warning" }],
+          total: criados,
+          legenda: [
+            { tom: "warning", texto: "Reabertos", valor: reabertos.toLocaleString("pt-BR") },
+            { tom: "neutro", texto: "Criados no mês", valor: criados.toLocaleString("pt-BR") },
+          ],
+        });
+        kpi.dataset.caixa = caixa;
+        reabertosEl.append(kpi);
       });
     } catch (e) {
       homeCardErro(reabertosEl, "Não foi possível conectar ao servidor.");
@@ -995,194 +1210,231 @@
   // Resolvidos por mês" — valores fixos pedidos pelo usuário.
   const CRIADOS_RESOLVIDOS_BASELINES = [1530, 1870];
 
-  // Offset fixo (px) do "0" da escala (base das barras) até a borda de
-  // baixo de ".home-sla-chart-bars"/".home-sla-chart-eixo": padding-bottom
-  // de ".home-sla-chart-bars" (4px) + gap de ".home-sla-chart-col" (6px) +
-  // altura de ".home-sla-chart-col-mes" (line-height: 14px) = 24px. Usado
-  // igual nos dois lugares (linha e rótulo do eixo) pra garantir que
-  // fiquem exatamente na mesma altura, em vez de duas contas separadas
-  // que podiam divergir por 1px.
-  const CRIADOS_RESOLVIDOS_OFFSET_BASE = 24;
+  const HOME_CR_COR_BASELINE = "#f5a524";
 
-  // Gráfico de coluna "Criados e Resolvidos por mês" (par de barrinhas por
-  // mês, vermelho = criados / verde = resolvidos, com o número em cima de
-  // cada barra), escala própria (maior valor entre todos os meses/
-  // criados/resolvidos/baselines = 100% da altura disponível) + linha de
-  // baseline amarela contínua (1 só elemento cobrindo a largura toda, em
-  // vez de 1 segmento por mês — não quebra nos respiros entre meses).
-  function construirCriadosResolvidosChart(meses, linhasPorMes) {
+  function homeMesCurto(mes) {
+    return `${formatarMesAno(mes).split(" ")[0]}/${mes.slice(2, 4)}`;
+  }
+
+  function homeDeltaTexto(atual, anterior) {
+    if (!anterior) return "—";
+    const pct = ((atual - anterior) / anterior) * 100;
+    return `${pct >= 0 ? "+" : ""}${pct.toFixed(1).replace(".", ",")}%`;
+  }
+
+  // Gráfico "Criados x Resolvidos por mês" (Plotly, largura fluida): barras
+  // agrupadas com o número em cima + baselines fixas tracejadas
+  // (CRIADOS_RESOLVIDOS_BASELINES) com o valor à esquerda do eixo. "alvo"
+  // já precisa estar no DOM (o Plotly mede a largura dele).
+  function desenharCriadosResolvidosChart(alvo, meses, linhasPorMes) {
+    const grafico = icgAtendimentoCriarGrafico(alvo);
+    if (!grafico) return;
     const porMes = Object.fromEntries(linhasPorMes.map((item) => [item.mes, item]));
-    const maior = Math.max(
-      1,
-      ...CRIADOS_RESOLVIDOS_BASELINES,
-      ...linhasPorMes.flatMap((item) => [item.criados, item.resolvidos])
-    );
-    const alturaMax = 160;
-    const bottomDoValor = (valor) => CRIADOS_RESOLVIDOS_OFFSET_BASE + (valor / maior) * alturaMax;
+    const x = meses.map(homeMesCurto);
+    const criados = meses.map((m) => (porMes[m] || {}).criados || 0);
+    const resolvidos = meses.map((m) => (porMes[m] || {}).resolvidos || 0);
+    const maior = Math.max(1, ...criados, ...resolvidos, ...CRIADOS_RESOLVIDOS_BASELINES);
 
-    // Índices da malha cartesiana (ticks em cinza-claro, redondos — passo
-    // arredondado pra centena mais próxima, mirando ~5 linhas) — os
-    // baselines (amarelo) já têm seus próprios rótulos, separados.
-    const gridStep = Math.max(100, Math.round(maior / 5 / 100) * 100);
-    const gridValores = [];
-    for (let v = 0; v <= maior; v += gridStep) {
-      gridValores.push(v);
-    }
+    const barra = (nome, ys, cor) => ({
+      type: "bar",
+      name: nome,
+      x,
+      y: ys,
+      marker: { color: cor },
+      text: ys.map((v) => v.toLocaleString("pt-BR")),
+      textposition: "outside",
+      textfont: { size: 11, color: "#eef1f6" },
+      cliponaxis: false,
+      hovertemplate: `${nome}: %{y}<extra></extra>`,
+    });
+
+    const layout = icgAtendimentoLayout(maior * 1.08, null, null, {}, []);
+    layout.xaxis = { ...layout.xaxis, type: "category" };
+    delete layout.xaxis.range;
+    delete layout.xaxis.minallowed;
+    delete layout.xaxis.maxallowed;
+    layout.height = 360;
+    layout.barmode = "group";
+    layout.bargap = 0.28;
+    layout.bargroupgap = 0.08;
+    layout.margin = { l: 56, r: 16, t: 24, b: 40 };
+    layout.legend = { ...layout.legend, y: -0.14 };
+    layout.shapes = CRIADOS_RESOLVIDOS_BASELINES.map((v) => ({
+      type: "line",
+      xref: "paper",
+      x0: 0,
+      x1: 1,
+      yref: "y",
+      y0: v,
+      y1: v,
+      line: { color: HOME_CR_COR_BASELINE, width: 1.5, dash: "dash" },
+    }));
+    layout.annotations = CRIADOS_RESOLVIDOS_BASELINES.map((v) => ({
+      xref: "paper",
+      x: 0,
+      xanchor: "right",
+      xshift: -6,
+      y: v,
+      yref: "y",
+      text: `<b>${v.toLocaleString("pt-BR")}</b>`,
+      showarrow: false,
+      font: { color: HOME_CR_COR_BASELINE, size: 11 },
+    }));
+
+    Plotly.newPlot(
+      grafico,
+      [barra("Criados", criados, ICG_ATENDIMENTO_CORES.criados), barra("Resolvidos", resolvidos, ICG_ATENDIMENTO_CORES.resolvidos)],
+      layout,
+      icgAtendimentoConfig("criados-x-resolvidos")
+    );
+  }
+
+  // KPIs do mês atual (parcial, até hoje): Criados e Resolvidos com
+  // comparação contra o mês anterior e a média dos 3 meses anteriores.
+  function construirCriadosResolvidosKpis(meses, linhasPorMes) {
+    const porMes = Object.fromEntries(linhasPorMes.map((item) => [item.mes, item]));
+    const hoje = new Date();
+    const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+    const idx = meses.includes(mesAtual) ? meses.indexOf(mesAtual) : meses.length - 1;
+    const mes = meses[idx];
+    const vazio = { criados: 0, resolvidos: 0 };
+    const atual = porMes[mes] || vazio;
+    const anterior = porMes[meses[idx - 1]] || vazio;
+    const ultimos3 = meses.slice(Math.max(0, idx - 3), idx).map((m) => porMes[m] || vazio);
+    const media = (campo) => (ultimos3.length ? Math.round(ultimos3.reduce((s, m) => s + m[campo], 0) / ultimos3.length) : 0);
+    const fmt = (n) => n.toLocaleString("pt-BR");
+    const saldo = atual.resolvidos - atual.criados;
+    const taxa = atual.criados ? `${((atual.resolvidos / atual.criados) * 100).toFixed(1).replace(".", ",")}%` : "—";
+
+    const frag = document.createDocumentFragment();
+    frag.append(
+      construirHomeKpi({
+        valor: fmt(atual.criados),
+        tom: "danger",
+        rotulo: `Criados — ${formatarMesAno(mes)}`,
+        legenda: [
+          { tom: "neutro", texto: `Vs. mês anterior (${fmt(anterior.criados)})`, valor: homeDeltaTexto(atual.criados, anterior.criados) },
+          { tom: "neutro", texto: "Média 3 meses anteriores", valor: fmt(media("criados")) },
+        ],
+      }),
+      construirHomeKpi({
+        valor: fmt(atual.resolvidos),
+        tom: "success",
+        rotulo: `Resolvidos — ${formatarMesAno(mes)}`,
+        segmentos: [{ valor: atual.resolvidos, tom: "success" }],
+        total: Math.max(atual.criados, atual.resolvidos),
+        legenda: [
+          { tom: "success", texto: "Taxa de resolução (resolvidos ÷ criados)", valor: taxa },
+          { tom: saldo >= 0 ? "success" : "danger", texto: "Saldo (resolvidos − criados)", valor: `${saldo > 0 ? "+" : ""}${fmt(saldo)}` },
+          { tom: "neutro", texto: "Média 3 meses anteriores", valor: fmt(media("resolvidos")) },
+        ],
+      })
+    );
+    return frag;
+  }
+
+  // Tabela mês a mês (mais recente primeiro): saldo colorido pelo sinal e
+  // % de reabertura (reabertos ÷ criados, mesmo bucket por criação).
+  function construirCriadosResolvidosTabela(meses, linhasPorMes) {
+    const porMes = Object.fromEntries(linhasPorMes.map((item) => [item.mes, item]));
+    const fmt = (n) => n.toLocaleString("pt-BR");
+    const pct = (a, b) => (b ? `${((a / b) * 100).toFixed(1).replace(".", ",")}%` : "—");
+
+    const table = document.createElement("table");
+    table.className = "data-table home-dashboard-table";
+    const thead = document.createElement("thead");
+    const trH = document.createElement("tr");
+    ["Mês", "Criados", "Resolvidos", "Saldo", "% Resolução", "Reabertos", "% Reabertura"].forEach((t) => {
+      const th = document.createElement("th");
+      th.textContent = t;
+      trH.append(th);
+    });
+    thead.append(trH);
+
+    const tbody = document.createElement("tbody");
+    const tot = { criados: 0, resolvidos: 0, reabertos: 0 };
+    const linha = (rotulo, m, classe) => {
+      const tr = document.createElement("tr");
+      if (classe) tr.className = classe;
+      const saldo = m.resolvidos - m.criados;
+      [
+        rotulo,
+        fmt(m.criados),
+        fmt(m.resolvidos),
+        `${saldo > 0 ? "+" : ""}${fmt(saldo)}`,
+        pct(m.resolvidos, m.criados),
+        fmt(m.reabertos),
+        pct(m.reabertos, m.criados),
+      ].forEach((txt, i) => {
+        const td = document.createElement("td");
+        td.textContent = txt;
+        if (i === 3 && saldo !== 0) td.className = saldo > 0 ? "home-num-bom" : "home-num-ruim";
+        tr.append(td);
+      });
+      return tr;
+    };
+    [...meses].reverse().forEach((mes) => {
+      const m = { criados: 0, resolvidos: 0, reabertos: 0, ...(porMes[mes] || {}) };
+      tot.criados += m.criados;
+      tot.resolvidos += m.resolvidos;
+      tot.reabertos += m.reabertos;
+      tbody.append(linha(formatarMesAno(mes), m));
+    });
+    tbody.append(linha("Total", tot, "data-table-total-row"));
+    table.append(thead, tbody);
 
     const wrap = document.createElement("div");
-    wrap.className = "home-sla-chart-inner";
-
-    const legenda = document.createElement("div");
-    legenda.className = "home-sla-chart-legenda";
-    legenda.innerHTML =
-      '<span><span class="home-sla-chart-legenda-dot home-sla-chart-legenda-dot--criados"></span>Criados</span>' +
-      '<span><span class="home-sla-chart-legenda-dot home-sla-chart-legenda-dot--resolvidos"></span>Resolvidos</span>' +
-      CRIADOS_RESOLVIDOS_BASELINES.map(
-        (v) => `<span><span class="home-sla-chart-legenda-dot home-sla-chart-legenda-dot--baseline"></span>Baseline ${v}</span>`
-      ).join("");
-    wrap.append(legenda);
-
-    const plot = document.createElement("div");
-    plot.className = "home-sla-chart-plot";
-
-    // Eixo com o valor de cada baseline à esquerda da linha pontilhada
-    // (estilo "1870 -------"), fora da área que rola na horizontal — fica
-    // sempre visível mesmo rolando os meses.
-    const eixo = document.createElement("div");
-    eixo.className = "home-sla-chart-eixo";
-    gridValores.forEach((valorGrid) => {
-      const linha = document.createElement("div");
-      linha.className = "home-sla-chart-eixo-linha home-sla-chart-eixo-linha--grid";
-      linha.style.bottom = `${bottomDoValor(valorGrid)}px`;
-      eixo.append(linha);
-
-      const rotulo = document.createElement("span");
-      rotulo.className = "home-sla-chart-eixo-valor home-sla-chart-eixo-valor--grid";
-      rotulo.style.bottom = `${bottomDoValor(valorGrid)}px`;
-      rotulo.textContent = valorGrid;
-      eixo.append(rotulo);
-    });
-    CRIADOS_RESOLVIDOS_BASELINES.forEach((valorBase) => {
-      const linha = document.createElement("div");
-      linha.className = "home-sla-chart-eixo-linha home-sla-chart-eixo-linha--baseline";
-      linha.style.bottom = `${bottomDoValor(valorBase)}px`;
-      eixo.append(linha);
-
-      const rotulo = document.createElement("span");
-      rotulo.className = "home-sla-chart-eixo-valor";
-      rotulo.style.bottom = `${bottomDoValor(valorBase)}px`;
-      rotulo.textContent = valorBase;
-      eixo.append(rotulo);
-    });
-    plot.append(eixo);
-
-    const bars = document.createElement("div");
-    bars.className = "home-sla-chart-bars";
-    meses.forEach((mes) => {
-      const item = porMes[mes] || { criados: 0, resolvidos: 0 };
-
-      const col = document.createElement("div");
-      col.className = "home-sla-chart-col";
-
-      const par = document.createElement("div");
-      par.className = "home-sla-chart-par";
-      [
-        ["criados", "Criados", item.criados],
-        ["resolvidos", "Resolvidos", item.resolvidos],
-      ].forEach(([tipo, rotuloTipo, valor]) => {
-        const bar = document.createElement("div");
-        bar.className = `home-sla-chart-bar home-sla-chart-bar--${tipo}`;
-        bar.style.height = `${Math.max((valor / maior) * alturaMax, valor ? 2 : 0)}px`;
-
-        // Popover no mousehover (mesmo padrão do Pareto, ver
-        // showParetoPopover) em vez de "title" nativo — mostra mês + tipo
-        // + quantidade exata da barra.
-        const tooltip = `${formatarMesAno(mes)} — ${rotuloTipo}: ${valor}`;
-        bar.addEventListener("mouseenter", () => {
-          cancelHoverPopoverHide();
-          showParetoPopover(bar, tooltip);
-        });
-        bar.addEventListener("mouseleave", scheduleHoverPopoverHide);
-
-        par.append(bar);
-      });
-      col.append(par);
-
-      const mesLabel = document.createElement("span");
-      mesLabel.className = "home-sla-chart-col-mes";
-      mesLabel.textContent = formatarMesAno(mes).split(" ")[0];
-      col.append(mesLabel);
-
-      bars.append(col);
-    });
-
-    // Linha de baseline contínua (1 só elemento, largura fixa em px = soma
-    // de todas as colunas de mês + os respiros entre elas — "left: 0;
-    // right: 0" não funcionaria aqui porque ".home-sla-chart-bars" rola na
-    // horizontal: o tamanho do elemento, pra um filho absoluto, é o da
-    // "viewport" visível, não o do conteúdo rolável; só largura explícita
-    // cobre o conteúdo todo e rola junto com as barras). Mesmo "bottom"
-    // (via CRIADOS_RESOLVIDOS_OFFSET_BASE) do rótulo no eixo, pra garantir
-    // que batam exatamente.
-    const larguraTotalPx = meses.length * 56 + Math.max(meses.length - 1, 0) * 16;
-
-    // Malha cartesiana (linhas cinza-claro, mesmo truque de elemento único
-    // e largura fixa da baseline acima) — desenhada antes da baseline, pra
-    // ficar por baixo dela (ordem no DOM = ordem de pintura).
-    gridValores.forEach((valorGrid) => {
-      const grade = document.createElement("div");
-      grade.className = "home-sla-chart-grid";
-      grade.style.bottom = `${bottomDoValor(valorGrid)}px`;
-      grade.style.width = `${larguraTotalPx}px`;
-      bars.append(grade);
-    });
-
-    CRIADOS_RESOLVIDOS_BASELINES.forEach((valorBase) => {
-      const baseline = document.createElement("div");
-      baseline.className = "home-sla-chart-baseline";
-      baseline.style.bottom = `${bottomDoValor(valorBase)}px`;
-      baseline.style.width = `${larguraTotalPx}px`;
-      baseline.title = `Baseline: ${valorBase}`;
-      bars.append(baseline);
-    });
-
-    plot.append(bars);
-    wrap.append(plot);
-
+    wrap.className = "table-wrap";
+    wrap.append(table);
     return wrap;
   }
 
   // "Criados x Resolvidos por mês" (tag "Cacheado"): histórico de todos os
   // meses do cache, por caixa (Solar: N1+N2+Prod juntos; Claro Tv: N1+N2
-  // juntos — ver _cache_criados_resolvidos_historico em api/index.py). 1
-  // gráfico por caixa, cada um marcado com data-caixa — o seletor global
-  // do painel (ver aplicarHomeCaixaFiltro) esconde o que não está
-  // selecionado via CSS, igual aos outros widgets da home.
+  // juntos — ver _cache_criados_resolvidos_historico em api/index.py). Uma
+  // única chamada alimenta os 3 tiles da página 2 da Fila dinâmica
+  // (gráfico, KPIs do mês, tabela); cada bloco marcado com data-caixa — o
+  // seletor global do painel (aplicarHomeCaixaFiltro) esconde o que não
+  // está selecionado via CSS, igual aos outros widgets da home.
   async function carregarHomeCriadosResolvidosCache() {
-    const container = $("home-criados-resolvidos-mes");
-    homeCardErro(container, "Carregando...");
+    const alvos = ["home-criados-resolvidos-mes", "home-cr-kpi", "home-cr-tabela"].map((id) => $(id));
+    alvos.forEach((el) => homeCardErro(el, "Carregando..."));
 
     try {
       const resp = await apiCall("/api/home-criados-resolvidos-cache", {});
       const data = await resp.json();
       if (!resp.ok) {
-        homeCardErro(container, data.error || "Erro ao carregar.");
+        alvos.forEach((el) => homeCardErro(el, data.error || "Erro ao carregar."));
+        return;
+      }
+      if (!data.meses.length) {
+        alvos.forEach((el) => homeCardErro(el, "Nenhum chamado nas planilhas de cache."));
         return;
       }
 
-      container.innerHTML = "";
-      if (!data.meses.length) {
-        container.append(Object.assign(document.createElement("p"), { className: "hint", textContent: "Nenhum chamado nas planilhas de cache." }));
-        return;
-      }
+      const [chartEl, kpiEl, tabelaEl] = alvos;
+      alvos.forEach((el) => {
+        el.innerHTML = "";
+      });
       Object.entries(data.caixas).forEach(([caixaId, linhas]) => {
-        const bloco = document.createElement("div");
-        bloco.dataset.caixa = caixaId;
-        bloco.append(construirCriadosResolvidosChart(data.meses, linhas));
-        container.append(bloco);
+        const blocoChart = document.createElement("div");
+        blocoChart.dataset.caixa = caixaId;
+        chartEl.append(blocoChart);
+        desenharCriadosResolvidosChart(blocoChart, data.meses, linhas);
+
+        const blocoKpi = document.createElement("div");
+        blocoKpi.className = "home-kpi-lista";
+        blocoKpi.dataset.caixa = caixaId;
+        blocoKpi.append(construirCriadosResolvidosKpis(data.meses, linhas));
+        kpiEl.append(blocoKpi);
+
+        const blocoTabela = document.createElement("div");
+        blocoTabela.dataset.caixa = caixaId;
+        blocoTabela.append(construirCriadosResolvidosTabela(data.meses, linhas));
+        tabelaEl.append(blocoTabela);
       });
     } catch (e) {
-      homeCardErro(container, "Não foi possível conectar ao servidor.");
+      alvos.forEach((el) => homeCardErro(el, "Não foi possível conectar ao servidor."));
     }
   }
 
@@ -1698,20 +1950,142 @@
     });
   }
 
+  // Idade (dias corridos até hoje) de um chamado pela data de criação
+  // "AAAA-MM-DD".
+  function homeIdadeDias(criadoIso) {
+    const [a, m, d] = criadoIso.split("-").map(Number);
+    const hoje = new Date();
+    const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    return Math.max(0, Math.round((inicioHoje - new Date(a, m - 1, d)) / 86400000));
+  }
+
+  const HOME_FORN_FAIXAS_IDADE = [
+    { rotulo: "Até 7 dias", tom: "success", ate: 7 },
+    { rotulo: "8 a 30 dias", tom: "warning", ate: 30 },
+    { rotulo: "Mais de 30 dias", tom: "danger", ate: Infinity },
+  ];
+
+  // Ranking (top 10) de fornecedores com mais chamados aguardando; clicar
+  // numa linha expande os chamados dela (chave, criação, idade).
+  function construirFornecedorRanking(dados) {
+    const total = dados.total_geral || 0;
+    const itens = (dados.linhas || []).slice(0, 10).map((l) => ({
+      categoria: l.fornecedor,
+      quantidade: l.total,
+      percentual: total ? Math.round((l.total / total) * 1000) / 10 : 0,
+    }));
+    const bloco = construirJornadaRanking("", itens, {
+      expandir: (item) => {
+        const chamados = (dados.chamados || [])
+          .filter((c) => c.fornecedor === item.categoria)
+          .sort((x, y) => x.criado.localeCompare(y.criado));
+        if (!chamados.length) return null;
+        const table = document.createElement("table");
+        table.className = "data-table home-dashboard-table";
+        const thead = document.createElement("thead");
+        thead.innerHTML = "<tr><th>Chamado</th><th>Criado em</th><th>Aguardando há</th></tr>";
+        const tbody = document.createElement("tbody");
+        chamados.forEach((c) => {
+          const tr = document.createElement("tr");
+          const idade = homeIdadeDias(c.criado);
+          [c.key, formatarDataBR(c.criado), `${idade} dia${idade === 1 ? "" : "s"}`].forEach((txt, i) => {
+            const td = document.createElement("td");
+            td.textContent = txt;
+            if (i === 2 && idade > 30) td.className = "home-num-ruim";
+            tr.append(td);
+          });
+          tbody.append(tr);
+        });
+        table.append(thead, tbody);
+        return table;
+      },
+    });
+    bloco.firstElementChild.remove();
+    return bloco;
+  }
+
+  // KPIs: total aguardando (barra por faixa de idade) + idade média, mais
+  // antigo e principal fornecedor.
+  function construirFornecedorKpis(dados) {
+    const chamados = dados.chamados || [];
+    const total = dados.total_geral || chamados.length;
+    const fmt = (n) => n.toLocaleString("pt-BR");
+    const idades = chamados.map((c) => ({ ...c, idade: homeIdadeDias(c.criado) }));
+    const faixas = HOME_FORN_FAIXAS_IDADE.map((f, i) => {
+      const min = i === 0 ? -1 : HOME_FORN_FAIXAS_IDADE[i - 1].ate;
+      return { ...f, valor: idades.filter((c) => c.idade > min && c.idade <= f.ate).length };
+    });
+    const media = idades.length ? Math.round(idades.reduce((s, c) => s + c.idade, 0) / idades.length) : 0;
+    const maisAntigo = idades.reduce((m, c) => (!m || c.idade > m.idade ? c : m), null);
+    const principal = (dados.linhas || [])[0];
+
+    const frag = document.createDocumentFragment();
+    frag.append(
+      construirHomeKpi({
+        valor: fmt(total),
+        tom: "warning",
+        rotulo: "Chamados aguardando fornecedor",
+        segmentos: faixas.map((f) => ({ valor: f.valor, tom: f.tom })),
+        total,
+        legenda: faixas.map((f) => ({ tom: f.tom, texto: f.rotulo, valor: fmt(f.valor) })),
+      }),
+      construirHomeKpi({
+        valor: `${fmt(media)} dias`,
+        tom: "accent",
+        rotulo: "Idade média aguardando",
+        legenda: [
+          maisAntigo && {
+            tom: "danger",
+            texto: `Mais antigo — ${maisAntigo.key} (${maisAntigo.fornecedor})`,
+            valor: `${fmt(maisAntigo.idade)} dias`,
+          },
+          principal && {
+            tom: "neutro",
+            texto: `Principal — ${principal.fornecedor}`,
+            valor: `${fmt(principal.total)} · ${total ? Math.round((principal.total / total) * 100) : 0}%`,
+          },
+        ].filter(Boolean),
+      })
+    );
+    return frag;
+  }
+
+  // "Fornecedor Responsável × Mês de Criação" (ao vivo, Jira — o cache não
+  // tem o Fornecedor Responsável): uma única chamada alimenta os 3 tiles da
+  // página 3 da Fila dinâmica (ranking, KPIs, tabela), cada bloco marcado
+  // com data-caixa pro seletor global do painel.
   async function carregarHomeFornecedorCriacao() {
-    const container = $("home-fornecedor-criacao");
-    homeCardErro(container, "Carregando...");
+    const alvos = ["home-forn-ranking", "home-forn-kpi", "home-fornecedor-criacao"].map((id) => $(id));
+    alvos.forEach((el) => homeCardErro(el, "Carregando..."));
 
     try {
       const resp = await apiCall("/api/home-fornecedor-criacao", {});
       const data = await resp.json();
       if (!resp.ok) {
-        homeCardErro(container, data.error || "Erro ao carregar.");
+        alvos.forEach((el) => homeCardErro(el, data.error || "Erro ao carregar."));
         return;
       }
 
-      container.innerHTML = "";
+      const [rankingEl, kpiEl, container] = alvos;
+      alvos.forEach((el) => {
+        el.innerHTML = "";
+      });
       data.caixas.forEach(({ caixa, ...dados }) => {
+        const blocoRanking = document.createElement("div");
+        blocoRanking.dataset.caixa = caixa;
+        if ((dados.linhas || []).length) {
+          blocoRanking.append(construirFornecedorRanking(dados));
+        } else {
+          homeCardErro(blocoRanking, "Nenhum chamado aguardando fornecedor.");
+        }
+        rankingEl.append(blocoRanking);
+
+        const blocoKpi = document.createElement("div");
+        blocoKpi.className = "home-kpi-lista";
+        blocoKpi.dataset.caixa = caixa;
+        blocoKpi.append(construirFornecedorKpis(dados));
+        kpiEl.append(blocoKpi);
+
         const wrap = document.createElement("div");
         wrap.className = "table-wrap";
         wrap.append(construirTabelaFornecedorCriacao(dados));
@@ -1725,78 +2099,8 @@
         container.append(homeCaixaSubbloco(caixa, wrap));
       });
     } catch (e) {
-      homeCardErro(container, "Não foi possível conectar ao servidor.");
+      alvos.forEach((el) => homeCardErro(el, "Não foi possível conectar ao servidor."));
     }
-  }
-
-  // "Chamados Criados": mesmo estilo de tile de "A violar" (quadradinho
-  // com heat tone), rótulo = DIA DO MÊS (1, 2, 3...) em vez de dia da
-  // semana — mas os grupos (N1/N2/PROD Solar, N1/N2 Tv) vêm somados numa
-  // linha só por caixa, não uma linha por grupo. Como o mês inteiro não
-  // cabe em 7 colunas fixas, os tiles quebram linha livremente
-  // (home-criados-tiles).
-  // "gmlsPorDia" (opcional, {"AAAA-MM-DD": [{ticket, status, relator}]}):
-  // marca com um * vermelho o tile dos dias que têm GML Concluído/Revisão
-  // Pós-Implementação com "Planned end" naquele dia; passar o mouse lista
-  // as GMLs (ver /api/home-gml-planned-end em api/index.py).
-  function construirTilesCriados(dias, gmlsPorDia) {
-    const valores = dias.map((dia) => ({
-      data: dia.data,
-      diaMes: parseInt(dia.data.slice(8, 10), 10),
-      total: (dia.por_grupo || []).reduce((soma, g) => soma + g.total, 0),
-      p0p1p2: (dia.por_grupo || []).reduce((soma, g) => soma + g.p0p1p2, 0),
-    }));
-
-    const tiles = document.createElement("div");
-    tiles.className = "home-criados-tiles";
-
-    const max = valores.reduce((m, v) => Math.max(m, v.total), 0);
-    valores.forEach((v) => {
-      const tile = document.createElement("div");
-      const tom = heatTone(v.total, max);
-      tile.className = "home-violar-tile" + (tom ? ` ${tom}` : "");
-
-      const diaLabel = document.createElement("span");
-      diaLabel.className = "home-violar-tile-label";
-      diaLabel.textContent = v.diaMes;
-
-      const valor = document.createElement("span");
-      valor.className = "home-violar-tile-value";
-      valor.textContent = v.total;
-
-      tile.append(diaLabel, valor);
-
-      const gmls = (gmlsPorDia && gmlsPorDia[v.data]) || [];
-      if (gmls.length) {
-        const estrela = document.createElement("span");
-        estrela.className = "home-violar-tile-gml";
-        estrela.textContent = "*";
-        estrela.setAttribute("aria-label", `${gmls.length} GML(s) com Planned end neste dia`);
-        tile.append(estrela);
-        tile.addEventListener("mouseenter", () => {
-          cancelHoverPopoverHide();
-          showParetoPopover(
-            tile,
-            [`${gmls.length} GML${gmls.length === 1 ? "" : "s"} — Planned end ${formatarDataBR(v.data)}`].concat(
-              gmls.map(({ ticket, status, relator }) => [ticket, status, relator].filter(Boolean).join(" · "))
-            )
-          );
-        });
-        tile.addEventListener("mouseleave", scheduleHoverPopoverHide);
-      }
-
-      if (v.p0p1p2 > 0) {
-        const p0p1p2El = document.createElement("span");
-        p0p1p2El.className = "home-violar-tile-p0p1p2";
-        p0p1p2El.textContent = v.p0p1p2;
-        p0p1p2El.title = `${v.p0p1p2} chamado${v.p0p1p2 === 1 ? "" : "s"} já foi P0/P1/P2`;
-        tile.append(p0p1p2El);
-      }
-
-      tiles.append(tile);
-    });
-
-    return tiles;
   }
 
   // GMLs Concluído/Revisão Pós-Implementação por dia do "Planned end"
@@ -1810,29 +2114,6 @@
       return (await resp.json()).por_dia || {};
     } catch (e) {
       return {};
-    }
-  }
-
-  async function carregarHomeCriadosMes() {
-    const container = $("home-criados-mes");
-    homeCardErro(container, "Carregando...");
-
-    try {
-      const resp = await apiCall("/api/home-criados-mes", {});
-      const data = await resp.json();
-      if (!resp.ok) {
-        homeCardErro(container, data.error || "Erro ao carregar.");
-        return;
-      }
-
-      const gmlsPorDia = await carregarHomeGmlPlannedEnd();
-      container.innerHTML = "";
-      data.caixas.forEach(({ caixa, dias }) => {
-        // GMLs marcam só o calendário da Solar (o principal).
-        container.append(homeCaixaSubbloco(caixa, construirTilesCriados(dias, caixa === "solar" ? gmlsPorDia : null)));
-      });
-    } catch (e) {
-      homeCardErro(container, "Não foi possível conectar ao servidor.");
     }
   }
 
@@ -1970,183 +2251,6 @@
     }
   }
 
-  // Base de qualquer gráfico "funil" da tela: barras decrescentes alinhadas
-  // à esquerda (a maior = 100% de largura), cores alternadas — usado tanto
-  // por "Classificação — Funil" (com clique, via "onBar") quanto por
-  // "Análise de EPS" (sem interação). "itens" já vem
-  // ordenado do maior pro menor (most_common do backend); "obterLabel"/
-  // "obterValor" extraem o texto/número de cada item.
-  function construirFunilBars(itens, obterLabel, obterValor, onBar, vazioTexto) {
-    const wrap = document.createElement("div");
-    wrap.className = "home-funil";
-
-    if (!itens.length) {
-      const vazio = document.createElement("span");
-      vazio.className = "hint";
-      vazio.textContent = vazioTexto || "Nenhum dado no período.";
-      wrap.append(vazio);
-      return wrap;
-    }
-
-    const max = obterValor(itens[0]);
-    itens.forEach((item, i) => {
-      const total = obterValor(item);
-      const row = document.createElement("div");
-      row.className = "home-funil-row";
-
-      const bar = document.createElement("div");
-      bar.className = "home-funil-bar";
-      bar.style.width = `${max ? Math.max((total / max) * 100, 12) : 0}%`;
-      bar.style.background = HOME_DASH_CORES[i % HOME_DASH_CORES.length];
-
-      const label = document.createElement("span");
-      label.className = "home-funil-label";
-      label.textContent = obterLabel(item);
-
-      const valor = document.createElement("span");
-      valor.className = "home-funil-valor";
-      valor.textContent = total;
-
-      bar.append(label, valor);
-      if (onBar) onBar(bar, item);
-      row.append(bar);
-      wrap.append(row);
-    });
-
-    return wrap;
-  }
-
-  // "Classificação — Funil": top 5 já vindo do backend (most_common(5)).
-  // Clicar numa barra (jornada = Classificação) abre o popup com o gráfico de
-  // linha interativo de chamados criados por dia daquela Classificação, no
-  // mês (Plotly, mesmo estilo do "Atendimento diário" do Material ICG),
-  // sempre com a linha tracejada do baseline (média diária do próprio mês
-  // atual). Os dados vêm do cache local (/api/home-funil-criados-dia),
-  // não do Jira.
-  function abrirGraficoCriadosJornada(item, caixa) {
-    const el = document.createElement("div");
-    const info = document.createElement("div");
-    info.className = "pareto-subtitulo-info";
-    info.textContent = "Carregando...";
-    const area = document.createElement("div");
-    el.append(info, area);
-
-    // O Plotly precisa do popup já visível pra medir a largura.
-    const desenhar = async () => {
-      try {
-        const resp = await apiCall("/api/home-funil-criados-dia", { caixa, classificacao: item.classificacao });
-        const dados = await resp.json();
-        if (!resp.ok) {
-          info.textContent = dados.error || "Erro ao carregar o gráfico.";
-          return;
-        }
-        info.textContent = `${dados.total} chamado${dados.total === 1 ? "" : "s"} criado${dados.total === 1 ? "" : "s"} · ${formatarDataBR(
-          dados.inicio
-        )} a ${formatarDataBR(dados.fim)} · baseline = média diária do mês atual · dados do cache`;
-        const grafico = icgAtendimentoCriarGrafico(area);
-        if (!grafico) return;
-
-        const datas = dados.serie.map((d) => d.data);
-        const valores = dados.serie.map((d) => d.total);
-        const baseline = dados.baseline;
-        const traceBaseline = {
-          type: "scatter",
-          mode: "lines",
-          name: `Baseline (${baseline.toLocaleString("pt-BR")}/dia)`,
-          legendgroup: "baseline",
-          x: [datas[0], datas[datas.length - 1]],
-          y: [baseline, baseline],
-          line: { color: ICG_ATENDIMENTO_CORES.criados, width: 1.5, dash: "dash" },
-          opacity: 0.75,
-          hoverinfo: "skip",
-        };
-        // Valor do baseline à esquerda da linha tracejada, na cor da série.
-        const anotacao = {
-          xref: "paper",
-          x: 0,
-          xanchor: "right",
-          xshift: -4,
-          y: baseline,
-          yref: "y",
-          text: baseline.toLocaleString("pt-BR"),
-          showarrow: false,
-          font: { color: ICG_ATENDIMENTO_CORES.criados, size: 11 },
-        };
-        const layout = icgAtendimentoLayout(
-          Math.max(...valores, baseline, 1),
-          datas[0],
-          datas[datas.length - 1],
-          { tickformat: "%d/%m", hoverformat: "%d/%m/%Y" },
-          [anotacao]
-        );
-        Plotly.newPlot(
-          grafico,
-          [icgAtendimentoSerie("criados", "Criados", datas, valores), traceBaseline],
-          layout,
-          icgAtendimentoConfig("criados-jornada")
-        );
-        // O número do baseline acompanha a legenda (liga/desliga junto).
-        grafico.on("plotly_restyle", () => {
-          const v = grafico.data[1].visible;
-          Plotly.relayout(grafico, { "annotations[0].visible": v === undefined || v === true });
-        });
-      } catch (e) {
-        info.textContent = "Não foi possível conectar ao servidor.";
-      }
-    };
-    abrirHomeCarrossel(`${item.classificacao} — criados por dia — ${HOME_CAIXA_LABEL[caixa] || caixa}`, [
-      { rotulo: "Criados por dia", el, aoAbrir: desenhar },
-    ]);
-  }
-
-  function construirFunilClassificacao(ranking, caixa) {
-    return construirFunilBars(
-      ranking,
-      (item) => item.classificacao,
-      (item) => item.total,
-      (bar, item) => {
-        bar.style.cursor = "pointer";
-        bar.addEventListener("click", () => abrirGraficoCriadosJornada(item, caixa));
-      },
-      "Nenhum chamado classificado no período."
-    );
-  }
-
-  // "Análise de EPS": mesmas barras de funil, sem hover — top 5 abertores/
-  // resolvidos/reabertos por EPS (campo "PROP_Site"), já ordenado pelo
-  // backend (most_common(5)).
-  function construirFunilEps(ranking) {
-    return construirFunilBars(
-      ranking,
-      (item) => item.eps,
-      (item) => item.total,
-      null,
-      "Nenhum dado de EPS no período."
-    );
-  }
-
-  async function carregarHomeClassificacaoFunil() {
-    const container = $("home-classificacao-funil");
-    homeCardErro(container, "Carregando...");
-
-    try {
-      // Sem "projetos": ver nota em carregarHomeSlaMes.
-      const resp = await apiCall("/api/home-classificacao-funil", {});
-      const data = await resp.json();
-      if (!resp.ok) {
-        homeCardErro(container, data.error || "Erro ao carregar.");
-        return;
-      }
-
-      container.innerHTML = "";
-      data.caixas.forEach(({ caixa, ranking }) => {
-        container.append(homeCaixaSubbloco(caixa, construirFunilClassificacao(ranking, caixa)));
-      });
-    } catch (e) {
-      homeCardErro(container, "Não foi possível conectar ao servidor.");
-    }
-  }
-
   // "A violar" dos próximos 7 dias — uma linha por GRUPO (não por caixa):
   // Solar sai em 3 linhas (N1/N2/Prod), Claro Tv em 2 (N1/N2, sem "Prod" —
   // CAIXA_GRUPOS["tv"] não tem esse grupo). Cada linha usa o próprio pico
@@ -2156,40 +2260,28 @@
     const valores = dias.map((dia) => {
       const entrada = (dia.por_grupo || []).find((g) => g.grupo === grupo);
       return {
-        dia_semana: dia.dia_semana,
         total: entrada ? entrada.total : 0,
         semResponsavel: entrada ? entrada.sem_responsavel : 0,
         porStatus: entrada ? entrada.por_status || [] : [],
       };
     });
 
-    const tiles = document.createElement("div");
-    tiles.className = "home-violar-tiles";
-
     const max = valores.reduce((m, v) => Math.max(m, v.total), 0);
-    valores.forEach((v) => {
+    return valores.map((v, i) => {
       const tile = document.createElement("div");
       const tom = heatTone(v.total, max);
-      tile.className = "home-violar-tile" + (tom ? ` ${tom}` : "");
-
-      const diaLabel = document.createElement("span");
-      diaLabel.className = "home-violar-tile-label";
-      diaLabel.textContent = v.dia_semana;
+      tile.className = "home-violar-tile" + (tom ? ` ${tom}` : "") + (v.total ? "" : " home-violar-tile--zero") + (i === 0 ? " home-violar-tile--hoje" : "");
 
       const valor = document.createElement("span");
       valor.className = "home-violar-tile-value";
       valor.textContent = v.total;
-
-      tile.append(diaLabel, valor);
+      tile.append(valor);
 
       // Hover: detalhamento por status daquele dia (ex.: "Em atendimento: 3").
-      // Sem chamados, mantém só um aviso de que não há nada a violar.
       tile.title = v.porStatus.length
         ? v.porStatus.map(([status, qtd]) => `${status}: ${qtd}`).join("\n")
         : "Nenhum chamado a violar";
 
-      // Sutil: só aparece quando tem pelo menos 1 sem responsável, discreto
-      // (menor, opacidade reduzida) pra não competir com o número principal.
       if (v.semResponsavel > 0) {
         const semResp = document.createElement("span");
         semResp.className = "home-violar-tile-sem-responsavel";
@@ -2197,30 +2289,36 @@
         semResp.title = `${v.semResponsavel} chamado${v.semResponsavel === 1 ? "" : "s"} sem responsável`;
         tile.append(semResp);
       }
-
-      tiles.append(tile);
+      return tile;
     });
-
-    return tiles;
   }
 
+  // Heatmap: cabeçalho de dias uma vez só (hoje destacado), 1 linha por
+  // grupo; cor de cada célula pelo pico da própria linha (heatTone).
   function construirGruposViolar(caixa, dias) {
-    const container = document.createElement("div");
-    container.className = "home-violar-grupos";
+    const grid = document.createElement("div");
+    grid.className = "home-violar-heat";
+
+    grid.append(document.createElement("span"));
+    dias.forEach((dia, i) => {
+      const th = document.createElement("div");
+      th.className = "home-violar-heat-dia" + (i === 0 ? " home-violar-heat-dia--hoje" : "");
+      const sem = document.createElement("span");
+      sem.textContent = i === 0 ? "Hoje" : dia.dia_semana;
+      const data = document.createElement("small");
+      data.textContent = dia.data ? `${dia.data.slice(8, 10)}/${dia.data.slice(5, 7)}` : "";
+      th.append(sem, data);
+      grid.append(th);
+    });
 
     (CAIXA_GRUPOS[caixa] || []).forEach((grupo) => {
-      const row = document.createElement("div");
-      row.className = "home-violar-group-row";
-
       const label = document.createElement("span");
       label.className = "home-violar-group-label";
       label.textContent = GRUPO_LABEL_CURTO[grupo] || grupo;
-
-      row.append(label, construirTilesGrupoViolar(dias, grupo));
-      container.append(row);
+      grid.append(label, ...construirTilesGrupoViolar(dias, grupo));
     });
 
-    return container;
+    return grid;
   }
 
   // 1 coluna por grupo (N1/N2/PROD pra Solar, N1/N2 pra Claro Tv),
@@ -2234,42 +2332,59 @@
   // hora de montar as colunas, sem mexer na constante global.
   const HOME_VIOLADOS_ORDEM_LABEL = ["N1", "N2", "PROD"];
 
+  const HOME_VIOLADOS_METRICAS = [
+    ["a_violar", "A violar"],
+    ["violados", "Violados"],
+    ["aguardando_fornecedor", "Fornecedor"],
+    ["pdst", "PDST"],
+  ];
+
   function construirVioladosPorGrupo(extraPorGrupo) {
-    const grid = document.createElement("div");
-    grid.className = "home-violados-grid";
+    const labelDe = (grupo) => (grupo ? GRUPO_LABEL_CURTO[grupo] || grupo : "Total");
+    const linhas = (extraPorGrupo.violados || []).map((item, index) => ({
+      label: labelDe(item.grupo),
+      valores: HOME_VIOLADOS_METRICAS.map(([m]) => (extraPorGrupo[m] || [])[index]?.total ?? 0),
+    }));
+    linhas.sort((a, b) => HOME_VIOLADOS_ORDEM_LABEL.indexOf(a.label) - HOME_VIOLADOS_ORDEM_LABEL.indexOf(b.label));
+    let total = linhas.find((l) => l.label === "Total");
+    const grupos = linhas.filter((l) => l.label !== "Total");
+    if (!total) {
+      total = { label: "Total", valores: HOME_VIOLADOS_METRICAS.map((_, i) => grupos.reduce((s, l) => s + l.valores[i], 0)) };
+    }
 
-    const gruposComIndice = (extraPorGrupo.violados || []).map((item, index) => ({ grupo: item.grupo, index }));
-    gruposComIndice.sort((a, b) => {
-      const labelA = a.grupo ? GRUPO_LABEL_CURTO[a.grupo] || a.grupo : "Total";
-      const labelB = b.grupo ? GRUPO_LABEL_CURTO[b.grupo] || b.grupo : "Total";
-      return HOME_VIOLADOS_ORDEM_LABEL.indexOf(labelA) - HOME_VIOLADOS_ORDEM_LABEL.indexOf(labelB);
+    const table = document.createElement("table");
+    table.className = "data-table home-dashboard-table";
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    ["Grupo", ...HOME_VIOLADOS_METRICAS.map(([, rotulo]) => rotulo)].forEach((txt, i) => {
+      const th = document.createElement("th");
+      th.textContent = txt;
+      if (i > 0) th.style.textAlign = "right";
+      trHead.append(th);
+    });
+    thead.append(trHead);
+
+    const tbody = document.createElement("tbody");
+    [...grupos, total].forEach((linha) => {
+      const tr = document.createElement("tr");
+      if (linha === total) tr.className = "data-table-total-row";
+      const tdLabel = document.createElement("td");
+      tdLabel.textContent = linha.label;
+      tr.append(tdLabel);
+      linha.valores.forEach((v) => {
+        const td = document.createElement("td");
+        td.style.textAlign = "right";
+        td.textContent = v.toLocaleString("pt-BR");
+        tr.append(td);
+      });
+      tbody.append(tr);
     });
 
-    gruposComIndice.forEach(({ grupo, index }) => {
-      const valorDoGrupo = (metrica) => (extraPorGrupo[metrica] || [])[index]?.total ?? 0;
-
-      const col = document.createElement("div");
-      col.className = "home-violados-grid-col";
-
-      const titulo = document.createElement("div");
-      titulo.className = "home-violados-grid-col-titulo";
-      titulo.textContent = grupo ? GRUPO_LABEL_CURTO[grupo] || grupo : "Total";
-      col.append(titulo);
-
-      const cards = document.createElement("div");
-      cards.className = "home-violados-grid-col-cards";
-      cards.append(
-        summaryCard(valorDoGrupo("a_violar"), "A violar", "tone-warning"),
-        summaryCard(valorDoGrupo("violados"), "Violados", "tone-danger"),
-        summaryCard(valorDoGrupo("aguardando_fornecedor"), "Fornecedor", "tone-info"),
-        summaryCard(valorDoGrupo("pdst"), "PDST", "tone-neutral")
-      );
-      col.append(cards);
-
-      grid.append(col);
-    });
-
-    return grid;
+    table.append(thead, tbody);
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    wrap.append(table);
+    return wrap;
   }
 
   async function carregarHomeViolarSemanal() {
@@ -2318,25 +2433,23 @@
       }
 
       container.innerHTML = "";
+      const fmt = (n) => Number(n).toLocaleString("pt-BR");
       container.append(
-        summaryCard(data.total_criticos_abertos, "Total de COTI Abertos (WAS P0/P1/P2)", "tone-accent")
-      );
-      container.append(
-        summaryCard(data.total_criticos_atual, "Total real de COTI (IN P0/P1/P2 atualmente)", "tone-danger")
-      );
-      container.append(
-        summaryCard(
-          `${data.total_pontuais} (${data.percentual_pontuais}%)`,
-          "Pontuais (abertos − atual)",
-          "tone-warning"
-        )
-      );
-      container.append(
-        summaryCard(
-          `${data.percentual_criticos}%`,
-          `COTI sobre ${data.total_criados} chamados criados no período`,
-          "tone-accent"
-        )
+        construirHomeKpi({
+          valor: fmt(data.total_criticos_abertos),
+          tom: "accent",
+          rotulo: "COTI abertos no mês (já foi P0/P1/P2)",
+          segmentos: [
+            { valor: data.total_criticos_atual, tom: "danger" },
+            { valor: data.total_pontuais, tom: "warning" },
+          ],
+          total: data.total_criticos_abertos,
+          legenda: [
+            { tom: "danger", texto: "Real — em P0/P1/P2 agora", valor: fmt(data.total_criticos_atual) },
+            { tom: "warning", texto: "Pontuais (abertos − atual)", valor: `${fmt(data.total_pontuais)} · ${data.percentual_pontuais}%` },
+          ],
+          rodape: `${data.percentual_criticos}% dos ${fmt(data.total_criados)} chamados criados no mês`,
+        })
       );
       // Planilha do mês ainda sem as colunas de prioridade (anterior a elas):
       // os números acima não contam esses chamados até sincronizar o cache.
@@ -2376,6 +2489,7 @@
   [
     { toggle: "btn-acoes-toggle", grid: "acoes-grid", icon: "acoes-toggle-icon" },
     { toggle: "btn-preparador-toggle", grid: "preparador-grid", icon: "preparador-toggle-icon" },
+    { toggle: "btn-detalhamento-toggle", grid: "detalhamento-grid", icon: "detalhamento-toggle-icon" },
     { toggle: "btn-settings-toggle", grid: "settings-grid", icon: "settings-toggle-icon" },
   ].forEach(({ toggle, grid, icon }) => {
     $(toggle).addEventListener("click", () => {
@@ -3453,6 +3567,8 @@
     } catch (e) {
       // segue sem lembrar entre recarregamentos.
     }
+    // Cards de estado do cache da tela de largada acompanham as seções.
+    if (!homeJaCarregada) carregarHomeCacheStatus();
   }
 
   let cacheSecoes = carregarSecoesCacheSalvas();
@@ -6249,7 +6365,7 @@
   // api/index.py. Devolve uma função que lê o estado JÁ CONFIRMADO.
   const MATERIAL_ICG_GRUPO_LABELS = { tudo: "Tudo", n1: "N1", n2: "N2", prod: "PROD" };
 
-  function configurarFiltroGrupoExcel(raiz, estadoInicial, aoConfirmar) {
+  function configurarFiltroGrupoExcel(raiz, estadoInicial, aoConfirmar, labels = MATERIAL_ICG_GRUPO_LABELS) {
     let confirmado = [...estadoInicial];
     const btn = raiz.querySelector(".icg-filtro-grupo-btn");
     const label = raiz.querySelector(".icg-filtro-grupo-label");
@@ -6297,7 +6413,7 @@
     raiz.querySelector(".icg-filtro-grupo-confirmar").addEventListener("click", () => {
       const marcados = checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
       confirmado = marcados.length ? marcados : ["tudo"];
-      label.textContent = confirmado.map((g) => MATERIAL_ICG_GRUPO_LABELS[g]).join(", ");
+      label.textContent = confirmado.map((g) => labels[g]).join(", ");
       fechar();
       aoConfirmar();
     });
@@ -6435,6 +6551,848 @@
   // entra sozinha, sem login, e o token nunca passa pelo navegador — as
   // requisições vão sem e-mail/token e o servidor completa com o .env.
   // "/api/credenciais-env" não existe em produção (Vercel): lá falha em
+  // -------------------------------------------- Jornada
+  function jornadaAtualizarVisibilidadeFiltro() {
+    const modo = $("jornada-filtro-tipo").value;
+    $("jornada-filtro-mes-wrap").classList.toggle("hidden", modo !== "mes");
+    $("jornada-filtro-ano-wrap").classList.toggle("hidden", modo !== "ano");
+    $("jornada-filtro-periodo-wrap").classList.toggle("hidden", modo !== "periodo");
+  }
+
+  function jornadaGetIntervalo() {
+    const modo = $("jornada-filtro-tipo").value;
+    if (modo === "mes") {
+      const v = $("jornada-mes-input").value;
+      if (!v) return { inicio: null, fim: null };
+      return mesParaIntervalo(v);
+    }
+    if (modo === "ano") {
+      const v = $("jornada-ano-select").value;
+      if (!v) return { inicio: null, fim: null };
+      return anoParaIntervalo(v);
+    }
+    return {
+      inicio: $("jornada-input-inicio").value || null,
+      fim: $("jornada-input-fim").value || null,
+    };
+  }
+
+  function construirJornadaRanking(titulo, itens, opts) {
+    const bloco = document.createElement("div");
+    bloco.className = "home-ranking";
+    const tituloEl = document.createElement("div");
+    tituloEl.className = "pareto-titulo-destaque";
+    tituloEl.textContent = titulo;
+    bloco.append(tituloEl);
+    if (!itens || !itens.length) {
+      const vazio = document.createElement("div");
+      vazio.className = "hint";
+      vazio.textContent = "Sem dados.";
+      bloco.append(vazio);
+      return bloco;
+    }
+    const lista = document.createElement("div");
+    lista.className = "home-ranking-lista";
+    const maximo = itens[0].quantidade;
+    itens.forEach((item, i) => {
+      const linha = document.createElement("div");
+      linha.className = "home-ranking-linha";
+      if (opts && opts.onToggle) {
+        linha.style.cursor = "pointer";
+        if (opts.selected && opts.selected.has(item.categoria)) {
+          linha.style.background = "rgba(253,224,71,.14)";
+          linha.style.borderRadius = "4px";
+        }
+        linha.addEventListener("click", () => opts.onToggle(item.categoria));
+      }
+      const pos = document.createElement("span");
+      pos.className = "home-ranking-pos";
+      pos.textContent = `${i + 1}º`;
+      const nomeEl = document.createElement("span");
+      nomeEl.className = "home-ranking-nome";
+      nomeEl.textContent = item.categoria;
+      nomeEl.title = item.categoria;
+      const trilha = document.createElement("span");
+      trilha.className = "home-ranking-trilha";
+      const barra = document.createElement("span");
+      barra.className = "home-ranking-barra";
+      barra.style.width = `${(item.quantidade / maximo) * 100}%`;
+      trilha.append(barra);
+      const qtdEl = document.createElement("span");
+      qtdEl.className = "home-ranking-qtd";
+      qtdEl.textContent = `${item.quantidade} (${item.percentual}%)`;
+      linha.append(pos, nomeEl, trilha, qtdEl);
+      lista.append(linha);
+
+      if (opts && opts.expandir) {
+        linha.style.cursor = "pointer";
+        const seta = document.createElement("span");
+        seta.textContent = "▶";
+        seta.style.cssText = "font-size:.6rem;opacity:.5;margin-left:6px;transition:transform .2s";
+        nomeEl.append(seta);
+        const detalhe = document.createElement("div");
+        detalhe.style.cssText = "display:none;padding:6px 8px 8px 34px;background:rgba(253,224,71,.14);border-radius:4px";
+        let carregado = false;
+        linha.addEventListener("click", () => {
+          if (!carregado) {
+            const node = opts.expandir(item);
+            if (node) detalhe.append(node);
+            carregado = true;
+          }
+          const aberto = detalhe.style.display !== "none";
+          detalhe.style.display = aberto ? "none" : "block";
+          seta.style.transform = aberto ? "" : "rotate(90deg)";
+          linha.style.background = aberto ? "" : "rgba(253,224,71,.14)";
+          linha.style.borderRadius = aberto ? "" : "4px";
+        });
+        lista.append(detalhe);
+      }
+    });
+    bloco.append(lista);
+    return bloco;
+  }
+
+  const JORNADA_TIPO_BITS = { conv: 1, crit: 2, reab: 4, apoio: 8 };
+  const JORNADA_TIPO_LABELS = { tudo: "Todos", conv: "Convencionais", crit: "Críticos", reab: "Reabertos", apoio: "Apoio" };
+  // Getter da seleção de tipo (estilo Excel). "tudo" => sem filtro.
+  const jornadaTipoChamado = configurarFiltroGrupoExcel(
+    $("jornada-filtro-tipo-chamado"),
+    ["tudo"],
+    () => { if (jornadaRerender) jornadaRerender(); },
+    JORNADA_TIPO_LABELS,
+  );
+  // Re-render só do cliente (sem refetch) ao trocar o tipo; setado por carregarJornada.
+  let jornadaRerender = null;
+
+  function jornadaTipoMask() {
+    const sel = jornadaTipoChamado();
+    if (!sel || sel.includes("tudo")) return 0;
+    let m = 0;
+    sel.forEach((t) => { m |= (JORNADA_TIPO_BITS[t] || 0); });
+    return m;
+  }
+
+  async function carregarJornada() {
+    const statusEl = $("jornada-status");
+    statusEl.classList.add("is-loading");
+    statusEl.textContent = "Carregando...";
+    const paretoCard = $("jornada-pareto-card");
+    const drilldownCard = $("jornada-drilldown-card");
+    const criadosCard = $("jornada-criados-dia-card");
+    paretoCard.replaceChildren();
+    drilldownCard.classList.add("hidden");
+    drilldownCard.replaceChildren();
+    criadosCard.replaceChildren();
+    $("jornada-gmls-card").replaceChildren();
+    $("jornada-categorias-card").replaceChildren();
+
+    const { inicio, fim } = jornadaGetIntervalo();
+    if (!inicio || !fim) {
+      statusEl.classList.remove("is-loading");
+      statusEl.textContent = "Preencha o período.";
+      return;
+    }
+
+    try {
+      const [respJornada, gmlPorDia, respGmls] = await Promise.all([
+        apiCall("/api/jornada", { inicio, fim }),
+        carregarHomeGmlPlannedEnd({ inicio, fim }),
+        apiCall("/api/jornada-gmls", { inicio, fim }),
+      ]);
+      const dados = await respJornada.json();
+      if (!respJornada.ok) throw new Error(dados.error || "Erro desconhecido");
+      const dadosGmls = respGmls.ok ? await respGmls.json() : { gmls: [] };
+      renderGmlTable(dadosGmls.gmls || []);
+
+      statusEl.classList.remove("is-loading");
+      statusEl.textContent = `${dados.total} chamados (${dados.total_com_class} com Classificação)`;
+
+      const gmlShapes = Object.keys(gmlPorDia).map((dia) => ({
+        type: "line",
+        x0: dia, x1: dia,
+        y0: 0, y1: 1, yref: "paper",
+        line: { color: "#9b59b6", width: 1.5, dash: "dot" },
+      }));
+
+      let selecionada = null;
+      let subsSel = new Set();
+      let locsSel = new Set();
+
+      const todosDias = (dados.criados_por_dia_total || []).map((d) => d.data);
+      const numDias = todosDias.length || 1;
+      const regCriados = dados.registros_criados || [];
+      const regResolvidos = dados.registros_resolvidos || [];
+      const RANK_TOP_N = 10;
+
+      // Máscara de tipo (0 = sem filtro); recalculada no início de cada renderJornada.
+      let tipoMask = 0;
+      const tipoOk = (r) => tipoMask === 0 || (r.t & tipoMask) !== 0;
+      const clsOk = (r) => !selecionada || r.c === selecionada;
+      const subOk = (r) => subsSel.size === 0 || subsSel.has(r.s);
+      const locOk = (r) => locsSel.size === 0 || locsSel.has(r.l);
+
+      // Pareto de Classificação recomputado no cliente (respeita o filtro de
+      // tipo). Mesma regra do backend _pareto_payload: top 15, sem "Outros",
+      // percentual relativo ao total classificado, acumulado somando os %.
+      function paretoFrom(records) {
+        const cnt = new Map();
+        for (const r of records) {
+          if (!tipoOk(r)) continue;
+          if (!r.c) continue;
+          cnt.set(r.c, (cnt.get(r.c) || 0) + 1);
+        }
+        const ordenado = [...cnt.entries()].sort((a, b) => b[1] - a[1]);
+        const totalCat = ordenado.reduce((s, [, q]) => s + q, 0);
+        let acc = 0;
+        return ordenado.slice(0, 15).map(([categoria, quantidade]) => {
+          const pct = totalCat ? Math.round((quantidade / totalCat) * 1000) / 10 : 0;
+          acc += pct;
+          return { categoria, quantidade, percentual: pct, percentual_acumulado: Math.round(acc * 10) / 10 };
+        });
+      }
+
+      function rankFrom(records, chave, extraOk) {
+        const cnt = new Map();
+        let tot = 0;
+        for (const r of records) {
+          if (!tipoOk(r)) continue;
+          if (!clsOk(r)) continue;
+          if (extraOk && !extraOk(r)) continue;
+          const k = r[chave];
+          if (!k) continue;
+          cnt.set(k, (cnt.get(k) || 0) + 1);
+          tot++;
+        }
+        return [...cnt.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, RANK_TOP_N)
+          .map(([categoria, quantidade]) => ({
+            categoria,
+            quantidade,
+            percentual: tot ? Math.round((quantidade / tot) * 1000) / 10 : 0,
+          }));
+      }
+
+      function serieFrom(records, ok) {
+        const cnt = new Map();
+        for (const r of records) {
+          if (!tipoOk(r)) continue;
+          if (!clsOk(r)) continue;
+          if (ok && !ok(r)) continue;
+          cnt.set(r.d, (cnt.get(r.d) || 0) + 1);
+        }
+        return todosDias.map((d) => ({ data: d, quantidade: cnt.get(d) || 0 }));
+      }
+
+      function renderLinha() {
+        criadosCard.replaceChildren();
+        const bothOk = (r) => subOk(r) && locOk(r);
+        const serie = serieFrom(regCriados, bothOk);
+        const serieRes = serieFrom(regResolvidos, bothOk);
+        const somaC = serie.reduce((s, d) => s + d.quantidade, 0);
+        const somaR = serieRes.reduce((s, d) => s + d.quantidade, 0);
+        const baseline = Math.round((somaC / numDias) * 10) / 10;
+        const baselineRes = Math.round((somaR / numDias) * 10) / 10;
+
+        const filtros = [];
+        if (subsSel.size) filtros.push(`${subsSel.size} sub`);
+        if (locsSel.size) filtros.push(`${locsSel.size} local`);
+        const ctx = selecionada || "GERAL";
+        const label = `${ctx} — criados por dia — Solar${filtros.length ? ` (filtro: ${filtros.join(" + ")})` : ""}`;
+
+        const tituloLinha = document.createElement("div");
+        tituloLinha.className = "pareto-titulo-destaque";
+        tituloLinha.style.marginBottom = "8px";
+        tituloLinha.textContent = label;
+        criadosCard.append(tituloLinha);
+
+        if (subsSel.size || locsSel.size) {
+          const chips = document.createElement("div");
+          chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px";
+          const addChip = (texto, cor, onDel) => {
+            const chip = document.createElement("span");
+            chip.style.cssText = `display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:12px;font-size:11px;background:${cor}22;border:1px solid ${cor};color:${cor}`;
+            chip.textContent = texto;
+            const x = document.createElement("span");
+            x.textContent = "✕";
+            x.style.cssText = "cursor:pointer;font-size:10px";
+            x.addEventListener("click", onDel);
+            chip.append(x);
+            chips.append(chip);
+          };
+          subsSel.forEach((s) => addChip(`sub: ${s}`, "#3a8eff", () => { subsSel.delete(s); renderDrill(); }));
+          locsSel.forEach((l) => addChip(`local: ${l}`, "#2ecc71", () => { locsSel.delete(l); renderDrill(); }));
+          criadosCard.append(chips);
+        }
+
+        const areaPlot = document.createElement("div");
+        criadosCard.append(areaPlot);
+
+        const grafico = icgAtendimentoCriarGrafico(areaPlot);
+        if (!grafico) return;
+        const datas = serie.map((d) => d.data);
+        const valores = serie.map((d) => d.quantidade);
+        const valoresRes = serieRes.map((d) => d.quantidade);
+
+        const traceBaselineCriados = {
+          type: "scatter", mode: "lines",
+          name: `Baseline criados (${baseline.toLocaleString("pt-BR")}/dia)`,
+          legendgroup: "baseline-criados",
+          x: [datas[0], datas[datas.length - 1]],
+          y: [baseline, baseline],
+          line: { color: ICG_ATENDIMENTO_CORES.criados, width: 1.5, dash: "dash" },
+          opacity: 0.75, hoverinfo: "skip",
+        };
+        const traceBaselineRes = {
+          type: "scatter", mode: "lines",
+          name: `Baseline resolvidos (${baselineRes.toLocaleString("pt-BR")}/dia)`,
+          legendgroup: "baseline-res",
+          x: [datas[0], datas[datas.length - 1]],
+          y: [baselineRes, baselineRes],
+          line: { color: ICG_ATENDIMENTO_CORES.resolvidos, width: 1.5, dash: "dash" },
+          opacity: 0.75, hoverinfo: "skip",
+        };
+        const anotacoes = [
+          {
+            xref: "paper", x: 0, xanchor: "right", xshift: -4,
+            y: baseline, yref: "y",
+            text: baseline.toLocaleString("pt-BR"),
+            showarrow: false,
+            font: { color: ICG_ATENDIMENTO_CORES.criados, size: 11 },
+          },
+          {
+            xref: "paper", x: 0, xanchor: "right", xshift: -4,
+            y: baselineRes, yref: "y",
+            text: baselineRes.toLocaleString("pt-BR"),
+            showarrow: false,
+            font: { color: ICG_ATENDIMENTO_CORES.resolvidos, size: 11 },
+          },
+        ];
+        const layout = {
+          ...icgAtendimentoLayout(
+            Math.max(...valores, ...valoresRes, baseline, baselineRes, 1),
+            datas[0], datas[datas.length - 1],
+            { tickformat: "%d/%m", hoverformat: "%d/%m/%Y" },
+            anotacoes
+          ),
+          shapes: gmlShapes,
+        };
+        Plotly.newPlot(
+          grafico,
+          [
+            icgAtendimentoSerie("criados", `Criados (${somaC.toLocaleString("pt-BR")})`, datas, valores),
+            traceBaselineCriados,
+            icgAtendimentoSerie("resolvidos", `Resolvidos e Encerrados (${somaR.toLocaleString("pt-BR")})`, datas, valoresRes),
+            traceBaselineRes,
+          ],
+          layout,
+          icgAtendimentoConfig("jornada-criados-dia")
+        );
+        grafico.on("plotly_click", (ev) => {
+          const pt = ev.points[0];
+          if (pt) {
+            const dia = String(pt.x).slice(0, 10);
+            abrirJornadaDiaModal(dia, gmlPorDia, selecionada);
+          }
+        });
+      }
+
+      function renderDrill() {
+        const subRank = rankFrom(regCriados, "s", locOk);
+        const locRank = rankFrom(regCriados, "l", subOk);
+        const ctx = selecionada || "GERAL";
+
+        drilldownCard.replaceChildren();
+        drilldownCard.classList.remove("hidden");
+        const partes = [];
+        const barra = document.createElement("div");
+        barra.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:12px";
+        if (selecionada) {
+          const tituloEl = document.createElement("div");
+          tituloEl.className = "pareto-titulo-destaque";
+          tituloEl.style.margin = "0";
+          tituloEl.textContent = `Classificação: ${selecionada}`;
+          barra.append(tituloEl);
+        }
+        if (subsSel.size || locsSel.size) {
+          const btnReset = document.createElement("button");
+          btnReset.type = "button";
+          btnReset.textContent = `✕ Limpar filtros (${subsSel.size + locsSel.size})`;
+          btnReset.style.cssText = "padding:3px 10px;border-radius:12px;border:1px solid #f0c040;background:transparent;color:#f0c040;cursor:pointer;font-size:12px";
+          btnReset.addEventListener("click", () => { subsSel.clear(); locsSel.clear(); renderDrill(); });
+          barra.append(btnReset);
+        }
+        if (barra.childElementCount) partes.push(barra);
+        const grid = document.createElement("div");
+        grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:16px";
+        grid.append(
+          construirJornadaRanking(`SUB-CLASSIFICAÇÃO — ${ctx}`, subRank, {
+            selected: subsSel,
+            onToggle: (cat) => { subsSel.has(cat) ? subsSel.delete(cat) : subsSel.add(cat); renderDrill(); },
+          }),
+          construirJornadaRanking(`LOCALIDADE — ${ctx}`, locRank, {
+            selected: locsSel,
+            onToggle: (cat) => { locsSel.has(cat) ? locsSel.delete(cat) : locsSel.add(cat); renderDrill(); },
+          }),
+        );
+        partes.push(grid);
+        drilldownCard.append(...partes);
+
+        renderLinha();
+      }
+
+      function renderJornada() {
+        tipoMask = jornadaTipoMask();
+        const classificacoes = paretoFrom(regCriados);
+        const grafico = construirParetoChart(classificacoes, (item) => {
+          selecionada = selecionada === item.categoria ? null : item.categoria;
+          subsSel = new Set();
+          locsSel = new Set();
+          renderJornada();
+        });
+        if (selecionada) {
+          const idx = classificacoes.findIndex((c) => c.categoria === selecionada);
+          if (idx !== -1) grafico.querySelectorAll(".pareto-bar")[idx]?.classList.add("pareto-bar-selecionada");
+        }
+        paretoCard.replaceChildren(grafico);
+
+        renderDrill();
+
+        // Top 10 Categorias de Encerramento (ofensores) — record-driven,
+        // acompanha tipo + classificação + toggle INC/PDST.
+        const catCard = $("jornada-categorias-card");
+        catCard.replaceChildren();
+        const catContexto = selecionada ? ` — ${selecionada}` : "";
+
+        function catFrom(prefixSet) {
+          const cnt = new Map();
+          let tot = 0;
+          for (const r of regResolvidos) {
+            if (!tipoOk(r)) continue;
+            if (!clsOk(r)) continue;
+            if (prefixSet && prefixSet.size && !prefixSet.has(r.pfx)) continue;
+            if (!r.cat) continue;
+            cnt.set(r.cat, (cnt.get(r.cat) || 0) + 1);
+            tot++;
+          }
+          return [...cnt.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([categoria, quantidade]) => ({
+              categoria,
+              quantidade,
+              percentual: tot ? Math.round((quantidade / tot) * 1000) / 10 : 0,
+            }));
+        }
+
+        if (catFrom(new Set()).length) {
+          const catFiltros = new Set();
+          const catRankingWrap = document.createElement("div");
+
+          const catToggleWrap = document.createElement("div");
+          catToggleWrap.style.cssText = "display:flex;gap:6px;flex-shrink:0";
+
+          ["INC", "PDST"].forEach(prefix => {
+            const btn = document.createElement("button");
+            btn.textContent = prefix;
+            btn.type = "button";
+            btn.style.cssText = "padding:2px 8px;border-radius:12px;border:1px solid var(--accent,#3a8eff);background:transparent;color:var(--accent,#3a8eff);cursor:pointer;font-size:11px;transition:background .15s,color .15s";
+            btn.dataset.prefix = prefix;
+            btn.addEventListener("click", () => {
+              if (catFiltros.has(prefix)) {
+                catFiltros.delete(prefix);
+                btn.style.background = "transparent";
+                btn.style.color = "var(--accent,#3a8eff)";
+              } else {
+                catFiltros.add(prefix);
+                btn.style.background = "var(--accent,#3a8eff)";
+                btn.style.color = "#fff";
+              }
+              renderCatRanking();
+            });
+            catToggleWrap.append(btn);
+          });
+
+          function renderCatRanking() {
+            const filtradas = catFrom(catFiltros);
+            const top10 = filtradas.slice(0, 10);
+            const sufixo = catFiltros.size ? ` — ${[...catFiltros].join(" | ")}` : " (TOP 10)";
+            const bloco = construirJornadaRanking(`CATEGORIAS DE ENCERRAMENTO${catContexto}${sufixo}`, top10, {
+              expandir: (item) => {
+                const chamados = regResolvidos.filter((r) =>
+                  tipoOk(r) && clsOk(r) && (catFiltros.size === 0 || catFiltros.has(r.pfx)) && r.cat === item.categoria
+                );
+                if (!chamados.length) return null;
+                const table = document.createElement("table");
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:.78rem";
+                const thead = document.createElement("thead");
+                thead.innerHTML = '<tr style="opacity:.45;text-align:left"><th style="padding:4px 6px;font-weight:500">Chamado</th><th style="padding:4px 6px;font-weight:500">Localidade</th><th style="padding:4px 6px;font-weight:500;text-align:right">Resolvido</th></tr>';
+                const tbody = document.createElement("tbody");
+                chamados.sort((a, b) => String(a.k).localeCompare(String(b.k))).forEach((c, ri) => {
+                  const tr = document.createElement("tr");
+                  tr.style.cssText = `background:${ri % 2 === 0 ? "rgba(255,255,255,.03)" : "transparent"}`;
+                  const td = (txt, extra = "") => `<td style="padding:4px 6px;${extra}">${txt}</td>`;
+                  tr.innerHTML = td(c.k || "—", "font-weight:500") + td(c.l || "", "opacity:.7") + td(formatarDataBR(c.d) || "", "opacity:.7;text-align:right");
+                  tbody.append(tr);
+                });
+                table.append(thead, tbody);
+                return table;
+              },
+            });
+            // inline toggle buttons next to title
+            const tituloEl = bloco.firstElementChild;
+            tituloEl.style.cssText = "display:flex;align-items:center;gap:8px;";
+            tituloEl.prepend(catToggleWrap);
+            catRankingWrap.replaceChildren(bloco);
+          }
+
+          renderCatRanking();
+          catCard.append(catRankingWrap);
+        }
+      }
+
+      jornadaRerender = renderJornada;
+      renderJornada();
+    } catch (e) {
+      statusEl.classList.remove("is-loading");
+      statusEl.textContent = `Erro: ${e.message}`;
+    }
+  }
+
+  // Popula select de ano
+  {
+    const anoAtual = new Date().getFullYear();
+    const sel = $("jornada-ano-select");
+    for (let ano = anoAtual - 2; ano <= anoAtual + 1; ano++) {
+      const opt = document.createElement("option");
+      opt.value = String(ano);
+      opt.textContent = String(ano);
+      if (ano === anoAtual) opt.selected = true;
+      sel.append(opt);
+    }
+  }
+
+  // Init mês com mês atual
+  $("jornada-mes-input").value = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  })();
+
+  $("jornada-filtro-tipo").addEventListener("change", jornadaAtualizarVisibilidadeFiltro);
+  jornadaAtualizarVisibilidadeFiltro();
+
+  $("btn-jornada").addEventListener("click", () => {
+    closeAllDialogs();
+    $("jornada-results").classList.remove("hidden");
+    carregarJornada();
+  });
+
+  $("btn-jornada-recarregar").addEventListener("click", carregarJornada);
+
+  // -------------------------------------------- Colaboradores (Detalhamento)
+  async function carregarColaboradoresDet() {
+    const statusEl = $("colaboradores-det-status");
+    const conteudo = $("colaboradores-det-conteudo");
+    statusEl.classList.add("is-loading");
+    statusEl.textContent = "Carregando...";
+    conteudo.replaceChildren();
+    try {
+      const resp = await apiCall("/api/home-colaboradores-cache", {});
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Erro desconhecido");
+      statusEl.classList.remove("is-loading");
+      statusEl.textContent = "";
+      data.caixas.forEach(({ caixa, colaboradores }) => {
+        const wrap = document.createElement("div");
+        wrap.className = "table-wrap";
+        wrap.append(construirTabelaColaboradoresMensal(data.meses, colaboradores));
+        conteudo.append(homeCaixaSubbloco(caixa, wrap));
+      });
+    } catch (e) {
+      statusEl.classList.remove("is-loading");
+      statusEl.textContent = `Erro: ${e.message}`;
+    }
+  }
+
+  $("btn-colaboradores-det").addEventListener("click", () => {
+    closeAllDialogs();
+    $("colaboradores-det-results").classList.remove("hidden");
+    carregarColaboradoresDet();
+  });
+
+  $("btn-colaboradores-det-recarregar").addEventListener("click", carregarColaboradoresDet);
+
+  // -------------------------------------------- GML modal
+  function _fmtDtBR(iso) {
+    if (!iso) return "—";
+    // iso = "YYYY-MM-DDTHH:MM"
+    const [datePart, timePart] = iso.split("T");
+    if (!datePart) return iso;
+    const [y, m, d] = datePart.split("-");
+    return `${d}/${m}/${y}${timePart ? " " + timePart : ""}`;
+  }
+
+  function abrirGmlModal(gml) {
+    $("jornada-gml-modal-ticket").textContent = gml.ticket || "";
+    const statusEl = $("jornada-gml-modal-status");
+    statusEl.textContent = gml.status || "";
+    statusEl.style.display = gml.status ? "" : "none";
+    const resolEl = $("jornada-gml-modal-resolucao");
+    resolEl.textContent = gml.resolucao || "";
+    resolEl.style.display = gml.resolucao ? "" : "none";
+    const resvEl = $("jornada-gml-modal-resolvido");
+    resvEl.textContent = gml.resolvido || "";
+    resvEl.style.display = gml.resolvido ? "" : "none";
+    $("jornada-gml-modal-descricao").textContent = gml.descricao || "(sem descrição)";
+    $("jornada-gml-modal").classList.remove("hidden");
+  }
+
+  async function abrirJornadaDiaModal(dia, gmlPorDia, classificacao) {
+    const modal = $("jornada-dia-modal");
+    const [d, m, y] = dia.split("-").reverse().map(Number);
+    $("jornada-dia-modal-titulo").textContent = `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y}`;
+    const gmlsEl = $("jornada-dia-modal-gmls");
+    const chamadosEl = $("jornada-dia-modal-chamados");
+    gmlsEl.replaceChildren();
+    chamadosEl.replaceChildren();
+    modal.classList.remove("hidden");
+
+    // GMLs do dia
+    const gmls = (gmlPorDia || {})[dia] || [];
+    if (gmls.length) {
+      const h = document.createElement("div");
+      h.className = "pareto-titulo-destaque";
+      h.style.marginBottom = "8px";
+      h.textContent = `GMLs (${gmls.length})`;
+      gmlsEl.append(h);
+      const pastelColors = [
+        { bg: "rgba(147,197,253,.13)", border: "#93c5fd" },
+        { bg: "rgba(167,243,208,.13)", border: "#6ee7b7" },
+        { bg: "rgba(216,180,254,.13)", border: "#c4b5fd" },
+        { bg: "rgba(253,186,116,.13)", border: "#fdba74" },
+        { bg: "rgba(249,168,212,.13)", border: "#f9a8d4" },
+      ];
+      gmls.forEach((g, i) => {
+        const { bg, border } = pastelColors[i % pastelColors.length];
+        const row = document.createElement("div");
+        row.style.cssText = `display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:6px;margin-bottom:4px;background:${bg};border-left:3px solid ${border}`;
+        const tk = document.createElement("span");
+        tk.style.cssText = `font-weight:600;min-width:90px;color:${border}`;
+        tk.textContent = g.ticket || "—";
+        const st = document.createElement("span");
+        st.className = "home-dashboard-tag";
+        st.textContent = g.status || "";
+        const rel = document.createElement("span");
+        rel.style.cssText = "font-size:.82rem;opacity:.75;margin-left:auto";
+        rel.textContent = g.relator || "";
+        row.append(tk, st, rel);
+        gmlsEl.append(row);
+      });
+    }
+
+    // Chamados por sub-classificação
+    try {
+      const body = { dia };
+      if (classificacao) body.classificacao = classificacao;
+      const tiposSel = jornadaTipoChamado().filter((t) => t !== "tudo");
+      if (tiposSel.length) body.tipos = tiposSel;
+      const resp = await apiCall("/api/jornada-dia", body);
+      const data = await resp.json();
+      const subs = data.subclassificacoes || [];
+      if (!subs.length) {
+        const vazio = document.createElement("div");
+        vazio.style.cssText = "margin-top:12px;opacity:.6;font-size:.85rem";
+        vazio.textContent = "Sem chamados criados neste dia.";
+        const dbg = document.createElement("pre");
+        dbg.style.cssText = "font-size:.75rem;color:#f0c040;margin-top:8px;white-space:pre-wrap;word-break:break-all;background:#1a1f2b;padding:8px;border-radius:4px";
+        dbg.textContent = data._debug
+          ? JSON.stringify(data._debug, null, 2)
+          : "SEM _debug — servidor ainda com código antigo (reiniciar)";
+        chamadosEl.append(vazio, dbg);
+      } else {
+        const h = document.createElement("div");
+        h.className = "pareto-titulo-destaque";
+        h.style.cssText = "margin-top:14px;margin-bottom:6px";
+        h.textContent = `Chamados por Sub-Classificação (${data.total})`;
+        chamadosEl.append(h);
+        subs.forEach((sub) => {
+          const bloco = document.createElement("div");
+          bloco.style.cssText = "margin-bottom:2px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.04)";
+          const subTitulo = document.createElement("div");
+          subTitulo.style.cssText = "font-size:.82rem;font-weight:600;opacity:.8;padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;border-bottom:1px solid transparent";
+          const arrow = document.createElement("span");
+          arrow.textContent = "▶";
+          arrow.style.cssText = "font-size:.6rem;transition:transform .2s;opacity:.5";
+          subTitulo.append(document.createTextNode(`[${sub.chamados.length}] ${sub.subclassificacao}`), arrow);
+          const corpo = document.createElement("div");
+          corpo.style.cssText = "display:none;padding:0 6px 8px";
+          const table = document.createElement("table");
+          table.style.cssText = "width:100%;border-collapse:collapse;font-size:.78rem";
+          const thead = document.createElement("thead");
+          thead.innerHTML = `<tr style="opacity:.45;text-align:left"><th style="padding:4px 6px;font-weight:500">Chamado</th><th style="padding:4px 6px;font-weight:500">EPS</th><th style="padding:4px 6px;font-weight:500;text-align:right">Status</th></tr>`;
+          const tbody = document.createElement("tbody");
+          sub.chamados.forEach((c, ri) => {
+            const tr = document.createElement("tr");
+            tr.style.cssText = `background:${ri % 2 === 0 ? "rgba(255,255,255,.03)" : "transparent"}`;
+            tr.innerHTML = `<td style="padding:4px 6px;font-weight:500">${c.chave || "—"}</td><td style="padding:4px 6px;opacity:.7">${c.eps || ""}</td><td style="padding:4px 6px;opacity:.7;text-align:right">${c.status || ""}</td>`;
+            tbody.append(tr);
+          });
+          table.append(thead, tbody);
+          corpo.append(table);
+          subTitulo.addEventListener("click", () => {
+            const open = corpo.style.display !== "none";
+            corpo.style.display = open ? "none" : "block";
+            arrow.style.transform = open ? "" : "rotate(90deg)";
+            subTitulo.style.borderBottomColor = open ? "transparent" : "rgba(255,255,255,.07)";
+            bloco.style.background = open ? "rgba(255,255,255,.04)" : "rgba(253,224,71,.07)";
+            subTitulo.style.color = open ? "" : "#fde047";
+          });
+          bloco.append(subTitulo, corpo);
+          chamadosEl.append(bloco);
+        });
+      }
+    } catch(e) {
+      const err = document.createElement("div");
+      err.style.cssText = "color:#e74c3c;margin-top:8px;font-size:.85rem";
+      err.textContent = `Erro ao carregar chamados: ${e.message}`;
+      chamadosEl.append(err);
+    }
+  }
+
+  $("btn-jornada-gml-modal-fechar").addEventListener("click", () => {
+    $("jornada-gml-modal").classList.add("hidden");
+  });
+  $("jornada-gml-modal").addEventListener("click", (e) => {
+    if (e.target === $("jornada-gml-modal")) $("jornada-gml-modal").classList.add("hidden");
+  });
+
+  $("btn-jornada-dia-modal-fechar").addEventListener("click", () => {
+    $("jornada-dia-modal").classList.add("hidden");
+  });
+  $("jornada-dia-modal").addEventListener("click", (e) => {
+    if (e.target === $("jornada-dia-modal")) $("jornada-dia-modal").classList.add("hidden");
+  });
+
+  function renderGmlTable(gmls) {
+    const card = $("jornada-gmls-card");
+    card.replaceChildren();
+    if (!gmls || !gmls.length) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "Nenhuma GML no período.";
+      card.append(hint);
+      return;
+    }
+
+    const styleGml = document.createElement("style");
+    styleGml.textContent = [
+      "#jornada-gmls-card table th,#jornada-gmls-card table td{border:1px solid #2e3849;padding:5px 8px}",
+      "#jornada-gmls-card table thead th{background:#1b212c;position:sticky;top:0}",
+      "#jornada-gmls-card table tbody tr:hover{background:#1e2738;cursor:pointer}",
+      "#jornada-gmls-pag{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.85rem}",
+    ].join("");
+    card.append(styleGml);
+
+    const GML_POR_PAGINA = 5;
+    let pagina = 0;
+    let filtro = "";
+
+    const cabecalhos = ["Ticket", "Relator", "Status", "RequestType", "Gestor", "Criado", "Gerente Requisitante", "Ativo Ops TI", "Planned start", "Planned end"];
+
+    // Cabeçalho com título + busca
+    const topo = document.createElement("div");
+    topo.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap";
+    const titulo = document.createElement("div");
+    titulo.className = "pareto-titulo-destaque";
+    titulo.style.margin = "0";
+    titulo.textContent = `GMLs no período (${gmls.length})`;
+    const busca = document.createElement("input");
+    busca.type = "text";
+    busca.placeholder = "Buscar ticket...";
+    busca.style.cssText = "padding:4px 8px;border-radius:4px;border:1px solid #2e3849;background:#11161f;color:#eef1f6;font-size:.85rem;width:160px";
+    topo.append(titulo, busca);
+    card.append(topo);
+
+    // Tabela
+    const wrap = document.createElement("div");
+    wrap.style.overflowX = "auto";
+    const tabela = document.createElement("table");
+    tabela.className = "cache-table";
+    tabela.style.cssText = "font-size:.82rem;border-collapse:collapse;width:100%";
+    const thead = document.createElement("thead");
+    const trH = document.createElement("tr");
+    cabecalhos.forEach((h) => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      trH.append(th);
+    });
+    thead.append(trH);
+    tabela.append(thead);
+    const tbody = document.createElement("tbody");
+    tabela.append(tbody);
+    wrap.append(tabela);
+    card.append(wrap);
+
+    // Paginação
+    const pagBar = document.createElement("div");
+    pagBar.id = "jornada-gmls-pag";
+    const btnAntes = document.createElement("button");
+    btnAntes.className = "btn-secondary";
+    btnAntes.textContent = "‹";
+    btnAntes.type = "button";
+    const infoPage = document.createElement("span");
+    infoPage.className = "hint";
+    const btnDepois = document.createElement("button");
+    btnDepois.className = "btn-secondary";
+    btnDepois.textContent = "›";
+    btnDepois.type = "button";
+    pagBar.append(btnAntes, infoPage, btnDepois);
+    card.append(pagBar);
+
+    function renderPagina() {
+      const filtrados = filtro
+        ? gmls.filter((g) => (g.ticket || "").toLowerCase().includes(filtro))
+        : gmls;
+      const total = filtrados.length;
+      const totalPags = Math.max(1, Math.ceil(total / GML_POR_PAGINA));
+      if (pagina >= totalPags) pagina = totalPags - 1;
+      const fatia = filtrados.slice(pagina * GML_POR_PAGINA, (pagina + 1) * GML_POR_PAGINA);
+
+      tbody.replaceChildren();
+      fatia.forEach((gml) => {
+        const tr = document.createElement("tr");
+        tr.title = "Clique para ver descrição";
+        [
+          gml.ticket,
+          gml.relator,
+          gml.status,
+          gml.request_type,
+          gml.gestor,
+          gml.criado ? _fmtDtBR(gml.criado.slice(0, 10)) : "—",
+          gml.gerente_requisitante,
+          gml.ativo_operacoes_ti,
+          _fmtDtBR(gml.planned_start),
+          _fmtDtBR(gml.planned_end),
+        ].forEach((val) => {
+          const td = document.createElement("td");
+          td.textContent = val || "—";
+          tr.append(td);
+        });
+        tr.addEventListener("click", () => abrirGmlModal(gml));
+        tbody.append(tr);
+      });
+
+      infoPage.textContent = `${pagina + 1} / ${totalPags} (${total} itens)`;
+      btnAntes.disabled = pagina === 0;
+      btnDepois.disabled = pagina >= totalPags - 1;
+    }
+
+    btnAntes.addEventListener("click", () => { pagina--; renderPagina(); });
+    btnDepois.addEventListener("click", () => { pagina++; renderPagina(); });
+    busca.addEventListener("input", () => { filtro = busca.value.trim().toLowerCase(); pagina = 0; renderPagina(); });
+
+    renderPagina();
+  }
+
   // silêncio e segue o login normal.
   (async () => {
     try {

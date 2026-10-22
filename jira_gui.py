@@ -19,6 +19,14 @@ from datetime import date, datetime
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
+import calendar
+from collections import Counter
+
+import matplotlib
+matplotlib.use("TkAgg")
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+from openpyxl import load_workbook
 import requests
 
 from jira_extractor import (
@@ -83,6 +91,105 @@ LOG_ERROR = "#f87171"
 LOG_WARN = "#fbbf24"
 LOG_MUTED = "#94a3b8"
 
+# ---------------------------------------------------------------- cache (Jornada)
+_JORNADA_CACHE_BASE = os.getenv("CACHE_DIR") or r"C:\Users\edufe\OneDrive\Área de Trabalho\Cache"
+_JORNADA_CACHE_DIR = os.path.join(_JORNADA_CACHE_BASE, "Solar")
+
+_JORNADA_COL_GRUPO = "Grupo Solucionador"
+_JORNADA_COL_CRIACAO = "Data de Criação"
+_JORNADA_COL_CLASSIF = "Classificação"
+_JORNADA_COL_SUBCLASS = "Sub-Classificação"
+_JORNADA_COL_EPS = "PROP_Site"
+
+_JORNADA_GRUPOS_N1_N2 = [
+    "CLBR-TI-OPS-OGS-SOLAR-SALESFORCE-N2",
+    "CLBR-TI-OPS-OGS SOLAR SALESFORCE",
+]
+
+_MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+]
+
+
+def _jornada_parse_data(valor):
+    if not valor:
+        return None
+    try:
+        return datetime.strptime(str(valor)[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _ler_cache_jornada(inicio, fim):
+    """Lê planilhas xlsx de _JORNADA_CACHE_DIR, filtra por Data de Criação em [inicio, fim].
+
+    Retorna (total, total_com_class, Counter(classificacao),
+             dict{classif: Counter(sub)}, dict{classif: Counter(eps)})
+    """
+    pasta = _JORNADA_CACHE_DIR
+    if not os.path.isdir(pasta):
+        raise JiraExtractorError(f'Pasta de cache não encontrada: "{pasta}"')
+
+    cols_need = (
+        _JORNADA_COL_GRUPO, _JORNADA_COL_CRIACAO,
+        _JORNADA_COL_CLASSIF, _JORNADA_COL_SUBCLASS, _JORNADA_COL_EPS,
+    )
+
+    total = 0
+    total_com_class = 0
+    class_cnt: Counter = Counter()
+    sub_cnt: dict = {}
+    eps_cnt: dict = {}
+
+    for nome in os.listdir(pasta):
+        if not nome.lower().endswith(".xlsx") or nome.startswith("~$"):
+            continue
+        try:
+            wb = load_workbook(os.path.join(pasta, nome), read_only=True, data_only=True)
+        except Exception:
+            continue
+        try:
+            ws = wb.active
+            linhas = ws.iter_rows(values_only=True)
+            header = next(linhas, None)
+            if not header:
+                continue
+            idx = {c: header.index(c) for c in cols_need if c in header}
+            if _JORNADA_COL_GRUPO not in idx or _JORNADA_COL_CRIACAO not in idx:
+                continue
+
+            def _val(col, linha, _idx=idx):
+                i = _idx.get(col)
+                return linha[i] if i is not None and i < len(linha) else None
+
+            for linha in linhas:
+                if linha is None or all(v is None for v in linha):
+                    continue
+                if _val(_JORNADA_COL_GRUPO, linha) not in _JORNADA_GRUPOS_N1_N2:
+                    continue
+                criacao = _jornada_parse_data(_val(_JORNADA_COL_CRIACAO, linha))
+                if not criacao or not (inicio <= criacao.date() <= fim):
+                    continue
+                total += 1
+                cl = _val(_JORNADA_COL_CLASSIF, linha)
+                if cl:
+                    total_com_class += 1
+                    class_cnt[cl] += 1
+                    sub = _val(_JORNADA_COL_SUBCLASS, linha)
+                    eps = _val(_JORNADA_COL_EPS, linha)
+                    if cl not in sub_cnt:
+                        sub_cnt[cl] = Counter()
+                        eps_cnt[cl] = Counter()
+                    if sub:
+                        sub_cnt[cl][sub] += 1
+                    if eps:
+                        eps_cnt[cl][eps] += 1
+        finally:
+            wb.close()
+
+    return total, total_com_class, class_cnt, sub_cnt, eps_cnt
+
 
 class QueueLogHandler(logging.Handler):
     """Encaminha registros de log para uma fila, consumida pela thread da UI."""
@@ -102,6 +209,291 @@ class Card(tk.Frame):
         super().__init__(
             parent, bg=CARD_BG, highlightbackground=CARD_BORDER, highlightthickness=1, bd=0, **kwargs
         )
+
+
+class JornadaWindow(tk.Toplevel):
+    """Visão Jornada: Pareto de Classificação + drill-down Sub-Classificação / Localidade."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Jornada — Classificação de Chamados")
+        self.configure(bg=BG)
+        self.geometry("1160x780")
+        self.minsize(900, 600)
+        self.transient(parent)
+        self._dados = None
+        self._fig = None
+        self._ax_sub = None
+        self._ax_eps = None
+        self._build_ui()
+
+    def _build_ui(self):
+        # ---- filtros ----
+        filtro_card = Card(self)
+        filtro_card.pack(fill="x", padx=14, pady=(12, 0))
+        inner = ttk.Frame(filtro_card, style="Card.TFrame", padding=(14, 10))
+        inner.pack(fill="x")
+
+        self._modo_var = tk.StringVar(value="mes")
+        for texto, valor in [("De / Para", "periodo"), ("Mês", "mes"), ("Ano completo", "ano")]:
+            ttk.Radiobutton(
+                inner, text=texto, value=valor, variable=self._modo_var,
+                command=self._update_controles,
+            ).pack(side="left", padx=(0, 8))
+
+        ttk.Separator(inner, orient="vertical").pack(side="left", fill="y", padx=(6, 10))
+
+        # container que alterna entre os sub-frames de filtro
+        self._ctrl_frame = ttk.Frame(inner, style="Card.TFrame")
+        self._ctrl_frame.pack(side="left")
+
+        # De / Para
+        self._f_periodo = ttk.Frame(self._ctrl_frame, style="Card.TFrame")
+        ttk.Label(self._f_periodo, text="De:", style="Muted.Card.TLabel").pack(side="left")
+        self._e_de = ttk.Entry(self._f_periodo, width=11)
+        self._e_de.insert(0, date.today().strftime("%d/%m/%Y"))
+        self._e_de.pack(side="left", padx=(3, 10))
+        ttk.Label(self._f_periodo, text="Para:", style="Muted.Card.TLabel").pack(side="left")
+        self._e_para = ttk.Entry(self._f_periodo, width=11)
+        self._e_para.insert(0, date.today().strftime("%d/%m/%Y"))
+        self._e_para.pack(side="left", padx=3)
+
+        # Mês + Ano
+        self._f_mes = ttk.Frame(self._ctrl_frame, style="Card.TFrame")
+        ttk.Label(self._f_mes, text="Mês:", style="Muted.Card.TLabel").pack(side="left")
+        self._cb_mes = ttk.Combobox(self._f_mes, values=_MESES_PT, state="readonly", width=12)
+        self._cb_mes.set(_MESES_PT[date.today().month - 1])
+        self._cb_mes.pack(side="left", padx=(3, 10))
+        ttk.Label(self._f_mes, text="Ano:", style="Muted.Card.TLabel").pack(side="left")
+        self._e_ano_mes = ttk.Entry(self._f_mes, width=6)
+        self._e_ano_mes.insert(0, str(date.today().year))
+        self._e_ano_mes.pack(side="left", padx=3)
+
+        # Ano completo
+        self._f_ano = ttk.Frame(self._ctrl_frame, style="Card.TFrame")
+        ttk.Label(self._f_ano, text="Ano:", style="Muted.Card.TLabel").pack(side="left")
+        self._e_ano = ttk.Entry(self._f_ano, width=6)
+        self._e_ano.insert(0, str(date.today().year))
+        self._e_ano.pack(side="left", padx=3)
+
+        ttk.Separator(inner, orient="vertical").pack(side="left", fill="y", padx=(10, 8))
+
+        self._btn_gerar = ttk.Button(
+            inner, text="Gerar", style="Primary.TButton", command=self._gerar,
+        )
+        self._btn_gerar.pack(side="left", padx=(0, 10))
+        self._lbl_total = ttk.Label(inner, text="", style="Muted.Card.TLabel")
+        self._lbl_total.pack(side="left")
+
+        self._update_controles()
+
+        # ---- seletor de classificação (drill-down) ----
+        dd = ttk.Frame(self, style="TFrame", padding=(14, 6, 14, 0))
+        dd.pack(fill="x")
+        ttk.Label(dd, text="Classificação:", style="TLabel").pack(side="left")
+        self._cb_classif = ttk.Combobox(dd, values=[], state="readonly", width=34)
+        self._cb_classif.pack(side="left", padx=6)
+        self._cb_classif.bind("<<ComboboxSelected>>", lambda e: self._update_drilldown())
+
+        # ---- área de gráficos ----
+        self._chart_frame = ttk.Frame(self, style="TFrame")
+        self._chart_frame.pack(fill="both", expand=True, padx=14, pady=(6, 14))
+
+    def _update_controles(self):
+        modo = self._modo_var.get()
+        self._f_periodo.pack_forget()
+        self._f_mes.pack_forget()
+        self._f_ano.pack_forget()
+        if modo == "periodo":
+            self._f_periodo.pack(side="left")
+        elif modo == "mes":
+            self._f_mes.pack(side="left")
+        else:
+            self._f_ano.pack(side="left")
+
+    def _get_inicio_fim(self):
+        modo = self._modo_var.get()
+        if modo == "periodo":
+            try:
+                inicio = datetime.strptime(self._e_de.get().strip(), "%d/%m/%Y").date()
+                fim = datetime.strptime(self._e_para.get().strip(), "%d/%m/%Y").date()
+            except ValueError:
+                messagebox.showwarning("Data inválida", "Use o formato dd/mm/aaaa.", parent=self)
+                return None, None
+            if inicio > fim:
+                messagebox.showwarning("Período inválido", "Data início > data fim.", parent=self)
+                return None, None
+            return inicio, fim
+        if modo == "mes":
+            try:
+                ano = int(self._e_ano_mes.get().strip())
+            except ValueError:
+                messagebox.showwarning("Ano inválido", "Digite um ano numérico.", parent=self)
+                return None, None
+            mes = self._cb_mes.current() + 1
+            _, last = calendar.monthrange(ano, mes)
+            return date(ano, mes, 1), date(ano, mes, last)
+        # ano completo
+        try:
+            ano = int(self._e_ano.get().strip())
+        except ValueError:
+            messagebox.showwarning("Ano inválido", "Digite um ano numérico.", parent=self)
+            return None, None
+        return date(ano, 1, 1), date(ano, 12, 31)
+
+    def _gerar(self):
+        inicio, fim = self._get_inicio_fim()
+        if inicio is None:
+            return
+        self._btn_gerar.config(state="disabled")
+        self._lbl_total.config(text="Carregando…")
+
+        def worker():
+            try:
+                dados = _ler_cache_jornada(inicio, fim)
+                self.after(0, lambda: self._exibir(dados))
+            except JiraExtractorError as e:
+                msg = str(e)
+                self.after(0, lambda: messagebox.showerror("Erro", msg, parent=self))
+            except Exception as e:
+                msg = str(e)
+                self.after(0, lambda: messagebox.showerror("Erro inesperado", msg, parent=self))
+            finally:
+                self.after(0, lambda: self._btn_gerar.config(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _exibir(self, dados):
+        total, total_com_class, class_cnt, sub_cnt, eps_cnt = dados
+        self._dados = dados
+        self._lbl_total.config(
+            text=f"{total} chamados  ({total_com_class} com Classificação)"
+        )
+
+        classificacoes = [c for c, _ in class_cnt.most_common()]
+        self._cb_classif["values"] = classificacoes
+        if classificacoes:
+            self._cb_classif.set(classificacoes[0])
+
+        for w in self._chart_frame.winfo_children():
+            w.destroy()
+        if self._fig is not None:
+            plt.close(self._fig)
+
+        self._fig = plt.Figure(figsize=(13, 8), facecolor="#f1f5f9", tight_layout=False)
+        gs = self._fig.add_gridspec(
+            2, 2, height_ratios=[1.15, 1],
+            hspace=0.55, wspace=0.42,
+            left=0.07, right=0.97, top=0.94, bottom=0.07,
+        )
+        ax_pareto = self._fig.add_subplot(gs[0, :])
+        self._ax_sub = self._fig.add_subplot(gs[1, 0])
+        self._ax_eps = self._fig.add_subplot(gs[1, 1])
+
+        self._draw_pareto(ax_pareto, class_cnt, total, total_com_class)
+
+        top_class = classificacoes[0] if classificacoes else None
+        if top_class:
+            self._draw_drilldown(top_class, sub_cnt, eps_cnt)
+
+        canvas = FigureCanvasTkAgg(self._fig, master=self._chart_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def _draw_pareto(self, ax, class_cnt, total, total_com_class):
+        top = class_cnt.most_common(15)
+        ax.set_facecolor("#f8fafc")
+        if not top:
+            ax.text(
+                0.5, 0.5, "Nenhum chamado classificado no período",
+                ha="center", va="center", transform=ax.transAxes, fontsize=10, color=MUTED,
+            )
+            ax.set_title(
+                f"{total} Chamados  (0 com Classificação)", fontsize=9.5, color=TEXT, pad=6,
+            )
+            return
+
+        labels = [c for c, _ in top]
+        vals = [n for _, n in top]
+        total_classif = total_com_class or sum(vals)
+        acumulado, soma = [], 0
+        for v in vals:
+            soma += v
+            acumulado.append(round(soma / total_classif * 100, 1) if total_classif else 0)
+
+        x = list(range(len(labels)))
+        bar_colors = ["#f59e0b"] + [ACCENT] * (len(labels) - 1)
+        ax.bar(x, vals, color=bar_colors, alpha=0.88, zorder=2)
+        ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=1)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=33, ha="right", fontsize=7.5)
+        ax.set_ylabel("Frequência", fontsize=8)
+        ax.set_title(
+            f"{total} Chamados  ({total_com_class} com Classificação)",
+            fontsize=9.5, color=TEXT, pad=6,
+        )
+        max_v = max(vals) if vals else 1
+        for xi, v in zip(x, vals):
+            ax.text(xi, v + max_v * 0.012, str(v),
+                    ha="center", va="bottom", fontsize=7, fontweight="bold", color=TEXT)
+
+        ax2 = ax.twinx()
+        ax2.plot(x, acumulado, color="#ef4444", marker="o", markersize=4.5,
+                 linewidth=1.8, zorder=3)
+        ax2.set_ylabel("% Acumulado", color="#ef4444", fontsize=8)
+        ax2.tick_params(axis="y", labelcolor="#ef4444", labelsize=7)
+        ax2.set_ylim(0, 115)
+        for xi, pct in zip(x, acumulado):
+            ax2.annotate(f"{pct}%", (xi, pct),
+                         textcoords="offset points", xytext=(0, 5),
+                         ha="center", fontsize=6.5, color="#ef4444")
+
+    def _draw_drilldown(self, classificacao, sub_cnt, eps_cnt):
+        TOP_N = 9
+
+        def _draw_h(ax, counter, titulo):
+            ax.cla()
+            ax.set_facecolor("#f8fafc")
+            top = (counter or Counter()).most_common(TOP_N)
+            if not top:
+                ax.text(0.5, 0.5, "Sem dados", ha="center", va="center",
+                        transform=ax.transAxes, fontsize=8, color=MUTED)
+                ax.set_title(titulo, fontsize=8, pad=3)
+                return
+            labels = [str(c)[:40] for c, _ in reversed(top)]
+            vals = [n for _, n in reversed(top)]
+            total_top = sum(vals)
+            y = list(range(len(labels)))
+            ax.barh(y, vals, color=ACCENT, alpha=0.82, height=0.65)
+            ax.set_yticks(y)
+            ax.set_yticklabels(labels, fontsize=6.5)
+            ax.grid(axis="x", linestyle="--", alpha=0.4)
+            ax.set_title(titulo, fontsize=8, pad=3)
+            max_v = max(vals) if vals else 1
+            for i, v in enumerate(vals):
+                pct = round(v / total_top * 100, 1) if total_top else 0
+                ax.text(v + max_v * 0.015, i, f"{v} ({pct}%)",
+                        va="center", fontsize=6, color=TEXT)
+
+        _draw_h(self._ax_sub, sub_cnt.get(classificacao, Counter()),
+                f"Sub-Classificação — {classificacao}")
+        _draw_h(self._ax_eps, eps_cnt.get(classificacao, Counter()),
+                f"Localidade — {classificacao}")
+
+    def _update_drilldown(self):
+        if not self._dados or self._ax_sub is None:
+            return
+        _, _, _, sub_cnt, eps_cnt = self._dados
+        classificacao = self._cb_classif.get()
+        if not classificacao:
+            return
+        self._draw_drilldown(classificacao, sub_cnt, eps_cnt)
+        self._fig.canvas.draw_idle()
+
+    def destroy(self):
+        if self._fig is not None:
+            plt.close(self._fig)
+        super().destroy()
 
 
 class JiraApp(tk.Tk):
@@ -402,6 +794,22 @@ class JiraApp(tk.Tk):
         self.report_box.pack(side="left", fill="both", expand=True)
         report_scroll.config(command=self.report_box.yview)
 
+        # --- detalhamento card ---
+        detalhe_card = Card(body)
+        detalhe_card.pack(fill="x", pady=(0, 14))
+        detalhe_inner = ttk.Frame(detalhe_card, style="Card.TFrame", padding=(16, 14))
+        detalhe_inner.pack(fill="x")
+
+        detalhe_header = ttk.Frame(detalhe_inner, style="Card.TFrame")
+        detalhe_header.pack(fill="x")
+        ttk.Label(detalhe_header, text="DETALHAMENTO", style="Section.Card.TLabel").pack(side="left")
+
+        self.btn_jornada = ttk.Button(
+            detalhe_header, text="📈  Jornada", style="Primary.TButton",
+            command=self._abrir_jornada,
+        )
+        self.btn_jornada.pack(side="left", padx=(12, 0))
+
         # --- log card ---
         log_card = Card(body)
         log_card.pack(fill="both", expand=True)
@@ -548,6 +956,9 @@ class JiraApp(tk.Tk):
         self._run_job(
             build_daily_report, self.config_data, GRUPO_SOLUCIONADOR_OPTIONS, on_success=self._exibir_report
         )
+
+    def _abrir_jornada(self):
+        JornadaWindow(self)
 
     def _abrir_dialogo_consolidado(self):
         if self.job_running:

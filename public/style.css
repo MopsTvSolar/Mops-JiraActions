@@ -1042,22 +1042,6 @@ button {
   letter-spacing: 0.02em;
 }
 
-.tag-sim {
-  background: rgba(52, 211, 153, 0.16);
-  color: var(--success);
-}
-
-.tag-nao {
-  background: rgba(137, 147, 166, 0.16);
-  color: var(--muted);
-}
-
-.tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 /* popover flutuante do Pareto Solar (hover numa barra). */
 .hover-popover {
   position: fixed;
@@ -1268,14 +1252,6 @@ button {
   color: var(--danger);
 }
 
-.summary-card.tone-info {
-  box-shadow: inset 3px 0 0 var(--dist-azul);
-}
-
-.summary-card.tone-info .summary-value {
-  color: var(--dist-azul);
-}
-
 .summary-card.tone-neutral {
   box-shadow: inset 3px 0 0 var(--dist-cinza);
 }
@@ -1316,39 +1292,6 @@ button {
 
 #por-grupo-block:not(.hidden) {
   margin-bottom: 14px;
-}
-
-.top-assignees {
-  margin-bottom: 14px;
-  font-size: 13px;
-}
-
-.top-assignees:empty {
-  display: none;
-}
-
-.top-assignees .top-assignees-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: 6px;
-}
-
-.top-assignees ol {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text);
-}
-
-.top-assignees li {
-  padding: 2px 0;
-}
-
-.top-assignees .count {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 
 .table-wrap {
@@ -1647,7 +1590,6 @@ button {
   background: rgba(201, 162, 39, 0.08);
 }
 
-
 .dialog-row {
   display: flex;
   gap: 14px;
@@ -1658,15 +1600,6 @@ button {
 
 .dialog-row .field {
   margin-bottom: 0;
-}
-
-/* divisor bem sutil entre blocos de opções dentro de um painel (ex.:
-   Selecionar caixas / Status / Período na Extração completa) — só aparece
-   ENTRE blocos consecutivos, nunca antes do primeiro nem depois do último. */
-.option-group + .option-group {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  margin-top: 14px;
-  padding-top: 14px;
 }
 
 footer {
@@ -1961,6 +1894,622 @@ footer {
   gap: 16px;
 }
 
+/* Tela de largada da home (antes do INICIAR): hero à esquerda, estado do
+   cache + atalhos à direita. */
+.home-largada {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 24px;
+  padding: 24px 0 8px;
+}
+
+.home-largada-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 32px;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(201, 162, 39, 0.16), transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(79, 156, 249, 0.12), transparent 50%),
+    var(--card-bg-elevated);
+  box-shadow: var(--shadow-card);
+}
+
+.home-largada-titulo {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.home-largada-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  max-width: 46ch;
+}
+
+.home-largada-btn {
+  font-size: 1.1rem;
+  padding: 14px 44px;
+  letter-spacing: 0.06em;
+  margin: 6px 0;
+}
+
+.home-largada-fontes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.home-largada-fontes .home-dashboard-tag {
+  margin-right: 6px;
+}
+
+.home-largada-cache {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-largada-secao-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.home-cache-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-cache-card {
+  --cache-cor: var(--dist-cinza);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-left: 4px solid var(--cache-cor);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.home-cache-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--cache-cor);
+}
+
+/* Card da seção sincronizando agora: barra no rodapé (largura = progresso
+   real) com brilho correndo por cima — ver aplicarBarraSyncHome. */
+.home-cache-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.home-cache-card.home-cache-card--rodando {
+  --cache-cor: var(--dist-azul);
+  border-color: rgba(79, 156, 249, 0.45);
+}
+
+.home-cache-card-barra {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(79, 156, 249, 0.15);
+}
+
+.home-cache-card-barra > span {
+  position: relative;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  background: var(--dist-azul);
+  transition: width 0.4s ease;
+}
+
+.home-cache-card-barra > span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: home-cache-brilho 1.2s linear infinite;
+}
+
+@keyframes home-cache-brilho {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.home-cache-card--success { --cache-cor: var(--success); }
+.home-cache-card--warning { --cache-cor: var(--warning); }
+.home-cache-card--danger { --cache-cor: var(--danger); }
+
+.home-cache-card-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.home-cache-selo {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--cache-cor);
+  border: 1px solid var(--cache-cor);
+}
+
+.home-cache-card-sync {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.home-cache-card-info {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.home-cache-sync-status:not(:empty) {
+  margin-top: 10px;
+}
+
+@keyframes home-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.home-reload-btn--girando {
+  animation: home-girar 1s linear infinite;
+  cursor: progress;
+}
+
+.home-largada-atalhos {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.home-atalho {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--card-bg-elevated);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.home-atalho span {
+  font-size: 20px;
+}
+
+.home-atalho:hover {
+  border-color: rgba(201, 162, 39, 0.45);
+  background: var(--secondary-bg);
+}
+
+@media (max-width: 1000px) {
+  .home-largada {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-largada-atalhos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* "Fila dinâmica": carrossel de 3 páginas da home (ver
+   iniciarHomeFilaCarrossel). Reaproveita .pareto-sub-modal-* (track/
+   setas/dots); aqui só o contorno, as abas e o grid da 1ª página. */
+.home-fila {
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 14px 28px;
+}
+
+.home-fila-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.home-fila-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.home-fila-tab {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.home-fila-tab:hover {
+  color: var(--text);
+}
+
+.home-fila-tab.active {
+  background: var(--dist-azul);
+  border-color: var(--dist-azul);
+  color: #fff;
+}
+
+.home-fila .pareto-sub-modal-viewport {
+  transition: height 0.25s ease;
+}
+
+/* Setas flutuando nas laterais (fora do viewport) em vez de colunas
+   próprias — devolve a largura pro conteúdo. */
+.home-fila .pareto-sub-modal-carousel {
+  position: relative;
+}
+
+.home-fila .pareto-sub-modal-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 26px;
+  height: 64px;
+  padding: 0;
+}
+
+.home-fila .home-fila-prev {
+  left: -22px;
+}
+
+.home-fila .home-fila-next {
+  right: -22px;
+}
+
+.home-fila .pareto-sub-modal-arrow:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.home-fila-track {
+  align-items: flex-start;
+}
+
+/* 2px de respiro: o translateY do hover do card não fica cortado. */
+.home-fila-slide {
+  padding: 2px;
+}
+
+/* Página 1 da Fila dinâmica: grade de "tiles" (3 colunas) — SLA e A
+   violar ocupam 2/3, os KPIs (Reabertos/COTI) 1/3 ao lado, e o Grupo ×
+   Mês a largura toda embaixo. Cada tile tem uma faixa de cor no topo que
+   identifica o tipo de métrica. As seções mantêm .home-dashboard-card só
+   pro botão de recarregar (aplicarHomeReloadButtons) achar o title-row. */
+.home-fila-painel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.home-fila-tile--span2 {
+  grid-column: span 2;
+}
+
+.home-fila-tile--span3 {
+  grid-column: 1 / -1;
+}
+
+.home-fila-painel .home-fila-secao {
+  --tile-cor: var(--dist-azul);
+  position: relative;
+  overflow: hidden;
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-fila-painel .home-fila-secao::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--tile-cor);
+  opacity: 0.85;
+}
+
+.home-fila-painel .home-fila-tile--sla { --tile-cor: var(--success); }
+.home-fila-painel .home-fila-tile--reab { --tile-cor: var(--warning); }
+.home-fila-painel .home-fila-tile--violar { --tile-cor: var(--danger); }
+.home-fila-painel .home-fila-tile--coti { --tile-cor: var(--accent); }
+.home-fila-painel .home-fila-tile--grupo { --tile-cor: var(--dist-azul); }
+.home-fila-painel .home-fila-tile--cr { --tile-cor: var(--dist-violeta); }
+.home-fila-painel .home-fila-tile--crkpi { --tile-cor: var(--success); }
+.home-fila-painel .home-fila-tile--crtab { --tile-cor: var(--dist-azul); }
+.home-fila-painel .home-fila-tile--fornrank { --tile-cor: var(--dist-violeta); }
+.home-fila-painel .home-fila-tile--fornkpi { --tile-cor: var(--warning); }
+.home-fila-painel .home-fila-tile--forntab { --tile-cor: var(--dist-azul); }
+
+/* Saldo (resolvidos − criados) nas tabelas: positivo = bom, negativo = ruim. */
+.home-num-bom {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.home-num-ruim {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.home-fila-painel .home-dashboard-title-row {
+  margin-bottom: 16px;
+}
+
+.home-fila-painel .home-dashboard-title-row .home-dashboard-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Conteúdo centralizado na vertical: tiles da mesma linha têm a mesma
+   altura (grid stretch), então o menor não fica com vão embaixo. */
+.home-fila-painel .home-fila-secao > :last-child {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ---- KPI "hero" (construirHomeKpi) ---- */
+.home-kpi-lista {
+  gap: 18px;
+}
+
+.home-kpi + .home-kpi {
+  padding-top: 18px;
+  border-top: 1px solid var(--card-border);
+}
+
+.home-kpi-valor {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.home-kpi-rotulo {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.home-kpi-barra {
+  display: flex;
+  height: 10px;
+  margin-top: 16px;
+  border-radius: 999px;
+  background: var(--secondary-bg);
+  overflow: hidden;
+}
+
+.home-kpi-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.home-kpi-legenda {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-kpi-legenda li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.home-kpi-legenda-texto {
+  flex: 1 1 auto;
+  color: var(--muted);
+}
+
+.home-kpi-legenda strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-kpi-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.home-kpi-rodape {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--card-border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Cor por significado: texto (valor) e fundo (barra/dot) do mesmo tom. */
+.home-kpi-valor.home-kpi--danger { color: var(--danger); }
+.home-kpi-valor.home-kpi--warning { color: var(--warning); }
+.home-kpi-valor.home-kpi--accent { color: var(--accent-soft); }
+.home-kpi-valor.home-kpi--success { color: var(--success); }
+.home-kpi-seg.home-kpi--danger, .home-kpi-dot.home-kpi--danger { background: var(--danger); }
+.home-kpi-seg.home-kpi--warning, .home-kpi-dot.home-kpi--warning { background: var(--warning); }
+.home-kpi-seg.home-kpi--accent, .home-kpi-dot.home-kpi--accent { background: var(--accent); }
+.home-kpi-seg.home-kpi--success, .home-kpi-dot.home-kpi--success { background: var(--success); }
+.home-kpi-dot.home-kpi--neutro { background: var(--dist-cinza); }
+
+/* ---- SLA: anéis maiores, distribuídos na largura toda ---- */
+.home-fila-painel .home-sla-historico-circulos {
+  flex: 1 1 auto;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.home-fila-painel .prazo-donut-mini-holder {
+  width: 72px;
+  height: 72px;
+}
+
+.home-fila-painel .prazo-donut-mini-holder svg {
+  width: 100%;
+  height: 100%;
+}
+
+.home-fila-painel .prazo-donut-mini-pct {
+  font-size: 14px;
+}
+
+.home-fila-painel .home-sla-historico-mes {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---- A violar: heatmap (construirGruposViolar) ---- */
+.home-violar-heat {
+  display: grid;
+  grid-template-columns: 52px repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+.home-violar-heat-dia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding-bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.home-violar-heat-dia small {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.home-violar-heat-dia--hoje {
+  color: var(--accent-soft);
+}
+
+.home-violar-heat .home-violar-group-label {
+  align-self: center;
+  font-size: 12px;
+}
+
+.home-violar-heat .home-violar-tile {
+  width: auto;
+  min-height: 60px;
+  border-radius: 10px;
+}
+
+.home-violar-heat .home-violar-tile-value {
+  font-size: 22px;
+}
+
+.home-violar-heat .home-violar-tile-sem-responsavel {
+  font-size: 9px;
+  margin-top: 3px;
+}
+
+.home-violar-heat .home-violar-tile--zero {
+  opacity: 0.45;
+}
+
+.home-violar-heat .home-violar-tile--hoje {
+  border-color: rgba(230, 201, 92, 0.55);
+}
+
+/* Mapa de calor das tabelas "X × Mês" (construirTabelaMesCriacao): --heat
+   vai de 0 a 1 (valor ÷ maior célula da tabela). */
+.home-heat-cell {
+  background: rgba(242, 85, 92, calc(0.06 + var(--heat) * 0.5));
+  font-weight: 600;
+}
+
+/* ---- Grupo × Mês: tabela com mapa de calor ---- */
+.home-fila-painel .home-dashboard-table {
+  font-size: 13px;
+}
+
+.home-fila-painel .home-dashboard-table td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.home-fila-painel .home-dashboard-table th:not(:first-child),
+.home-fila-painel .home-dashboard-table td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1100px) {
+  .home-fila-painel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-fila-tile--span2 {
+    grid-column: auto;
+  }
+}
+
 .home-dashboard-card {
   background: var(--card-bg-elevated);
   border: 1px solid var(--card-border);
@@ -2010,12 +2559,6 @@ footer {
   border-radius: 999px;
   border: 1px solid var(--card-border);
   white-space: nowrap;
-}
-
-.home-dashboard-tag--atual {
-  color: var(--accent-soft);
-  border-color: var(--accent);
-  background: rgba(201, 162, 39, 0.15);
 }
 
 .home-dashboard-tag--periodo {
@@ -2105,41 +2648,6 @@ footer {
   gap: 10px;
 }
 
-.home-sla-chart-legenda {
-  display: flex;
-  gap: 14px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.home-sla-chart-legenda span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.home-sla-chart-legenda-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  display: inline-block;
-}
-
-.home-sla-chart-legenda-dot--criados {
-  background: var(--sla-chart-criados);
-}
-
-.home-sla-chart-legenda-dot--resolvidos {
-  background: var(--sla-chart-resolvidos);
-}
-
-.home-sla-chart-legenda-dot--baseline {
-  background: var(--warning);
-  border-radius: 0;
-  height: 2px;
-  align-self: center;
-}
-
 /* ".home-sla-chart-plot": eixo (valores da baseline, fixo) + barras
    (rolam na horizontal) lado a lado — eixo não faz parte da área que
    rola, então o "1870"/"1530" ficam sempre visíveis mesmo com scroll. */
@@ -2148,64 +2656,6 @@ footer {
   align-items: flex-start;
   width: 100%;
   min-width: 0;
-}
-
-/* Mesma altura de ".home-sla-chart-bars" (210px) — "bottom" de
-   ".home-sla-chart-eixo-valor" é calculado em JS (bottomDoValor, com
-   CRIADOS_RESOLVIDOS_OFFSET_BASE já embutido) igualzinho ao da linha de
-   baseline dentro de ".home-sla-chart-bars", então os dois batem na
-   mesma altura (nenhum padding aqui — padding NÃO desloca a referência
-   de "bottom" de um filho position:absolute, só a posição do conteúdo
-   em fluxo normal). */
-.home-sla-chart-eixo {
-  position: relative;
-  flex: 0 0 76px;
-  width: 76px;
-  height: 210px;
-}
-
-/* Índice do baseline (amarelo) fica numa coluna própria, à ESQUERDA dos
-   índices da malha (cinza, mais perto das barras) — "right" maior
-   desloca pra esquerda. */
-.home-sla-chart-eixo-valor {
-  position: absolute;
-  right: 38px;
-  transform: translateY(50%);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--warning);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.home-sla-chart-eixo-valor--grid {
-  right: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-/* Liga o número do eixo à linha correspondente em ".home-sla-chart-bars"
-   — mesma altura (bottom), só no respiro ENTRE o número e o início das
-   barras (não por baixo do texto): a largura de cada variante bate com o
-   "right" do rótulo correspondente (".home-sla-chart-eixo-valor--grid" =
-   8px, ".home-sla-chart-eixo-valor" = 38px), então a linha começa
-   exatamente onde o número termina, nunca atravessa por cima dele. */
-.home-sla-chart-eixo-linha {
-  position: absolute;
-  right: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-.home-sla-chart-eixo-linha--grid {
-  width: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.home-sla-chart-eixo-linha--baseline {
-  width: 38px;
-  border-top: 2px dashed var(--warning);
 }
 
 .home-sla-chart-bars {
@@ -2251,32 +2701,6 @@ footer {
   align-items: flex-end;
   gap: 0;
   height: 180px;
-}
-
-/* Linha de baseline amarela — 1 elemento só, contínuo (filha de
-   ".home-sla-chart-bars", largura fixa calculada em JS pra cobrir todos
-   os meses, ver "larguraTotalPx"), mesmo "bottom" do rótulo no eixo.
-   z-index negativo: fica atrás do conteúdo normal (as barras, que não são
-   "position"ed) — z-index negativo pinta ANTES do conteúdo em fluxo
-   normal, mesmo sendo um elemento position:absolute. */
-.home-sla-chart-baseline {
-  position: absolute;
-  z-index: -1;
-  left: 0;
-  height: 0;
-  border-top: 2px dashed var(--warning);
-  pointer-events: none;
-}
-
-/* Malha cartesiana — mesmo truque/z-index da baseline acima, só que linha
-   fina sólida cinza-claro em vez de tracejada amarela. */
-.home-sla-chart-grid {
-  position: absolute;
-  z-index: -1;
-  left: 0;
-  height: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  pointer-events: none;
 }
 
 .home-sla-chart-bar {
@@ -2339,12 +2763,6 @@ footer {
   font-weight: 700;
   color: var(--text);
   white-space: nowrap;
-}
-
-.home-sla-chart-col-mes {
-  font-size: 10px;
-  line-height: 14px;
-  color: var(--muted);
 }
 
 /* Variante usada só pelo gráfico de "Índice de reabertura" (Material
@@ -2429,13 +2847,6 @@ footer {
   flex-direction: column;
 }
 
-.home-violar-tiles {
-  display: grid;
-  grid-template-columns: repeat(7, 42px);
-  gap: 5px;
-  justify-content: start;
-}
-
 .home-violar-tile {
   position: relative;
   width: 42px;
@@ -2449,13 +2860,6 @@ footer {
   justify-content: center;
   gap: 1px;
   padding: 2px 2px 3px;
-}
-
-.home-violar-tile-label {
-  font-size: 8px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
 }
 
 .home-violar-tile-value {
@@ -2477,24 +2881,6 @@ footer {
   white-space: nowrap;
 }
 
-/* "Chamados Criados": mesmo tile de "A violar", mas o mês inteiro não
-   cabe em 7 colunas fixas — quebra linha livremente. */
-.home-criados-tiles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-/* Sutil (mesmo padrão de "sem responsável" acima), mas em vermelho — só
-   aparece quando pelo menos 1 chamado do dia/grupo já foi P0/P1/P2. */
-.home-violar-tile-p0p1p2 {
-  font-size: 7px;
-  font-weight: 700;
-  color: var(--danger);
-  line-height: 1;
-  white-space: nowrap;
-}
-
 .home-violar-tile.tone-warning {
   background: rgba(245, 165, 36, 0.2);
 }
@@ -2503,84 +2889,11 @@ footer {
   background: rgba(242, 85, 92, 0.28);
 }
 
-/* Uma linha por grupo (N1/N2/Prod) dentro do sub-bloco da caixa, em vez de
-   um detalhamento espremido dentro do quadrado — cada linha já é um grupo
-   só, então o número do quadrado fica evidente sem precisar de texto extra
-   dentro dele. */
-.home-violar-grupos {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.home-violar-group-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .home-violar-group-label {
   flex: 0 0 34px;
   font-size: 10px;
   font-weight: 700;
   color: var(--muted);
-}
-
-/* "Violados — Quantidade atual sem solução": caixinhas contornadas e
-   centralizadas na linha, em vez de esticadas (comportamento padrão de
-   .summary-cards) — escopado só aqui pra não afetar as outras telas que
-   usam .summary-cards/.summary-card. */
-.home-violados-abertos-cards {
-  justify-content: start;
-  grid-template-columns: repeat(auto-fit, minmax(70px, max-content));
-}
-
-.home-violados-abertos-cards .summary-card {
-  border: 1px solid var(--card-border);
-}
-
-/* "Violados — Quantidade atual sem solução": 1 coluna por grupo (N1/N2/
-   PROD), separadas por divisor vertical — dentro de cada coluna, os 4
-   cards (A violar/Violados/Aguardando Fornecedor/PDST) num grid 2×2. */
-.home-violados-grid {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.home-violados-grid-col {
-  padding-left: 20px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.home-violados-grid-col:first-child {
-  padding-left: 0;
-  border-left: none;
-}
-
-.home-violados-grid-col-titulo {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  margin-bottom: 8px;
-}
-
-.home-violados-grid-col-cards {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(70px, max-content));
-  gap: 8px;
-}
-
-.home-violados-grid-col-cards .summary-card {
-  border: 1px solid var(--card-border);
-}
-
-/* "Reabertos do mês": caixinhas contornadas (Solar/TV lado a lado). */
-.home-reabertos-mes-cards .summary-card {
-  border: 1px solid var(--card-border);
 }
 
 /* "Colaboradores": mini pizza (dentro do prazo x violado) na coluna "%",
@@ -2812,67 +3125,6 @@ footer {
 .pareto-carousel-slide {
   min-width: 0;
   margin-bottom: 0;
-}
-
-/* "Classificação — Funil": barra decrescente por valor, a maior primeiro
-   (já vem ordenada do backend), centralizada — largura proporcional ao
-   maior total. */
-.home-funil {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.home-funil-row {
-  display: flex;
-  justify-content: flex-start;
-}
-
-.home-funil-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 12%;
-  padding: 6px 12px;
-  border-radius: 4px;
-  color: #1a1a1a;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.home-funil-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.home-funil-valor {
-  flex-shrink: 0;
-}
-
-/* Legenda de bolinhas coloridas usada nos widgets da home com mapa de calor
-   (hoje só "Chamados Criados" — ver home-bar30-legend-dot--violado). */
-.home-bar30-legend {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 10px;
-}
-
-.home-bar30-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.home-bar30-legend-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  flex-shrink: 0;
 }
 
 /* Tela estreita: menu lateral empilha acima do conteúdo em vez de coluna
@@ -3907,19 +4159,6 @@ footer {
 
 .cache-secao.aberto .cache-secao-corpo {
   display: block;
-}
-
-/* "*" vermelho no canto do tile de "Chamados Criados": o dia tem GML
-   Concluído/Revisão Pós-Implementação com Planned end nele (hover lista). */
-.home-violar-tile-gml {
-  position: absolute;
-  top: 0;
-  right: 3px;
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1;
-  color: var(--danger);
-  cursor: help;
 }
 
 /* Gráfico da home que abre popup em carrossel ao clicar (ver

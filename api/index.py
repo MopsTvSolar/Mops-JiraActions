@@ -25,7 +25,6 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
-import zipfile
 from collections import Counter, defaultdict
 from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
@@ -48,20 +47,15 @@ from jira_extractor import (  # noqa: E402
     PROJETO_INC,
     PROJETO_PDST,
     SLA_RESOLUTION_FIELDS,
+    STATUS_FECHADOS_HOME_DASHBOARD,
     export_general_report_pdf,
     extract_eps_subclassificacao,
-    extract_fornecedor,
     fetch_categoria_encerrados,
     fetch_chamados_a_violar,
-    fetch_chamados_criticos,
-    fetch_chamados_geral_classificacao,
     fetch_chamados_por_query,
     fetch_extracao_gml,
     fetch_chamados_reabertos,
-    fetch_chamados_violados,
-    fetch_criados_por_dia_grupo,
     fetch_criados_x_resolvidos,
-    fetch_grupo_criacao_mensal,
     fetch_fornecedor_criacao_mensal,
     fetch_reabertos_analitico,
     fetch_resolvidos_encerrados_analitico,
@@ -70,7 +64,6 @@ from jira_extractor import (  # noqa: E402
     fetch_pdst_abertos_por_grupo,
     fetch_total_a_violar_abertos,
     fetch_total_aguardando_fornecedor,
-    fetch_total_criados_periodo,
     fetch_total_pdst_abertos,
     fetch_total_violados_abertos,
     fetch_violados_abertos_por_grupo,
@@ -215,6 +208,11 @@ CACHE_COL_CHAVE = "Número do Chamado"
 CACHE_COL_STATUS = "Status"
 CACHE_COL_GRUPO = "Grupo Solucionador"
 CACHE_STATUS_FECHADOS = {"Encerrado", "Resolvido", "Cancelado", "Reprovado", "Arquivado"}
+# Status que a sincronização NÃO reconfere (_cache_entradas_pendentes).
+# "Resolvido" fica de fora de propósito (pedido do usuário): pode ser
+# reaberto, então o status dele é sempre reconsultado no Jira. Continua
+# contando como fechado em CACHE_STATUS_FECHADOS (contagem de abertos).
+CACHE_STATUS_SEM_RECONFERENCIA = CACHE_STATUS_FECHADOS - {"Resolvido"}
 CACHE_SYNC_META_FILENAME = "_sync_meta.json"
 # Nº de chaves por consulta "key IN (...)" na sincronização — evita montar
 # uma JQL gigante de uma vez quando a planilha tem muitos chamados abertos.
@@ -497,43 +495,8 @@ def _rows_to_excel_bytes_multi(sheets, fieldnames):
 TOP_ASSIGNEES_LIMIT = 8
 
 
-def _build_summary(rows):
-    """Contagens usadas pelos cards/KPIs da tela de resultados (não pelo arquivo
-    exportado, que continua com as linhas completas)."""
-    assignee_counts = Counter(r.get("assignee") for r in rows if r.get("assignee"))
-
-    return {
-        "total": len(rows),
-        "top_assignees": assignee_counts.most_common(TOP_ASSIGNEES_LIMIT),
-    }
-
-
-def _is_download(body):
-    return (body or {}).get("format") in ("csv", "excel", "both")
-
-
-def _respond(rows, base_name, body, extra=None):
-    """Sem 'format' no corpo: devolve JSON (linhas + resumo, + "extra" quando
-    houver) para exibir na tela. Com 'format': devolve o arquivo pronto para
-    download (comportamento antigo, "extra" é ignorado)."""
-    if _is_download(body):
-        return _send_rows(rows, base_name, body.get("format"))
-
-    payload = {
-        "fields": list(rows[0].keys()) if rows else [],
-        "rows": rows,
-        "summary": _build_summary(rows),
-    }
-    if extra:
-        payload.update(extra)
-    return jsonify(payload)
-
-
 GRUPO_FIELD_NAME = "Grupo Solucionador"
-TIPO_INCIDENTE_MOPS_FIELD_NAME = "Tipo Incidente MOPS"
 CATEGORIA_ENCERRAMENTO_FIELD_NAME = "Categoria de Encerramento"
-NIVEL_ESCALONAMENTO_FIELD_NAME = "Nivel de Escalonamento"
-RESPONSAVEL_MOPS_FIELD_NAME = "Responsável pela Solicitação MOPS"
 SUBCLASSIFICACAO_FIELD_NAME = "Sub-Classificação"
 CLASSIFICACAO_FIELD_NAME = "Classificação"
 EPS_FIELD_NAME = "PROP_Site"
@@ -624,63 +587,11 @@ def _resolve_grupo_field_id(config):
     return _resolve_field_id(config, GRUPO_FIELD_NAME)
 
 
-def _resolve_tipo_incidente_mops_field_id(config):
-    return _resolve_field_id(config, TIPO_INCIDENTE_MOPS_FIELD_NAME)
-
-
 _account_id_cache = {}
-
-
-def _resolve_account_id(config, nome_completo):
-    """Resolve o accountId de um usuário pelo nome (mesmo texto do
-    "assignee" exibido no Jira) — necessário porque `assignee = "Nome"` em
-    JQL não é confiável no Cloud quando há ambiguidade de nome: testado
-    direto na API, `assignee = "DIEGO VERGA TEIXEIRA"` devolveu 0 resultados
-    mesmo havendo 46 chamados reais dele no período (provavelmente por causa
-    de outros "TEIXEIRA"/"VERGA" cadastrados no mesmo Jira), enquanto
-    `assignee = "<accountId>"` resolveu os 46 certinho. Cache em memória por
-    (URL, nome em maiúsculas), mesmo padrão de _resolve_field_id."""
-    cache_key = (config["url"], nome_completo.strip().upper())
-    cached = _account_id_cache.get(cache_key)
-    if cached:
-        return cached
-
-    resp = requests.get(
-        f"{config['url']}/rest/api/3/user/search",
-        auth=(config["email"], config["token"]),
-        headers={"Accept": "application/json"},
-        params={"query": nome_completo},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    usuarios = resp.json()
-
-    alvo = nome_completo.strip().upper()
-    encontrados = [u for u in usuarios if (u.get("displayName") or "").strip().upper() == alvo]
-    if not encontrados:
-        raise JiraExtractorError(f'Não encontrei o usuário "{nome_completo}" no Jira.')
-    if len(encontrados) > 1:
-        app.logger.warning(
-            'Mais de um usuário chamado "%s" no Jira — usando o primeiro: %s.',
-            nome_completo,
-            encontrados[0]["accountId"],
-        )
-
-    account_id = encontrados[0]["accountId"]
-    _account_id_cache[cache_key] = account_id
-    return account_id
 
 
 def _resolve_categoria_encerramento_field_id(config):
     return _resolve_field_id(config, CATEGORIA_ENCERRAMENTO_FIELD_NAME)
-
-
-def _resolve_nivel_escalonamento_field_id(config):
-    return _resolve_field_id(config, NIVEL_ESCALONAMENTO_FIELD_NAME)
-
-
-def _resolve_responsavel_mops_field_id(config):
-    return _resolve_field_id(config, RESPONSAVEL_MOPS_FIELD_NAME)
 
 
 def _resolve_subclassificacao_field_id(config):
@@ -723,37 +634,6 @@ def _por_grupo_a_violar(rows, grupos):
     return resultado
 
 
-def _send_rows(rows, base_name, fmt):
-    if not rows:
-        return jsonify({"empty": True, "message": "Nenhum chamado encontrado para os critérios atuais."})
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = f"{base_name}_{timestamp}"
-
-    if fmt == "csv":
-        data = _rows_to_csv_bytes(rows)
-        return send_file(
-            io.BytesIO(data), mimetype="text/csv", as_attachment=True, download_name=f"{stem}.csv"
-        )
-
-    if fmt == "excel":
-        data = _rows_to_excel_bytes(rows)
-        return send_file(
-            io.BytesIO(data),
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name=f"{stem}.xlsx",
-        )
-
-    # both -> zip com os dois arquivos
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"{stem}.csv", _rows_to_csv_bytes(rows))
-        zf.writestr(f"{stem}.xlsx", _rows_to_excel_bytes(rows))
-    buf.seek(0)
-    return send_file(buf, mimetype="application/zip", as_attachment=True, download_name=f"{stem}.zip")
-
-
 @app.route("/api/connect", methods=["POST"])
 def connect():
     body = request.get_json(silent=True) or {}
@@ -775,37 +655,44 @@ def connect():
 
 @app.route("/api/home-reabertos-mes", methods=["POST"])
 def home_reabertos_mes():
-    """Widget da home "Reabertos do mês": % de reabertura, do começo do mês
-    atual até hoje. Reaproveita fetch_chamados_reabertos +
-    fetch_total_criados_periodo, exatamente a mesma conta já usada na ação
-    Reabertos (total de reabertos ÷ total de criados no mesmo período/
-    caixa/projetos) — só que com esse período fixo em vez do escolhido
-    pelo usuário. Uma seção por caixa (Solar e Claro Tv).
-
-    Projetos fixos — ver nota em _build_base_jql_home. Essa rota já foi
-    "SLA + reabertura" junta (home_sla_mes) — o pedaço de SLA virou widget
-    à parte, histórico e 100% cache (ver /api/home-sla-cache), então saiu
-    daqui (evitava uma consulta ao Jira que não tinha mais consumidor)."""
-    body = request.get_json(silent=True) or {}
+    """Widget da home "Reabertos do mês" (cacheado): % de reabertura do
+    começo do mês atual até hoje, por caixa, lido só das planilhas de cache
+    (nenhuma consulta ao Jira). Base = chamados da caixa CRIADOS no período
+    (_home_cache_chamado_da_caixa: N1/N2 só INC, Prod só PDST); reabertos =
+    os desses com "Já foi Reaberto" = "Sim" — mesmo bucket por criação do
+    "Índice de reabertura" (_cache_criados_resolvidos_historico). Acompanha a
+    última sincronização do cache."""
     hoje = datetime.now(BRAZIL_TZ).date()
     inicio_mes = hoje.replace(day=1)
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
-        config = _config_from_request(body)
-        config_reabertos = dict(config, jql=_build_base_jql_home(caixa_id))
-        reabertos_rows = fetch_chamados_reabertos(config_reabertos, inicio_mes, hoje)
-        total_criados_periodo = fetch_total_criados_periodo(config_reabertos, inicio_mes, hoje)
-        percentual_reabertura = (
-            round(len(reabertos_rows) / total_criados_periodo * 100, 1) if total_criados_periodo else 0.0
-        )
+        grupos = set(CAIXAS[caixa_id]["grupos"])
+        contagem = {"criados": 0, "reabertos": 0}
 
+        def processar(valor, grupos=grupos, contagem=contagem):
+            if not _home_cache_chamado_da_caixa(valor, grupos):
+                return
+            criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
+            if not criacao or not inicio_mes <= criacao.date() <= hoje:
+                return
+            contagem["criados"] += 1
+            if valor(CACHE_COL_REABERTO) == "Sim":
+                contagem["reabertos"] += 1
+
+        _cache_para_cada_linha(
+            CACHE_PARTICOES[caixa_id]["pasta"],
+            [CACHE_COL_GRUPO, CACHE_COL_CHAVE, CACHE_COL_CRIACAO],
+            processar,
+            colunas_opcionais=[CACHE_COL_REABERTO],
+        )
+        criados = contagem["criados"]
         caixas_resultado.append(
             {
                 "caixa": caixa_id,
-                "total_reabertos": len(reabertos_rows),
-                "total_criados_periodo": total_criados_periodo,
-                "percentual_reabertura": percentual_reabertura,
+                "total_reabertos": contagem["reabertos"],
+                "total_criados_periodo": criados,
+                "percentual_reabertura": round(contagem["reabertos"] / criados * 100, 1) if criados else 0.0,
             }
         )
 
@@ -935,6 +822,46 @@ def _cache_sla_historico():
         "solar": montar_linha(contagem_solar),
         "tv": montar_linha(contagem_tv),
     }
+
+
+@app.route("/api/home-cache-status", methods=["POST"])
+def home_cache_status():
+    """Tela de largada da home (antes do INICIAR): estado de cada seção da
+    tela de Cache — "secoes" no corpo ([{id, label, caixa, pasta}], a mesma
+    lista que a tela de Cache guarda no navegador; pasta vazia = pasta
+    padrão da caixa, mesma regra de _cache_resolve_particao). Sem "secoes",
+    usa as partições padrão. Por seção: quantas planilhas, tamanho e a
+    última sincronização. Barato de propósito: só lista a pasta e lê o
+    _sync_meta.json (sem abrir planilha, sem Jira, sem credenciais). Sem
+    registro no meta, cai pra data de modificação mais recente das
+    planilhas."""
+    body = request.get_json(silent=True) or {}
+    secoes = body.get("secoes")
+    if not isinstance(secoes, list):
+        secoes = [{"id": pid, "caixa": pid} for pid in (CAIXA_SOLAR, CAIXA_TV, "gml", "om")]
+
+    particoes = []
+    for secao in secoes:
+        if not isinstance(secao, dict):
+            continue
+        particao = _cache_resolve_particao(secao)
+        pasta = particao["pasta"]
+        info = {"id": secao.get("id") or particao["id"], "label": secao.get("label") or particao["label"],
+                "existe": os.path.isdir(pasta), "planilhas": 0, "tamanho_bytes": 0, "ultima_sync": None}
+        if info["existe"]:
+            nomes = [n for n in os.listdir(pasta) if n.lower().endswith(".xlsx") and not n.startswith("~$")]
+            caminhos = [os.path.join(pasta, n) for n in nomes]
+            info["planilhas"] = len(nomes)
+            info["tamanho_bytes"] = sum(os.path.getsize(c) for c in caminhos)
+            meta = _cache_load_meta(pasta)
+            datas = [v for n, v in meta.items() if n in nomes and isinstance(v, str)]
+            if datas:
+                info["ultima_sync"] = max(datetime.fromisoformat(d) for d in datas).isoformat()
+            elif caminhos:
+                mtime = max(os.path.getmtime(c) for c in caminhos)
+                info["ultima_sync"] = datetime.fromtimestamp(mtime, BRAZIL_TZ).isoformat()
+        particoes.append(info)
+    return jsonify({"agora": datetime.now(BRAZIL_TZ).isoformat(), "particoes": particoes})
 
 
 @app.route("/api/home-sla-cache", methods=["POST"])
@@ -1109,52 +1036,6 @@ def _home_cache_chamado_da_caixa(valor, grupos):
     return str(valor(CACHE_COL_CHAVE) or "").startswith(f"{prefixo}-")
 
 
-@app.route("/api/home-classificacao-funil", methods=["POST"])
-def home_classificacao_funil():
-    """Widget da home "Classificação — Funil" (tag "Mês atual · Cacheado"):
-    top 5 valores de "Classificação" com mais chamados criados do começo do
-    mês atual até hoje. Clicar numa barra abre o gráfico de criados por dia dessa Classificação
-    (ver /api/home-funil-criados-dia). Uma seção por caixa (Solar e Claro
-    Tv). Lê só as planilhas do cache local de cada caixa (nenhuma consulta
-    ao Jira, nem credenciais — mesmo padrão de /api/home-colaboradores-
-    cache): só funciona rodando localmente e os números acompanham a última
-    sincronização do cache.
-
-    N1/N2 só "Central de Incidentes", Prod só "Abertura de Chamados" — ver
-    _home_cache_chamado_da_caixa."""
-    hoje = datetime.now(BRAZIL_TZ).date()
-    inicio_mes = hoje.replace(day=1)
-
-    caixas_resultado = []
-    for caixa_id in CAIXAS:
-        pasta = CACHE_PARTICOES[caixa_id]["pasta"]
-        if not os.path.isdir(pasta):
-            raise JiraExtractorError(f'Pasta de cache não encontrada neste ambiente: "{pasta}".')
-        grupos = set(CAIXAS[caixa_id]["grupos"])
-
-        totais = Counter()
-
-        def processar(valor):
-            classificacao = valor(CACHE_COL_CLASSIFICACAO)
-            if not classificacao or not _home_cache_chamado_da_caixa(valor, grupos):
-                return
-            criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
-            if not criacao or not inicio_mes <= criacao.date() <= hoje:
-                return
-            totais[classificacao] += 1
-
-        _cache_para_cada_linha(
-            pasta,
-            [CACHE_COL_CLASSIFICACAO, CACHE_COL_GRUPO, CACHE_COL_CHAVE, CACHE_COL_CRIACAO],
-            processar,
-        )
-
-        ranking = [{"classificacao": c, "total": total} for c, total in totais.most_common(5)]
-        caixas_resultado.append({"caixa": caixa_id, "ranking": ranking})
-
-    return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
-
-
 def _mes_atras(d, meses):
     """"d" deslocado "meses" meses pra trás (dia além do fim do mês de
     destino é truncado nele — ex.: dia 31 num mês de 30 dias cai no 30)."""
@@ -1164,120 +1045,73 @@ def _mes_atras(d, meses):
     return date(ano_novo, mes_novo, min(d.day, calendar.monthrange(ano_novo, mes_novo)[1]))
 
 
-@app.route("/api/home-funil-criados-dia", methods=["POST"])
-def home_funil_criados_dia():
-    """Gráfico que abre ao clicar numa barra de "Classificação — Funil" da
-    home: chamados criados por dia de UMA Classificação ("classificacao" no
-    corpo) na caixa escolhida ("caixa", padrão solar), do começo do mês
-    atual até hoje, + "baseline" = média diária desse mesmo recorte no
-    PRÓPRIO mês atual (total criado no mês / dias do mês até hoje). Lê só as planilhas do
-    cache local da caixa (nenhuma consulta ao Jira, nem credenciais) — só
-    funciona rodando localmente, e os números acompanham a última
-    sincronização do cache. Mesma regra de projeto do funil (ver
-    _home_cache_chamado_da_caixa)."""
-    body = request.get_json(silent=True) or {}
-    caixa_id = _resolve_caixa(body)
-    classificacao = (body.get("classificacao") or "").strip()
-    if not classificacao:
-        raise JiraExtractorError("Informe a Classificação.")
-
-    pasta = CACHE_PARTICOES[caixa_id]["pasta"]
-    if not os.path.isdir(pasta):
-        raise JiraExtractorError(f'Pasta de cache não encontrada neste ambiente: "{pasta}".')
-    grupos = set(CAIXAS[caixa_id]["grupos"])
-
-    hoje = datetime.now(BRAZIL_TZ).date()
-    inicio_mes = hoje.replace(day=1)
-
-    por_dia = Counter()
-
-    def processar(valor):
-        if valor(CACHE_COL_CLASSIFICACAO) != classificacao:
-            return
-        if not _home_cache_chamado_da_caixa(valor, grupos):
-            return
-        criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
-        if criacao and inicio_mes <= criacao.date() <= hoje:
-            por_dia[criacao.date()] += 1
-
-    _cache_para_cada_linha(pasta, [CACHE_COL_CLASSIFICACAO, CACHE_COL_GRUPO, CACHE_COL_CHAVE, CACHE_COL_CRIACAO], processar)
-
-    serie = []
-    dia = inicio_mes
-    while dia <= hoje:
-        serie.append({"data": dia.isoformat(), "total": por_dia.get(dia, 0)})
-        dia += timedelta(days=1)
-
-    total = sum(item["total"] for item in serie)
-    return jsonify(
-        {
-            "classificacao": classificacao,
-            "inicio": inicio_mes.isoformat(),
-            "fim": hoje.isoformat(),
-            "total": total,
-            "serie": serie,
-            "baseline": round(total / len(serie), 1),
-        }
-    )
-
-
 @app.route("/api/home-grupo-criacao", methods=["POST"])
 def home_grupo_criacao():
-    """Widget da home: réplica de um gadget de dashboard nativo do Jira
-    (Grupo Solucionador × mês de criação) — entre os chamados atualmente
-    abertos, quantos foram criados em cada mês, por grupo. Mostra as duas
-    caixas de uma vez (não depende do alternador Solar/Claro Tv) — cada
-    caixa usa seus próprios grupos (CAIXAS[caixa]["grupos"]: 3 pra Solar, 2
-    pra Claro Tv), então o resultado já "respeita as regras" de cada uma
-    sozinho.
-
-    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
-    Chamados" — ver nota em _build_base_jql_home."""
-    body = request.get_json(silent=True) or {}
-    config = _config_from_request(body)
-
-    try:
-        grupo_field_id = _resolve_grupo_field_id(config)
-    except Exception:
-        app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
-        raise JiraExtractorError('Campo "Grupo Solucionador" não encontrado no Jira.')
-
-    # "Classificação" alimenta o Pareto do popup (best-effort: sem o campo,
-    # o Pareto sai vazio em vez de derrubar o widget).
-    try:
-        classificacao_field_id = _resolve_classificacao_field_id(config)
-    except Exception:
-        app.logger.exception("Falha ao resolver o campo Classificação")
-        classificacao_field_id = None
-
-    # "Sub-Classificação" e "PROP_Site" (localidade) alimentam os rankings que
-    # aparecem ao clicar numa barra do Pareto (mesma regra: best-effort).
-    try:
-        subclassificacao_field_id = _resolve_subclassificacao_field_id(config)
-    except Exception:
-        app.logger.exception("Falha ao resolver o campo Sub-Classificação")
-        subclassificacao_field_id = None
-    try:
-        eps_field_id = _resolve_eps_field_id(config)
-    except Exception:
-        app.logger.exception('Falha ao resolver o campo "PROP_Site"')
-        eps_field_id = None
+    """Widget da home "Grupo Solucionador × Mês de Criação" (cacheado):
+    entre os chamados atualmente ABERTOS da caixa (Status do cache fora de
+    STATUS_FECHADOS_HOME_DASHBOARD), quantos foram criados em cada mês, por
+    grupo — mesmo formato de fetch_grupo_criacao_mensal, mas lido só das
+    planilhas de cache (nenhuma consulta ao Jira; o status acompanha a última
+    sincronização). N1/N2 só INC, Prod só PDST (_home_cache_chamado_da_caixa).
+    Só entram meses com pelo menos 1 chamado. "chamados" alimenta o popup
+    (Pareto por Classificação etc., ver construirSlideParetoClassificacao)."""
+    fechados = set(STATUS_FECHADOS_HOME_DASHBOARD)
 
     caixas_resultado = []
     for caixa_id in CAIXAS:
-        dados = fetch_grupo_criacao_mensal(
-            config,
-            CAIXAS[caixa_id]["grupos"],
-            grupo_field_id,
-            prod_projetos=[PROJETO_PDST],
-            classificacao_field_id=classificacao_field_id,
-            subclassificacao_field_id=subclassificacao_field_id,
-            eps_field_id=eps_field_id,
+        grupos = CAIXAS[caixa_id]["grupos"]
+        grupos_set = set(grupos)
+        contagem = {g: Counter() for g in grupos}
+        chamados = []
+
+        def processar(valor, grupos_set=grupos_set, contagem=contagem, chamados=chamados):
+            if not _home_cache_chamado_da_caixa(valor, grupos_set):
+                return
+            status = valor(CACHE_COL_STATUS)
+            if status in fechados:
+                return
+            criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
+            if not criacao:
+                return
+            grupo = valor(CACHE_COL_GRUPO)
+            contagem[grupo][f"{criacao.year:04d}-{criacao.month:02d}"] += 1
+            chamados.append(
+                {
+                    "key": str(valor(CACHE_COL_CHAVE) or ""),
+                    "grupo": grupo,
+                    "status": status or "Sem status",
+                    "criado": criacao.strftime("%Y-%m-%d"),
+                    "classificacao": valor(CACHE_COL_CLASSIFICACAO),
+                    "subclassificacao": valor(CACHE_COL_SUBCLASSIFICACAO),
+                    "eps": valor(CACHE_COL_EPS),
+                }
+            )
+
+        _cache_para_cada_linha(
+            CACHE_PARTICOES[caixa_id]["pasta"],
+            [CACHE_COL_GRUPO, CACHE_COL_CHAVE, CACHE_COL_CRIACAO, CACHE_COL_STATUS],
+            processar,
+            colunas_opcionais=[CACHE_COL_CLASSIFICACAO, CACHE_COL_SUBCLASSIFICACAO, CACHE_COL_EPS],
         )
-        # O Pareto por Classificação do popup é montado no front a partir de
-        # "chamados" (cada um traz "classificacao"), pra refiltrar por caixa
-        # na hora — ver construirSlideParetoClassificacao em app.js.
-        caixas_resultado.append(dict(caixa=caixa_id, **dados))
+
+        meses = sorted({mes for c in contagem.values() for mes in c})
+        linhas = []
+        totais_por_mes = Counter()
+        for g in grupos:
+            por_mes = [contagem[g].get(mes, 0) for mes in meses]
+            for mes, v in zip(meses, por_mes):
+                totais_por_mes[mes] += v
+            linhas.append({"grupo": g, "por_mes": por_mes, "total": sum(por_mes)})
+        caixas_resultado.append(
+            {
+                "caixa": caixa_id,
+                "meses": meses,
+                "linhas": linhas,
+                "totais_por_mes": [totais_por_mes[m] for m in meses],
+                "total_geral": sum(l["total"] for l in linhas),
+                "chamados": chamados,
+            }
+        )
     return jsonify({"caixas": caixas_resultado})
 
 
@@ -1304,58 +1138,6 @@ def home_fornecedor_criacao():
         for caixa_id in CAIXAS
     ]
     return jsonify({"caixas": caixas_resultado})
-
-
-@app.route("/api/home-criados-mes", methods=["POST"])
-def home_criados_mes():
-    """Widget da home "Chamados Criados": um quadradinho por dia (do começo
-    do mês atual até hoje) e por grupo (N1/N2/PROD pra Solar, N1/N2 pra
-    Claro Tv) — mesmo estilo visual de "A violar". O número em evidência é
-    o total de chamados criados naquele dia; embaixo, menor, quantos desses
-    já foram P0/P1/P2 em algum momento (fetch_criados_por_dia_grupo).
-
-    N1/N2 sempre só "Central de Incidentes", Prod só "Abertura de
-    Chamados" — ver nota em _build_base_jql_home."""
-    body = request.get_json(silent=True) or {}
-    projetos = [PROJETO_INC]
-    hoje = datetime.now(BRAZIL_TZ).date()
-    inicio_mes = hoje.replace(day=1)
-
-    caixas_resultado = []
-    for caixa_id in CAIXAS:
-        config = _config_from_request(body)
-        grupos = CAIXAS[caixa_id]["grupos"]
-
-        try:
-            grupo_field_id = _resolve_grupo_field_id(config)
-        except Exception:
-            app.logger.exception("Falha ao resolver o campo Grupo Solucionador")
-            grupo_field_id = None
-
-        dias = []
-        if grupo_field_id:
-            total_por_dia_grupo, p0p1p2_por_dia_grupo = fetch_criados_por_dia_grupo(
-                config, grupos, inicio_mes, hoje, grupo_field_id, projetos=projetos, prod_projetos=[PROJETO_PDST]
-            )
-            dia_atual = inicio_mes
-            while dia_atual <= hoje:
-                chave = dia_atual.strftime("%Y-%m-%d")
-                por_grupo = [
-                    {
-                        "grupo": grupo,
-                        "total": total_por_dia_grupo.get((chave, grupo), 0),
-                        "p0p1p2": p0p1p2_por_dia_grupo.get((chave, grupo), 0),
-                    }
-                    for grupo in grupos
-                ]
-                dias.append(
-                    {"data": chave, "dia_semana": DIAS_SEMANA_ABREV[dia_atual.weekday()], "por_grupo": por_grupo}
-                )
-                dia_atual += timedelta(days=1)
-
-        caixas_resultado.append({"caixa": caixa_id, "dias": dias})
-
-    return jsonify({"inicio": inicio_mes.strftime("%Y-%m-%d"), "fim": hoje.strftime("%Y-%m-%d"), "caixas": caixas_resultado})
 
 
 # Status de GML que marcam o calendário "Chamados Criados" da home (por
@@ -1415,6 +1197,198 @@ def home_gml_planned_end():
     return jsonify(
         {"inicio": inicio_iso, "fim": fim_iso, "total": sum(len(g) for g in por_dia.values()), "por_dia": por_dia}
     )
+
+
+@app.route("/api/jornada-gmls", methods=["POST"])
+def jornada_gmls():
+    """Lista completa de GMLs cujo 'Planned end' cai no intervalo
+    [inicio, fim] (YYYY-MM-DD, obrigatórios). Sem filtro de status.
+    Retorna: { gmls: [{Ticket, Relator, Status, Descrição, RequestType,
+    Resolução, Resolvido, Gestor, Criado, Gerente Requisitante,
+    Ativo Operações de TI, planned_start, planned_end}] }
+    Datas/horas serializado como ISO string; None quando ausente."""
+    pasta = CACHE_PARTICOES["gml"]["pasta"]
+    if not os.path.isdir(pasta):
+        raise JiraExtractorError(f'Pasta de cache GML não encontrada: "{pasta}".')
+
+    body = request.get_json(silent=True) or {}
+    try:
+        inicio = date.fromisoformat(str(body.get("inicio") or ""))
+        fim = date.fromisoformat(str(body.get("fim") or ""))
+    except ValueError:
+        raise JiraExtractorError('Informe "inicio" e "fim" (YYYY-MM-DD).')
+
+    inicio_iso, fim_iso = inicio.isoformat(), fim.isoformat()
+
+    def _fmt_dt(v):
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v.strftime("%Y-%m-%dT%H:%M")
+        return str(v)[:16]
+
+    resultado = []
+    vistos = set()
+
+    def processar(valor):
+        ticket = str(valor("Ticket") or "").strip()
+        if not ticket or ticket in vistos:
+            return
+        planned_end_raw = valor("Planned end")
+        if planned_end_raw is None:
+            return
+        if isinstance(planned_end_raw, (datetime, date)):
+            dia = planned_end_raw.strftime("%Y-%m-%d") if isinstance(planned_end_raw, datetime) else planned_end_raw.isoformat()
+        else:
+            dia = str(planned_end_raw)[:10]
+        if not (inicio_iso <= dia <= fim_iso):
+            return
+        if _gml_status_norm(valor("Status")) not in GML_STATUS_CALENDARIO:
+            return
+        vistos.add(ticket)
+        resultado.append({
+            "ticket": ticket,
+            "relator": valor("Relator"),
+            "status": valor("Status"),
+            "descricao": valor("Descrição"),
+            "request_type": valor("RequestType"),
+            "resolucao": valor("Resolução"),
+            "resolvido": valor("Resolvido"),
+            "gestor": valor("Gestor"),
+            "criado": _fmt_dt(valor("Criado")),
+            "gerente_requisitante": valor("Gerente Requisitante"),
+            "ativo_operacoes_ti": valor("Ativo Operações de TI"),
+            "planned_start": _fmt_dt(valor("Planned start")),
+            "planned_end": _fmt_dt(planned_end_raw),
+        })
+
+    _cache_para_cada_linha(pasta, ["Ticket", "Planned end"], processar,
+                           colunas_opcionais=["Relator", "Status", "Descrição", "RequestType",
+                                              "Resolução", "Resolvido", "Gestor", "Criado",
+                                              "Gerente Requisitante", "Ativo Operações de TI",
+                                              "Planned start"])
+
+    resultado.sort(key=lambda g: g["planned_end"] or "")
+    return jsonify({"gmls": resultado, "total": len(resultado)})
+
+
+@app.route("/api/jornada-dia", methods=["POST"])
+def jornada_dia():
+    data = request.get_json(force=True)
+    dia_str = (data.get("dia") or "").strip()
+    classificacao_filtro = data.get("classificacao")
+    # Filtro de tipo de chamado (mesmo bitmask de /api/jornada): 1=convencional,
+    # 2=critico, 4=reaberto, 8=apoio (PDST). Lista vazia/"tudo" => sem filtro.
+    _tipo_bits = {"conv": 1, "crit": 2, "reab": 4, "apoio": 8}
+    tipo_mask = 0
+    for _t in (data.get("tipos") or []):
+        tipo_mask |= _tipo_bits.get(_t, 0)
+    try:
+        dia_alvo = date.fromisoformat(dia_str[:10])
+    except Exception:
+        return jsonify({"erro": "dia inválido"}), 400
+
+    sub_chamados = {}  # {subclass: [{chave, eps, status}]}
+    _debug = {"dia_alvo": str(dia_alvo), "classificacao_filtro": classificacao_filtro,
+               "arquivos": [], "rows_lidos": 0, "rows_grupo_ok": 0, "rows_data_ok": 0}
+
+    colunas_necessarias = (
+        CACHE_COL_GRUPO, CACHE_COL_CRIACAO, CACHE_COL_STATUS,
+        CACHE_COL_CLASSIFICACAO, CACHE_COL_SUBCLASSIFICACAO,
+        CACHE_COL_CHAVE, CACHE_COL_EPS,
+        CACHE_COL_REABERTO, CACHE_COL_FOI_COTI,
+    )
+
+    nomes = [n for n in os.listdir(CACHE_DIR) if n.lower().endswith(".xlsx") and not n.startswith("~$")]
+    for nome in nomes:
+        try:
+            wb = load_workbook(os.path.join(CACHE_DIR, nome), read_only=True, data_only=True)
+        except Exception:
+            app.logger.exception('Falha ao ler planilha de cache "%s"', nome)
+            continue
+        try:
+            ws = wb.active
+            linhas = ws.iter_rows(values_only=True)
+            header = next(linhas, None)
+            if not header:
+                _debug["arquivos"].append({"nome": nome, "skip": "sem header"})
+                continue
+            colunas_base = (CACHE_COL_GRUPO, CACHE_COL_CRIACAO, CACHE_COL_STATUS)
+            faltando = [c for c in colunas_base if c not in header]
+            if faltando:
+                _debug["arquivos"].append({"nome": nome, "skip": f"faltando: {faltando}"})
+                continue
+            idx = {}
+            for c in colunas_necessarias:
+                idx[c] = header.index(c) if c in header else None
+            _debug["arquivos"].append({"nome": nome, "ok": True, "idx_criacao": idx.get(CACHE_COL_CRIACAO)})
+
+            amostra_criacao = None
+            for linha in linhas:
+                if linha is None or all(v is None for v in linha):
+                    continue
+                _debug["rows_lidos"] += 1
+
+                def valor(col, _l=linha):
+                    i = idx.get(col)
+                    return _l[i] if i is not None and i < len(_l) else None
+
+                if valor(CACHE_COL_GRUPO) not in GRUPOS_SOLUCIONADOR_N1_N2:
+                    continue
+                _debug["rows_grupo_ok"] += 1
+
+                criacao_raw = valor(CACHE_COL_CRIACAO)
+                if amostra_criacao is None:
+                    amostra_criacao = repr(criacao_raw)
+                    _debug["arquivos"][-1]["amostra_criacao"] = amostra_criacao
+
+                if isinstance(criacao_raw, datetime):
+                    criacao_date = criacao_raw.date()
+                elif isinstance(criacao_raw, date):
+                    criacao_date = criacao_raw
+                else:
+                    _dt = _cache_parse_data_iso(criacao_raw)
+                    criacao_date = _dt.date() if _dt else None
+                if not criacao_date or criacao_date != dia_alvo:
+                    continue
+                _debug["rows_data_ok"] += 1
+
+                classificacao = valor(CACHE_COL_CLASSIFICACAO)
+                if classificacao_filtro and classificacao != classificacao_filtro:
+                    continue
+
+                if tipo_mask:
+                    chave_tp = str(valor(CACHE_COL_CHAVE) or "")
+                    is_pdst = chave_tp.split("-")[0].upper() == "PDST" if "-" in chave_tp else False
+                    is_critico = valor(CACHE_COL_FOI_COTI) == "Sim"
+                    is_reaberto = valor(CACHE_COL_REABERTO) == "Sim"
+                    tp = 0
+                    if not is_pdst and not is_critico:
+                        tp |= 1
+                    if is_critico:
+                        tp |= 2
+                    if is_reaberto:
+                        tp |= 4
+                    if is_pdst:
+                        tp |= 8
+                    if not (tp & tipo_mask):
+                        continue
+
+                subclass = valor(CACHE_COL_SUBCLASSIFICACAO) or "Sem Sub-Classificação"
+                sub_chamados.setdefault(subclass, []).append({
+                    "chave": str(valor(CACHE_COL_CHAVE) or ""),
+                    "eps": str(valor(CACHE_COL_EPS) or ""),
+                    "status": str(valor(CACHE_COL_STATUS) or ""),
+                })
+        finally:
+            wb.close()
+
+    subclassificacoes = [
+        {"subclassificacao": sub, "chamados": sorted(chs, key=lambda c: c["chave"])}
+        for sub, chs in sorted(sub_chamados.items(), key=lambda x: -len(x[1]))
+    ]
+    total = sum(len(s["chamados"]) for s in subclassificacoes)
+    return jsonify({"subclassificacoes": subclassificacoes, "total": total, "_debug": _debug})
 
 
 @app.route("/api/home-violar-semanal", methods=["POST"])
@@ -2107,6 +2081,287 @@ def pareto_solar_subclassificacao():
     return jsonify({"mes": mes, "classificacao": classificacao, "campo": campo, **payload})
 
 
+@app.route("/api/jornada", methods=["POST"])
+def jornada():
+    """Pareto de Classificação + drill-down (Sub-Classificação e PROP_Site)
+    para o período [inicio, fim] (ISO YYYY-MM-DD), lendo o cache Solar local.
+    Filtra grupos N1/N2 (sem PROD). Retorna:
+      { total, total_com_class, classificacoes: [...pareto...],
+        subclassificacao: {class: [{categoria, quantidade, percentual}]},
+        localidade:       {class: [{categoria, quantidade, percentual}]} }"""
+    body = request.get_json(silent=True) or {}
+    inicio_str = (body.get("inicio") or "").strip()
+    fim_str = (body.get("fim") or "").strip()
+    if not inicio_str or not fim_str:
+        raise JiraExtractorError('Informe "inicio" e "fim" (YYYY-MM-DD).')
+    try:
+        from datetime import date as _date
+        inicio = _date.fromisoformat(inicio_str)
+        fim = _date.fromisoformat(fim_str)
+    except ValueError:
+        raise JiraExtractorError('Formato de data inválido — use YYYY-MM-DD.')
+    if not os.path.isdir(CACHE_DIR):
+        raise JiraExtractorError(f'Pasta de cache não encontrada: "{CACHE_DIR}".')
+
+    colunas_necessarias = (
+        CACHE_COL_GRUPO,
+        CACHE_COL_CRIACAO,
+        CACHE_COL_CLASSIFICACAO,
+        CACHE_COL_SUBCLASSIFICACAO,
+        CACHE_COL_EPS,
+        CACHE_COL_STATUS,
+        CACHE_COL_RESOLUCAO,
+        CACHE_COL_CATEGORIA,
+        CACHE_COL_CHAVE,
+    )
+
+    total = 0
+    total_com_class = 0
+    class_counts = Counter()
+    sub_counts = {}    # {classificacao: Counter}
+    eps_counts = {}    # {classificacao: Counter}
+    dia_total = Counter()              # {YYYY-MM-DD: int} criados, todos N1/N2
+    dia_por_class = {}                 # {classificacao: Counter{YYYY-MM-DD: int}}
+    dia_resolvidos_total = Counter()   # {YYYY-MM-DD: int} resolvidos/encerrados
+    dia_resolvidos_por_class = {}      # {classificacao: Counter{YYYY-MM-DD: int}}
+    cat_counts = Counter()             # {categoria: int} Categoria de Encerramento
+    cat_por_class = {}                 # {classificacao: Counter{categoria: int}}
+    cat_por_prefix = {}                # {ticket_prefix: Counter{categoria: int}}
+    # Registros por chamado para cross-filter no cliente (sub x localidade x dia).
+    # Chaves curtas p/ payload menor: d=dia, c=classificacao, s=sub, l=localidade.
+    registros_criados = []
+    registros_resolvidos = []
+
+    nomes = [n for n in os.listdir(CACHE_DIR) if n.lower().endswith(".xlsx") and not n.startswith("~$")]
+    for nome in nomes:
+        try:
+            wb = load_workbook(os.path.join(CACHE_DIR, nome), read_only=True, data_only=True)
+        except Exception:
+            app.logger.exception('Falha ao ler planilha de cache "%s"', nome)
+            continue
+        try:
+            ws = wb.active
+            linhas = ws.iter_rows(values_only=True)
+            header = next(linhas, None)
+            if not header or any(c not in header for c in colunas_necessarias):
+                continue
+            idx = {c: header.index(c) for c in colunas_necessarias}
+            # Opcionais (planilhas antigas podem não ter): não barram a planilha.
+            idx_reaberto = header.index(CACHE_COL_REABERTO) if CACHE_COL_REABERTO in header else None
+            idx_foi_coti = header.index(CACHE_COL_FOI_COTI) if CACHE_COL_FOI_COTI in header else None
+
+            for linha in linhas:
+                if linha is None or all(v is None for v in linha):
+                    continue
+
+                def valor(col, linha=linha):
+                    i = idx[col]
+                    return linha[i] if i < len(linha) else None
+
+                def valor_opt(i, linha=linha):
+                    return linha[i] if i is not None and i < len(linha) else None
+
+                if valor(CACHE_COL_GRUPO) not in GRUPOS_SOLUCIONADOR_N1_N2:
+                    continue
+
+                criacao = _cache_parse_data_iso(valor(CACHE_COL_CRIACAO))
+                criacao_date = (criacao.date() if hasattr(criacao, "date") else criacao) if criacao else None
+                criacao_in_range = criacao_date is not None and inicio <= criacao_date <= fim
+
+                # Resolvido/Encerrado dentro do período (pela Data de Resolução)
+                status = valor(CACHE_COL_STATUS)
+                resolucao_date = None
+                resolucao_in_range = False
+                if status in CACHE_STATUS_RESOLVIDOS:
+                    resolucao = _cache_parse_data_iso(valor(CACHE_COL_RESOLUCAO))
+                    if resolucao:
+                        resolucao_date = resolucao.date() if hasattr(resolucao, "date") else resolucao
+                        resolucao_in_range = inicio <= resolucao_date <= fim
+
+                if not criacao_in_range and not resolucao_in_range:
+                    continue
+
+                classificacao = valor(CACHE_COL_CLASSIFICACAO)
+
+                # Tipo de chamado (bitmask p/ filtro no cliente):
+                # 1=convencional, 2=critico (was P0/P1/P2), 4=reaberto, 8=apoio (PDST).
+                chave_tipo = str(valor(CACHE_COL_CHAVE) or "")
+                is_pdst = chave_tipo.split("-")[0].upper() == "PDST" if "-" in chave_tipo else False
+                is_critico = valor_opt(idx_foi_coti) == "Sim"
+                is_reaberto = valor_opt(idx_reaberto) == "Sim"
+                tp = 0
+                if not is_pdst and not is_critico:
+                    tp |= 1
+                if is_critico:
+                    tp |= 2
+                if is_reaberto:
+                    tp |= 4
+                if is_pdst:
+                    tp |= 8
+
+                if criacao_in_range:
+                    total += 1
+                    dia_str = criacao_date.isoformat()
+                    dia_total[dia_str] += 1
+                    sub = eps = None
+                    if classificacao:
+                        total_com_class += 1
+                        class_counts[classificacao] += 1
+                        dia_por_class.setdefault(classificacao, Counter())[dia_str] += 1
+                        sub = valor(CACHE_COL_SUBCLASSIFICACAO)
+                        if sub:
+                            sub_counts.setdefault(classificacao, Counter())[sub] += 1
+                        eps = valor(CACHE_COL_EPS)
+                        if eps:
+                            eps_counts.setdefault(classificacao, Counter())[eps] += 1
+                    registros_criados.append({
+                        "d": dia_str,
+                        "c": classificacao or "",
+                        "s": (sub or "") if classificacao else "",
+                        "l": (eps or "") if classificacao else "",
+                        "t": tp,
+                    })
+
+                if resolucao_in_range:
+                    res_str = resolucao_date.isoformat()
+                    dia_resolvidos_total[res_str] += 1
+                    if classificacao:
+                        dia_resolvidos_por_class.setdefault(classificacao, Counter())[res_str] += 1
+                    registros_resolvidos.append({
+                        "d": res_str,
+                        "c": classificacao or "",
+                        "s": (valor(CACHE_COL_SUBCLASSIFICACAO) or "") if classificacao else "",
+                        "l": (valor(CACHE_COL_EPS) or "") if classificacao else "",
+                        "t": tp,
+                        "cat": valor(CACHE_COL_CATEGORIA) or "",
+                        "pfx": chave_tipo.split("-")[0].upper() if "-" in chave_tipo else "",
+                        "k": chave_tipo,
+                    })
+                    categoria = valor(CACHE_COL_CATEGORIA)
+                    if categoria:
+                        cat_counts[categoria] += 1
+                        if classificacao:
+                            cat_por_class.setdefault(classificacao, Counter())[categoria] += 1
+                        chave = str(valor(CACHE_COL_CHAVE) or "")
+                        prefix = chave.split("-")[0].upper() if "-" in chave else None
+                        if prefix:
+                            cat_por_prefix.setdefault(prefix, Counter())[categoria] += 1
+        finally:
+            wb.close()
+
+    top_n = PARETO_SOLAR_TOP_N["classificacao"]
+    pareto = _pareto_payload(class_counts, total, top_n)
+
+    def _ranking(counts_dict, classificacao):
+        cnts = counts_dict.get(classificacao, Counter())
+        total_cat = sum(cnts.values())
+        return [
+            {"categoria": cat, "quantidade": qtd, "percentual": round(qtd / total_cat * 100, 1) if total_cat else 0.0}
+            for cat, qtd in cnts.most_common(top_n)
+        ]
+
+    subclassificacao = {c: _ranking(sub_counts, c) for c in class_counts}
+    localidade = {c: _ranking(eps_counts, c) for c in class_counts}
+
+    # Totais agregados (todos os chamados com classificação) — exibidos
+    # no drill-down quando nenhuma barra do Pareto está selecionada.
+    sub_total_cnt = Counter()
+    for cnts in sub_counts.values():
+        sub_total_cnt.update(cnts)
+    eps_total_cnt = Counter()
+    for cnts in eps_counts.values():
+        eps_total_cnt.update(cnts)
+
+    def _ranking_counter(cnts):
+        total_cat = sum(cnts.values())
+        return [
+            {"categoria": cat, "quantidade": qtd, "percentual": round(qtd / total_cat * 100, 1) if total_cat else 0.0}
+            for cat, qtd in cnts.most_common(top_n)
+        ]
+
+    # Série diária: gera todos os dias do intervalo (0 quando sem chamados)
+    from datetime import timedelta as _td
+    num_dias = (fim - inicio).days + 1
+    todos_dias = [
+        (inicio + _td(days=i)).isoformat() for i in range(num_dias)
+    ]
+
+    def _serie_dia(cnts):
+        return [{"data": d, "quantidade": cnts.get(d, 0)} for d in todos_dias]
+
+    baseline_total = round(total / num_dias, 1) if num_dias else 0
+    criados_por_dia_total = _serie_dia(dia_total)
+    criados_por_dia = {c: _serie_dia(dia_por_class.get(c, Counter())) for c in class_counts}
+    baseline_por_class = {
+        c: round(sum(dia_por_class.get(c, Counter()).values()) / num_dias, 1) if num_dias else 0
+        for c in class_counts
+    }
+
+    total_resolvidos = sum(dia_resolvidos_total.values())
+    baseline_resolvidos_total = round(total_resolvidos / num_dias, 1) if num_dias else 0
+    resolvidos_por_dia_total = _serie_dia(dia_resolvidos_total)
+    resolvidos_por_dia = {c: _serie_dia(dia_resolvidos_por_class.get(c, Counter())) for c in class_counts}
+    baseline_resolvidos_por_class = {
+        c: round(sum(dia_resolvidos_por_class.get(c, Counter()).values()) / num_dias, 1) if num_dias else 0
+        for c in class_counts
+    }
+
+    total_cat = sum(cat_counts.values())
+    categorias_encerramento = [
+        {
+            "categoria": cat,
+            "quantidade": qty,
+            "percentual": round(qty / total_cat * 100, 1) if total_cat else 0,
+        }
+        for cat, qty in cat_counts.most_common()
+    ]
+
+    categorias_por_class = {}
+    for cls, cntr in cat_por_class.items():
+        total_cls = sum(cntr.values())
+        categorias_por_class[cls] = [
+            {
+                "categoria": cat,
+                "quantidade": qty,
+                "percentual": round(qty / total_cls * 100, 1) if total_cls else 0,
+            }
+            for cat, qty in cntr.most_common()
+        ]
+
+    return jsonify({
+        "total": total,
+        "total_com_class": total_com_class,
+        "classificacoes": pareto["categorias"],
+        "subclassificacao": subclassificacao,
+        "localidade": localidade,
+        "registros_criados": registros_criados,
+        "registros_resolvidos": registros_resolvidos,
+        "subclassificacao_total": _ranking_counter(sub_total_cnt),
+        "localidade_total": _ranking_counter(eps_total_cnt),
+        "criados_por_dia_total": criados_por_dia_total,
+        "criados_por_dia": criados_por_dia,
+        "baseline_total": baseline_total,
+        "baseline_por_class": baseline_por_class,
+        "resolvidos_por_dia_total": resolvidos_por_dia_total,
+        "resolvidos_por_dia": resolvidos_por_dia,
+        "baseline_resolvidos_total": baseline_resolvidos_total,
+        "baseline_resolvidos_por_class": baseline_resolvidos_por_class,
+        "categorias_encerramento": categorias_encerramento,
+        "categorias_por_class": categorias_por_class,
+        "categorias_por_prefix": {
+            pfx: [
+                {
+                    "categoria": cat,
+                    "quantidade": qty,
+                    "percentual": round(qty / sum(cntr.values()) * 100, 1) if sum(cntr.values()) else 0,
+                }
+                for cat, qty in cntr.most_common()
+            ]
+            for pfx, cntr in cat_por_prefix.items()
+        },
+    })
+
+
 # "Material ICG" — FCA's (Fato/Causa/Ação), pedido explícito do usuário:
 # hierarquia Mês -> Dia de apresentação -> FCA's. Cada dia tem 1 FCA por
 # indicador (MATERIAL_ICG_FCA_INDICADORES) e cada FCA é uma ÁRVORE —
@@ -2667,19 +2922,6 @@ def _parse_periodo(body):
     if inicio > fim:
         raise JiraExtractorError("A data início não pode ser depois da data fim.")
     return inicio, fim
-
-
-def _parse_periodo_opcional(body):
-    """Como _parse_periodo, mas devolve (None, None) quando nenhuma data foi
-    informada — usado em ações onde o período é opcional (ex.: Violados,
-    modo "Tudo" sem filtro de data)."""
-    inicio_str = (body.get("inicio") or "").strip()
-    fim_str = (body.get("fim") or "").strip()
-    if not inicio_str and not fim_str:
-        return None, None
-    if bool(inicio_str) != bool(fim_str):
-        raise JiraExtractorError("Informe as duas datas (início e fim) ou nenhuma.")
-    return _parse_periodo(body)
 
 
 def _categorias_payload(counts, total_chamados, top_n):
@@ -4117,7 +4359,7 @@ def _cache_entradas_pendentes(ws, col_chave, col_status, cols_calculadas):
         if not chave:
             continue
         status_atual = ws.cell(row=row_idx, column=col_status).value
-        aberto = status_atual not in CACHE_STATUS_FECHADOS
+        aberto = status_atual not in CACHE_STATUS_SEM_RECONFERENCIA
         falta_algo = any(
             not ws.cell(row=row_idx, column=col).value
             for coluna, col in cols_calculadas.items()

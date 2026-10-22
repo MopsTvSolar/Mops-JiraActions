@@ -107,6 +107,21 @@
       </div>
 
       <div class="card">
+        <button class="section-label acoes-toggle sidebar-collapsible" id="btn-detalhamento-toggle" type="button">
+          <span>DETALHAMENTO</span>
+          <span id="detalhamento-toggle-icon">▾</span>
+        </button>
+        <div class="actions-grid collapse open" id="detalhamento-grid">
+          <button id="btn-jornada" class="nav-item" type="button">
+            <span class="nav-icon">📈</span><span class="nav-label">Jornada</span>
+          </button>
+          <button id="btn-colaboradores-det" class="nav-item" type="button">
+            <span class="nav-icon">👥</span><span class="nav-label">Colaboradores</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
         <button class="section-label acoes-toggle sidebar-collapsible" id="btn-settings-toggle" type="button">
           <span>SETTINGS</span>
           <span id="settings-toggle-icon">▾</span>
@@ -166,93 +181,163 @@
               </button>
             </div>
           </div>
-          <div class="home-dashboards" id="home-dashboards">
-            <div class="home-dashboard-col">
-              <!-- Histórico de TODOS os meses do cache, 1 mini anel por mês
-                   — no topo da coluna esquerda. Geral por caixa, sem
-                   separar por grupo (Solar: N1+N2+Prod juntos; Claro Tv:
-                   N1+N2 juntos — ver /api/home-sla-cache em api/index.py e
-                   carregarHomeSlaCache em app.js). -->
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">SLA</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
-                </div>
-                <div id="home-sla-mes" class="home-sla-historico"></div>
-              </div>
-              <!-- Histórico de TODOS os meses do cache, geral (Solar +
-                   Claro Tv juntos, sem separar por caixa) — ver
-                   /api/home-criados-resolvidos-cache em api/index.py e
-                   carregarHomeCriadosResolvidosCache em app.js. -->
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Criados x Resolvidos por mês</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
-                </div>
-                <div id="home-criados-resolvidos-mes"></div>
-              </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Grupo Solucionador × Mês de Criação</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Chamados abertos</span>
-                </div>
-                <div id="home-grupo-criacao"></div>
-              </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Fornecedor Responsável × Mês de Criação</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Aguardando Fornecedor</span>
-                </div>
-                <div id="home-fornecedor-criacao"></div>
-              </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Chamados Criados</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
-                </div>
-                <div class="home-bar30-legend">
-                  <span class="home-bar30-legend-item">
-                    <span class="home-bar30-legend-dot home-bar30-legend-dot--violado"></span>Já foi P0/P1/P2
-                  </span>
-                </div>
-                <div id="home-criados-mes"></div>
-              </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Reabertos do mês</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--atual">Mês atual</span>
-                </div>
-                <div id="home-reabertos-mes" class="summary-cards home-reabertos-mes-cards"></div>
+          <!-- Tela de largada: os dashboards só carregam no INICIAR. Antes
+               disso, só o estado do cache (/api/home-cache-status — lista a
+               pasta + _sync_meta.json, sem Jira) e atalhos. -->
+          <div id="home-iniciar-wrap" class="home-largada">
+            <div class="home-largada-hero">
+              <div class="home-largada-titulo">Fila dinâmica</div>
+              <p class="home-largada-sub">Os dashboards carregam só quando você pedir. Confira o estado do cache ao lado antes de iniciar.</p>
+              <button id="btn-home-iniciar" class="btn-primary home-largada-btn" type="button">INICIAR</button>
+              <div class="home-largada-fontes">
+                <div><span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span> SLA · Reabertos · COTI · Criados x Resolvidos · Grupo × Mês</div>
+                <div><span class="home-dashboard-tag home-dashboard-tag--periodo">Ao vivo</span> A violar · Violados · Fornecedor</div>
               </div>
             </div>
-            <div class="home-dashboard-col" id="home-dashboard-col-right">
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Violados — Quantidade atual sem solução</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Atual</span>
-                </div>
-                <div id="home-violados-abertos"></div>
+            <div class="home-largada-cache">
+              <div class="home-largada-secao-titulo">
+                <span>Estado do cache</span>
+                <button id="btn-home-cache-status" class="home-reload-btn" type="button" title="Sincronizar todos os caches (seção por seção, em lotes)">↻</button>
               </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">A violar</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--periodo">Próximos 7 dias</span>
-                </div>
-                <div id="home-violar-semanal"></div>
+              <div id="home-cache-status" class="home-cache-status-grid"></div>
+              <div id="home-cache-sync-status" class="hint home-cache-sync-status" aria-live="polite"></div>
+              <div class="home-largada-secao-titulo" style="margin-top: 18px"><span>Atalhos</span></div>
+              <div class="home-largada-atalhos">
+                <button type="button" class="home-atalho" data-alvo="btn-jornada"><span>📈</span>Jornada</button>
+                <button type="button" class="home-atalho" data-alvo="btn-material-icg"><span>📋</span>Material ICG</button>
+                <button type="button" class="home-atalho" data-alvo="btn-pareto-solar"><span>📊</span>Pareto Solar</button>
+                <button type="button" class="home-atalho" data-alvo="btn-cache"><span>💾</span>Cache</button>
               </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Chamados Críticos (COTI)</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Mês atual · Cacheado</span>
+            </div>
+          </div>
+          <div class="hidden" id="home-dashboards">
+            <!-- Fila dinâmica: carrossel de 3 páginas (track desliza via
+                 translateX, mesmo mecanismo de .pareto-sub-modal-*; ver
+                 iniciarHomeFilaCarrossel em app.js). Os slides ficam no DOM
+                 o tempo todo, então os loaders da home preenchem normalmente. -->
+            <div class="home-fila" id="home-fila">
+              <div class="home-fila-header">
+                <div class="section-label" style="margin: 0">FILA DINÂMICA</div>
+                <div class="home-fila-tabs" role="tablist">
+                  <button type="button" class="home-fila-tab active" data-slide="0" role="tab">Fila &amp; Reabertos</button>
+                  <button type="button" class="home-fila-tab" data-slide="1" role="tab">Criados x Resolvidos</button>
+                  <button type="button" class="home-fila-tab" data-slide="2" role="tab">Fornecedor</button>
                 </div>
-                <div id="home-coti-mes" class="summary-cards"></div>
               </div>
-              <div class="home-dashboard-card">
-                <div class="home-dashboard-title-row">
-                  <div class="home-dashboard-title">Classificação — Funil</div>
-                  <span class="home-dashboard-tag home-dashboard-tag--cacheado">Mês atual · Cacheado</span>
+              <div class="pareto-sub-modal-carousel">
+                <button type="button" class="pareto-sub-modal-arrow home-fila-prev" aria-label="Anterior">‹</button>
+                <div class="pareto-sub-modal-viewport">
+                  <div class="pareto-sub-modal-track home-fila-track">
+                    <div class="pareto-sub-modal-slide home-fila-slide">
+                      <div class="home-fila-painel">
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--span2 home-fila-tile--sla">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">SLA</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+                          </div>
+                          <div id="home-sla-mes" class="home-sla-historico"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--reab">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Reabertos do mês</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Mês atual · Cacheado</span>
+                          </div>
+                          <div id="home-reabertos-mes" class="home-kpi-lista"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--span2 home-fila-tile--violar">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">A violar</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--periodo">Próximos 7 dias · Ao vivo</span>
+                          </div>
+                          <div id="home-violar-semanal"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--coti">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Chamados Críticos (COTI)</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Mês atual · Cacheado</span>
+                          </div>
+                          <div id="home-coti-mes"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--span3 home-fila-tile--grupo">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Grupo Solucionador × Mês de Criação</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Abertos · Cacheado</span>
+                          </div>
+                          <div id="home-grupo-criacao"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="pareto-sub-modal-slide home-fila-slide">
+                      <div class="home-fila-painel">
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--span2 home-fila-tile--cr">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Criados x Resolvidos por mês</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+                          </div>
+                          <div id="home-criados-resolvidos-mes"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--crkpi">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Mês atual</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Até hoje · Cacheado</span>
+                          </div>
+                          <div id="home-cr-kpi" class="home-kpi-lista"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--span3 home-fila-tile--crtab">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Detalhe por mês</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+                          </div>
+                          <div id="home-cr-tabela"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="pareto-sub-modal-slide home-fila-slide">
+                      <div class="home-fila-painel">
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--span2 home-fila-tile--fornrank">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Ranking de fornecedores</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--periodo">Aguardando Fornecedor · Ao vivo</span>
+                          </div>
+                          <div id="home-forn-ranking"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--fornkpi">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Aguardando fornecedor</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--periodo">Agora · Ao vivo</span>
+                          </div>
+                          <div id="home-forn-kpi" class="home-kpi-lista"></div>
+                        </div>
+                        <div class="home-dashboard-card home-fila-secao home-fila-tile--span3 home-fila-tile--forntab">
+                          <div class="home-dashboard-title-row">
+                            <div class="home-dashboard-title">Fornecedor Responsável × Mês de Criação</div>
+                            <span class="home-dashboard-tag home-dashboard-tag--periodo">Aguardando Fornecedor · Ao vivo</span>
+                          </div>
+                          <div id="home-fornecedor-criacao"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div id="home-classificacao-funil"></div>
+                <button type="button" class="pareto-sub-modal-arrow home-fila-next" aria-label="Próximo">›</button>
+              </div>
+              <div class="pareto-sub-modal-dots home-fila-dots">
+                <button type="button" class="pareto-sub-modal-dot active" data-slide="0" aria-label="Página 1"></button>
+                <button type="button" class="pareto-sub-modal-dot" data-slide="1" aria-label="Página 2"></button>
+                <button type="button" class="pareto-sub-modal-dot" data-slide="2" aria-label="Página 3"></button>
+              </div>
+            </div>
+
+            <div class="section-label" style="margin: 20px 0 8px">OUTROS INDICADORES</div>
+            <div class="home-dashboards">
+              <div class="home-dashboard-col" id="home-dashboard-col-right">
+                <div class="home-dashboard-card">
+                  <div class="home-dashboard-title-row">
+                    <div class="home-dashboard-title">Violados — Quantidade atual sem solução</div>
+                    <span class="home-dashboard-tag home-dashboard-tag--periodo">Atual</span>
+                  </div>
+                  <div id="home-violados-abertos"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -260,7 +345,7 @@
           <!-- Fora das 2 colunas (de propósito): tabela de uma coluna por
                mês (pode passar de 10), precisa da largura toda pra não
                ficar espremida nem exigir scroll horizontal curto demais. -->
-          <div class="home-dashboard-card" style="margin-top: 16px">
+          <div class="home-dashboard-card hidden" id="home-colaboradores-card" style="margin-top: 16px">
             <div class="home-dashboard-title-row">
               <div class="home-dashboard-title">Colaboradores</div>
               <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
@@ -947,6 +1032,66 @@
           </div>
         </div>
 
+        <div id="jornada-results" class="hidden" style="margin-top: 14px">
+          <div class="results-header" style="margin-bottom: 10px; flex-wrap: wrap; row-gap: 8px">
+            <span class="hint">Jornada — Solar</span>
+            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+            <span class="spacer"></span>
+            <label class="home-caixa-filtro-label" for="jornada-filtro-tipo">Filtro</label>
+            <select id="jornada-filtro-tipo" class="home-caixa-filtro-select">
+              <option value="mes">Mês</option>
+              <option value="ano">Ano</option>
+              <option value="periodo">Período</option>
+            </select>
+            <span id="jornada-filtro-mes-wrap">
+              <input id="jornada-mes-input" type="month" class="home-caixa-filtro-select" />
+            </span>
+            <span id="jornada-filtro-ano-wrap" class="hidden">
+              <select id="jornada-ano-select" class="home-caixa-filtro-select"></select>
+            </span>
+            <span id="jornada-filtro-periodo-wrap" class="hidden">
+              <label class="home-caixa-filtro-label" for="jornada-input-inicio">De</label>
+              <input id="jornada-input-inicio" type="date" />
+              <label class="home-caixa-filtro-label" for="jornada-input-fim">até</label>
+              <input id="jornada-input-fim" type="date" />
+            </span>
+            <div class="icg-filtro-grupo" id="jornada-filtro-tipo-chamado">
+              <button type="button" class="btn-secondary icg-filtro-grupo-btn">
+                Tipo: <span class="icg-filtro-grupo-label">Todos</span> ▾
+              </button>
+              <div class="icg-filtro-grupo-painel hidden">
+                <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="tudo" checked /> Todos</label>
+                <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="conv" /> Convencionais</label>
+                <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="crit" /> Críticos</label>
+                <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="reab" /> Reabertos</label>
+                <label class="icg-filtro-grupo-opcao"><input type="checkbox" value="apoio" /> Apoio</label>
+                <div class="icg-filtro-grupo-acoes">
+                  <button type="button" class="btn-secondary icg-filtro-grupo-cancelar">Cancelar</button>
+                  <button type="button" class="btn-primary icg-filtro-grupo-confirmar">Confirmar</button>
+                </div>
+              </div>
+            </div>
+            <button id="btn-jornada-recarregar" class="btn-secondary" type="button">↻ Recarregar</button>
+          </div>
+          <div id="jornada-status" class="hint" style="margin-bottom: 10px"></div>
+          <div id="jornada-pareto-card"></div>
+          <div id="jornada-drilldown-card" class="hidden" style="margin-top: 16px"></div>
+          <div id="jornada-criados-dia-card" style="margin-top: 16px"></div>
+          <div id="jornada-gmls-card" style="margin-top: 20px"></div>
+          <div id="jornada-categorias-card" style="margin-top: 20px"></div>
+        </div>
+
+        <div id="colaboradores-det-results" class="hidden" style="margin-top: 14px">
+          <div class="results-header" style="margin-bottom: 10px">
+            <span class="hint">Colaboradores — Solar</span>
+            <span class="home-dashboard-tag home-dashboard-tag--cacheado">Cacheado</span>
+            <span class="spacer"></span>
+            <button id="btn-colaboradores-det-recarregar" class="btn-secondary" type="button">↻ Recarregar</button>
+          </div>
+          <div id="colaboradores-det-status" class="hint" style="margin-bottom: 10px"></div>
+          <div id="colaboradores-det-conteudo"></div>
+        </div>
+
       </div><!-- /content-area -->
       </div><!-- /app-layout -->
 
@@ -955,8 +1100,36 @@
 
   <footer>Nada é salvo pelo sistema — apenas exportação sob demanda.</footer>
 
+  <!-- Modal detalhe de dia (GMLs + chamados por sub-classificação) -->
+  <div id="jornada-dia-modal" class="hidden" style="position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)">
+    <div class="card" style="max-width:680px;width:92%;max-height:82vh;overflow-y:auto;padding:20px;position:relative">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span id="jornada-dia-modal-titulo" style="font-weight:700;font-size:1.05rem"></span>
+        <span style="flex:1"></span>
+        <button id="btn-jornada-dia-modal-fechar" class="btn-secondary" type="button">✕ Fechar</button>
+      </div>
+      <div id="jornada-dia-modal-gmls"></div>
+      <div id="jornada-dia-modal-chamados"></div>
+    </div>
+  </div>
+
   <!-- Overlay de carregamento: centralizado na tela (não uma faixa no
        topo), ligado a setBusy()/setBanner() — ver app.js. -->
+  <!-- Modal de detalhe de GML -->
+  <div id="jornada-gml-modal" class="hidden" style="position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)">
+    <div class="card" style="max-width:640px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;position:relative">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <span id="jornada-gml-modal-ticket" style="font-weight:700;font-size:1.05rem"></span>
+        <span id="jornada-gml-modal-status" class="home-dashboard-tag"></span>
+        <span id="jornada-gml-modal-resolucao" class="home-dashboard-tag home-dashboard-tag--cacheado" style="display:none"></span>
+        <span id="jornada-gml-modal-resolvido" class="home-dashboard-tag home-dashboard-tag--periodo" style="display:none"></span>
+        <span style="flex:1"></span>
+        <button id="btn-jornada-gml-modal-fechar" class="btn-secondary" type="button">✕ Fechar</button>
+      </div>
+      <div id="jornada-gml-modal-descricao" style="white-space:pre-wrap;font-size:.9rem;line-height:1.6"></div>
+    </div>
+  </div>
+
   <div id="loading-overlay" class="hidden">
     <div class="loading-overlay-box">
       <span class="is-loading"></span>

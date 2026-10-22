@@ -15,7 +15,6 @@ import os
 import re
 import sys
 import time
-import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -332,8 +331,8 @@ def _resolve_asset_label(config, workspace_id, object_id):
 # Nome do atributo (schema do catálogo Jira Assets) usado pela ação
 # "Extração por Query": quando "Categoria de Encerramento" é uma
 # referência a objeto (um "ofensor" do catálogo), esse é o atributo que
-# guarda o número do ALM vinculado a ele — mesmo nome já usado no campo
-# "ALM" do próprio chamado (ver ALM_CAMPO), mas aqui é o atributo do
+# guarda o número do ALM vinculado a ele — mesmo nome do campo
+# "ALM" do próprio chamado, mas aqui é o atributo do
 # OBJETO de catálogo, não um campo do chamado.
 ALM_ATTRIBUTE_NAME = "ALM"
 
@@ -437,17 +436,6 @@ def _extract_grupo_solucionador(field_value):
         nomes = [n for n in (_extract(v, "name") for v in field_value) if n]
         return ", ".join(nomes) if nomes else None
     return _extract(field_value, "name")
-
-
-def _extract_nome_usuario(field_value):
-    """Extrai o nome de exibição de um campo User Picker (ex.: 'Responsável
-    pela Solicitação MOPS', customfield_25267) — objeto de usuário do Jira
-    Cloud usa "displayName", não "value"/"name" como os campos de seleção
-    simples (Select List, Dropdown etc.)."""
-    if isinstance(field_value, list):
-        nomes = [n for n in (_extract(v, "displayName") for v in field_value) if n]
-        return ", ".join(nomes) if nomes else None
-    return _extract(field_value, "displayName")
 
 
 def flatten_issue(issue, fields):
@@ -801,8 +789,7 @@ def fetch_chamados_reabertos(config, start_date, end_date, incluir_fornecedor=Fa
     return rows
 
 
-# Nome do campo (não o ID) usado direto na JQL — mesmo padrão já usado em
-# FUNCIONALIDADE_OFENSORES_CAMPO: o Jira aceita "Nome do Campo" = "valor" sem
+# Nome do campo (não o ID) usado direto na JQL: o Jira aceita "Nome do Campo" = "valor" sem
 # precisar resolver o ID quando o nome é único, então não precisa do
 # mecanismo de _resolve_field_id (esse é resolvido do lado da API web).
 CLASSIFICACAO_CAMPO = "Classificação"
@@ -826,15 +813,6 @@ def _jql_caixa_classificacao(config, classificacao):
     return jql
 
 
-def _jql_jornada_base(config, start_date, end_date):
-    """JQL base de Análise de Jornada, sem filtro de Classificação: filtros
-    da caixa (config["jql"]) + "created" no período. Usada pelo modo "Geral"
-    (fetch_chamados_geral_classificacao)."""
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    return f'{_jql_caixa_classificacao(config, None)} AND created >= "{start_str}" AND created <= "{end_str}"'
-
-
 def _jql_classificacao(config, classificacao, start_date, end_date):
     """JQL base de Análise de Jornada (caixa + Classificação, ver
     _jql_caixa_classificacao) + "created" no período — usada por
@@ -842,96 +820,6 @@ def _jql_classificacao(config, classificacao, start_date, end_date):
     start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
     end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
     return f'{_jql_caixa_classificacao(config, classificacao)} AND created >= "{start_str}" AND created <= "{end_str}"'
-
-
-def fetch_total_resolvidos_classificacao(config, classificacao, start_date, end_date):
-    """Conta, dentro da mesma população de caixa + Classificação (quando
-    informada) de Análise de Jornada, quantos chamados foram resolvidos no
-    período — status IN (Resolvido, Encerrado) AND resolutiondate no
-    período, mesma convenção já usada em "Resolvidos" na ação Criados x
-    Resolvidos (fetch_criados_x_resolvidos). Note que o filtro de data aqui
-    é sobre resolutiondate, não created — por isso não reaproveita
-    _jql_classificacao/_jql_jornada_base (que fixam "created"), só a base
-    sem data (_jql_caixa_classificacao)."""
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    jql = (
-        f'{_jql_caixa_classificacao(config, classificacao)} '
-        f'AND status IN ("Resolvido", "Encerrado") '
-        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
-    )
-    return len(fetch_issues(config, jql, ["key"]))
-
-
-def fetch_chamados_geral_classificacao(
-    config, start_date, end_date, classificacao_field_id, subclassificacao_field_id=None, incluir_fornecedor=False
-):
-    """Modo "Geral" de Análise de Jornada: busca TODOS os chamados do
-    período (sem filtrar por Classificação), lendo de volta o valor de
-    Classificação de cada um (precisa do ID do campo — no modo de valor
-    único isso não é necessário porque o próprio filtro já garante o
-    valor). Usado pra montar o ranking "quantos chamados por Classificação"
-    — cada linha ganha "classificacao" (e "sub_classificacao" quando
-    "subclassificacao_field_id" é informado), mesmo mecanismo de
-    _extract_categoria_values já usado em fetch_chamados_classificacao.
-
-    Pré-resolve em paralelo (_precache_categoria_labels) os labels de
-    Classificação/Sub-Classificação ANTES do loop de contagem — sem isso,
-    quando o campo é referência a objeto do Jira Assets (não um Select
-    List simples), cada valor NOVO custa uma chamada de rede em série
-    (~1s), podendo levar minutos num período com muitos valores distintos
-    (mesmo problema já resolvido em fetch_categoria_encerrados/
-    fetch_categoria_reabertos)."""
-    jql = _jql_jornada_base(config, start_date, end_date)
-
-    fields = [
-        "summary",
-        "status",
-        "assignee",
-        "reporter",
-        "project",
-        "issuetype",
-        "created",
-        "resolutiondate",
-        classificacao_field_id,
-    ]
-    if incluir_fornecedor:
-        fields = fields + FORNECEDOR_RESPONSAVEL_FIELDS
-    if subclassificacao_field_id:
-        fields = fields + [subclassificacao_field_id]
-
-    log.info("Buscando todos os chamados do período (modo Geral) com JQL: %s", jql)
-    issues = fetch_issues(config, jql, fields)
-
-    _precache_categoria_labels(config, issues, classificacao_field_id)
-    if subclassificacao_field_id:
-        _precache_categoria_labels(config, issues, subclassificacao_field_id)
-
-    rows = []
-    for issue in issues:
-        issue_fields = issue.get("fields", {})
-        valores_classificacao = _extract_categoria_values(config, issue_fields.get(classificacao_field_id))
-        row = {
-            "key": issue.get("key"),
-            "summary": issue_fields.get("summary"),
-            "status": _extract(issue_fields.get("status"), "name"),
-            "assignee": _extract(issue_fields.get("assignee"), "displayName"),
-            "reporter": _extract(issue_fields.get("reporter"), "displayName"),
-            "project": _extract(issue_fields.get("project"), "key"),
-            "issuetype": _extract(issue_fields.get("issuetype"), "name"),
-            "created": issue_fields.get("created"),
-            "resolutiondate": issue_fields.get("resolutiondate"),
-            "classificacao": valores_classificacao[0] if valores_classificacao else None,
-        }
-        if incluir_fornecedor:
-            row["fornecedor_responsavel"] = extract_fornecedor(issue_fields)
-        if subclassificacao_field_id:
-            valores_sub = _extract_categoria_values(config, issue_fields.get(subclassificacao_field_id))
-            row["sub_classificacao"] = valores_sub[0] if valores_sub else None
-        rows.append(row)
-
-    rows.sort(key=lambda r: r["key"])
-    return rows
 
 
 def fetch_chamados_classificacao(
@@ -981,24 +869,6 @@ def fetch_chamados_classificacao(
 
     rows.sort(key=lambda r: r["key"])
     return rows
-
-
-def fetch_total_criados_periodo(config, start_date, end_date):
-    """Conta quantos chamados foram criados (created) no período informado,
-    reaproveitando os filtros base (grupo/projeto) da JQL configurada — usado
-    em Chamados Reabertos para calcular o percentual de reabertura em relação
-    ao total de criados no mesmo período/caixa/projetos."""
-    base_jql = config["jql"]
-    if not base_jql:
-        raise JiraExtractorError("Nenhuma JQL base definida.")
-
-    base_jql = re.sub(r"\s+ORDER\s+BY\s+.*$", "", base_jql, flags=re.IGNORECASE)
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    jql = f'({base_jql}) AND created >= "{start_str}" AND created <= "{end_str}"'
-
-    issues = fetch_issues(config, jql, ["key"])
-    return len(issues)
 
 
 def _grupo_clause(grupos):
@@ -1175,93 +1045,6 @@ def fetch_pdst_abertos_por_grupo(config, grupos, grupo_field_id):
     status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
     extra_clause = f'project = "{PROJETO_PDST}" AND status NOT IN ({status_clause})'
     return _contar_abertos_por_grupo(config, grupos, grupo_field_id, extra_clause)
-
-
-def fetch_grupo_criacao_mensal(
-    config,
-    grupos,
-    grupo_field_id,
-    prod_projetos=None,
-    classificacao_field_id=None,
-    subclassificacao_field_id=None,
-    eps_field_id=None,
-):
-    """Réplica de um gadget de dashboard nativo do Jira (Two Dimensional
-    Filter Statistics: Grupo Solucionador × mês de criação) — usado na home
-    da versão web. Entre os chamados atualmente ABERTOS (status fora de
-    STATUS_FECHADOS_HOME_DASHBOARD) dos grupos da caixa, só no projeto
-    Central de Incidentes, conta quantos foram criados em cada mês, por
-    grupo. Só entram meses com pelo menos 1 chamado em algum grupo (mesmo
-    comportamento do gadget original, que esconde colunas totalmente
-    vazias em vez de mostrar tudo zerado).
-
-    "prod_projetos" (opcional): ver _grupo_projeto_clause — quando
-    informado, o grupo Prod passa a considerar esses projetos em vez de
-    "Central de Incidentes" (N1/N2 continuam só Central de Incidentes).
-
-    "classificacao_field_id" (opcional, "Classificação"): quando
-    informado, cada chamado de "chamados" também traz "classificacao" (None se o
-    campo estiver vazio) — alimenta o Pareto do popup da home.
-    "subclassificacao_field_id" ("Sub-Classificação") e "eps_field_id"
-    ("PROP_Site", a localidade) idem: viram "subclassificacao" e "eps" em
-    cada chamado, pros rankings que aparecem ao clicar numa barra do Pareto."""
-    status_clause = ", ".join(f'"{s}"' for s in STATUS_FECHADOS_HOME_DASHBOARD)
-    grupo_projeto_clause = _grupo_projeto_clause(grupos, [PROJETO_INC], prod_projetos)
-    jql = f"{grupo_projeto_clause} AND status NOT IN ({status_clause})"
-    extras = [f for f in (classificacao_field_id, subclassificacao_field_id, eps_field_id) if f]
-    issues = fetch_issues(config, jql, ["created", "status", grupo_field_id] + extras)
-    for field_id in extras:
-        _precache_categoria_labels(config, issues, field_id)
-
-    def valor_campo(issue_fields, field_id):
-        if not field_id:
-            return None
-        return (_extract_categoria_values(config, issue_fields.get(field_id)) or [None])[0]
-
-    contagem = {grupo: Counter() for grupo in grupos}
-    chamados = []
-    for issue in issues:
-        issue_fields = issue.get("fields", {})
-        grupo = _extract_grupo_solucionador(issue_fields.get(grupo_field_id))
-        if grupo not in contagem:
-            continue
-        mes = (issue_fields.get("created") or "")[:7]
-        if mes:
-            contagem[grupo][mes] += 1
-            chamados.append(
-                {
-                    "key": issue.get("key"),
-                    "grupo": grupo,
-                    "status": _extract(issue_fields.get("status"), "name") or "Sem status",
-                    "criado": issue_fields["created"][:10],
-                    "classificacao": valor_campo(issue_fields, classificacao_field_id),
-                    "subclassificacao": valor_campo(issue_fields, subclassificacao_field_id),
-                    "eps": valor_campo(issue_fields, eps_field_id),
-                }
-            )
-
-    meses = sorted({mes for c in contagem.values() for mes in c})
-
-    linhas = []
-    totais_por_mes = Counter()
-    total_geral = 0
-    for grupo in grupos:
-        por_mes = [contagem[grupo].get(mes, 0) for mes in meses]
-        total_grupo = sum(por_mes)
-        for mes, valor in zip(meses, por_mes):
-            totais_por_mes[mes] += valor
-        total_geral += total_grupo
-        linhas.append({"grupo": grupo, "por_mes": por_mes, "total": total_grupo})
-
-    return {
-        "meses": meses,
-        "linhas": linhas,
-        "totais_por_mes": [totais_por_mes[mes] for mes in meses],
-        "total_geral": total_geral,
-        # 1 item por chamado (key, grupo, status, dia de criação) — a home
-        # usa pra montar o popup por semana/status (abrirHomeCarrossel).
-        "chamados": chamados,
-    }
 
 
 def _extract_categoria_com_alm(config, field_value):
@@ -1537,237 +1320,6 @@ def fetch_fornecedor_criacao_mensal(config, grupos, projetos=None, prod_projetos
     }
 
 
-def fetch_detalhe_analista(
-    config, grupos, analista, start_date, end_date, projetos=None, categoria_field_id=None, account_id=None
-):
-    """Detalhe de um analista específico, dentro do período informado (grupo/
-    projetos da caixa atual):
-
-    - Total de chamados Encerrados/Resolvidos (assignee = analista, status IN
-      ("Resolvido", "Encerrado"), resolutiondate no período).
-    - Total de reabertos (assignee = analista, status WAS "Reaberto", created
-      no período — mesma convenção do resto do app) e o percentual disso
-      sobre o total de resolvidos GERAIS no mesmo período (todos os
-      assignees, não só esse analista).
-    - Chamados em "Aguardando Fornecedor" do analista, agrupados por
-      "Fornecedor Responsável" (created no período).
-    - Top categorias de encerramento entre os Encerrados/Resolvidos do
-      analista (mesma população do primeiro item, reaproveitada — sem
-      consulta extra). "categoria_field_id" opcional: sem ele, sai vazio.
-    - Calendário: contagem por dia de Encerrados/Resolvidos (por
-      resolutiondate) e de reabertos (por created), cobrindo cada dia do
-      período — usado pra desenhar a visão de calendário na tela.
-
-    "account_id" (recomendado): quando informado, filtra por
-    assignee = "<accountId>" em vez do nome como texto. Testado direto na
-    API: `assignee = "DIEGO VERGA TEIXEIRA"` (nome) devolve 0 resultados
-    mesmo com 46 chamados reais dele no período — o Jira Cloud não resolve
-    esse texto de forma confiável quando há ambiguidade de nome (outros
-    "TEIXEIRA"/"VERGA" cadastrados). `assignee = "<accountId>"` resolve os
-    46 corretamente. Sem account_id, cai no nome como texto (mesmo
-    comportamento de antes — não confiável, mantido só como fallback).
-    """
-    grupo_clause_all = _grupo_clause(grupos)
-    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
-    projeto_clause = f"project IN ({projetos_str})"
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    base_geral = f"{grupo_clause_all} AND {projeto_clause}"
-    if account_id:
-        analista_clause = f'assignee = "{account_id}"'
-    else:
-        analista_escapado = analista.replace('"', '\\"')
-        analista_clause = f'assignee = "{analista_escapado}"'
-
-    resolvidos_jql = (
-        f'{base_geral} AND {analista_clause} AND status IN ("Resolvido", "Encerrado") '
-        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
-    )
-    resolvidos_fields = ["resolutiondate"] + ([categoria_field_id] if categoria_field_id else [])
-    resolvidos_issues = fetch_issues(config, resolvidos_jql, resolvidos_fields)
-    total_encerrados_resolvidos = len(resolvidos_issues)
-
-    reabertos_jql = (
-        f'{base_geral} AND {analista_clause} AND status WAS "Reaberto" '
-        f'AND created >= "{start_str}" AND created <= "{end_str}"'
-    )
-    reabertos_issues = fetch_issues(config, reabertos_jql, ["created"])
-    total_reabertos = len(reabertos_issues)
-
-    resolvidos_gerais_jql = (
-        f'{base_geral} AND status IN ("Resolvido", "Encerrado") '
-        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
-    )
-    total_resolvidos_gerais = len(fetch_issues(config, resolvidos_gerais_jql, ["key"]))
-    percentual_reabertos = (
-        round(total_reabertos / total_resolvidos_gerais * 100, 1) if total_resolvidos_gerais else 0.0
-    )
-
-    fornecedor_jql = (
-        f'{base_geral} AND {analista_clause} AND status = "Aguardando Fornecedor" '
-        f'AND created >= "{start_str}" AND created <= "{end_str}"'
-    )
-    fornecedor_issues = fetch_issues(config, fornecedor_jql, FORNECEDOR_RESPONSAVEL_FIELDS)
-    fornecedor_counts = Counter()
-    for issue in fornecedor_issues:
-        nome_fornecedor = extract_fornecedor(issue.get("fields", {})) or "Sem fornecedor"
-        fornecedor_counts[nome_fornecedor] += 1
-    por_fornecedor = [{"fornecedor": nome, "total": total} for nome, total in fornecedor_counts.most_common()]
-
-    categoria_counts = Counter()
-    if categoria_field_id:
-        for issue in resolvidos_issues:
-            valores = _extract_categoria_values(config, issue.get("fields", {}).get(categoria_field_id))
-            categoria_counts.update(valores)
-    top_categorias = [
-        {"categoria": categoria, "total": total} for categoria, total in categoria_counts.most_common(3)
-    ]
-
-    encerrados_por_dia = Counter(
-        (issue.get("fields", {}).get("resolutiondate") or "")[:10] for issue in resolvidos_issues
-    )
-    reabertos_por_dia = Counter(
-        (issue.get("fields", {}).get("created") or "")[:10] for issue in reabertos_issues
-    )
-    calendario = []
-    dia_atual = start_date
-    while dia_atual <= end_date:
-        chave = dia_atual.strftime("%Y-%m-%d")
-        calendario.append({
-            "data": chave,
-            "encerrados_resolvidos": encerrados_por_dia.get(chave, 0),
-            "reabertos": reabertos_por_dia.get(chave, 0),
-        })
-        dia_atual += timedelta(days=1)
-
-    return {
-        "total_encerrados_resolvidos": total_encerrados_resolvidos,
-        "total_reabertos": total_reabertos,
-        "total_resolvidos_gerais": total_resolvidos_gerais,
-        "percentual_reabertos": percentual_reabertos,
-        "por_fornecedor": por_fornecedor,
-        "top_categorias": top_categorias,
-        "calendario": calendario,
-    }
-
-
-def fetch_chamados_criticos(
-    config,
-    grupos,
-    start_date,
-    end_date,
-    projetos=None,
-    nivel_escalonamento_field_id=None,
-    responsavel_mops_field_id=None,
-    prod_projetos=None,
-):
-    """Compara, entre os chamados criados no período informado, quantos já
-    foram abertos como COTI (priority WAS IN (P0, P1, P2)) em algum momento x
-    quantos realmente são COTI agora (priority IN (P0, P1, P2)) — mesma ideia
-    da seção "Escalonamentos e Prioridades" do Relatório Consolidado, mas como
-    ação própria, sem travar no projeto "Central de Incidentes". "projetos"
-    (opcional) restringe os projetos considerados; por padrão os dois
-    (Central de Incidentes + Abertura de Chamados, igual às demais ações de
-    tela).
-
-    "prod_projetos" (opcional): quando informado, o grupo Prod passa a
-    considerar esses projetos em vez de "projetos" (ver _grupo_projeto_clause)
-    — usado pelo widget COTI da home.
-
-    "Pontuais" (abertos − atual) são os que já foram COTI mas não são mais —
-    desceram de prioridade ou já foram resolvidos abaixo de P0/P1/P2.
-
-    Também traz o grupo "Chamados Clarinha": quantos, dentro da mesma
-    população (grupo/projeto/criado no período), têm o campo "Nível de
-    Escalonamento" preenchido, quantos desses ainda estão abertos (status
-    atual fora de Cancelado/Resolvido/Encerrado) e a contagem por valor desse
-    campo. "nivel_escalonamento_field_id" (opcional): ID do campo
-    customizado resolvido por nome — sem ele, os totais ainda saem certos (a
-    condição "is not EMPTY" não depende do ID), só a contagem por nível fica
-    vazia.
-
-    Também traz o grupo "Escalonamento Informal": entre os chamados da mesma
-    população com o campo "Responsável pela Solicitação MOPS" preenchido,
-    agrupa por responsável — quantos chamados cada um priorizou e quantos
-    desses já estão resolvidos (status IN Resolvido/Encerrado).
-    "responsavel_mops_field_id" (opcional): sem ele, a tabela sai vazia (ao
-    contrário do Nível de Escalonamento, aqui o nome do responsável só é
-    lido através do campo, não tem como contar sem o ID).
-    """
-    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    base_clause = f'{grupo_projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
-
-    total_criados = len(fetch_issues(config, base_clause, ["key"]))
-
-    abertos_jql = f"{base_clause} AND priority WAS IN (P0, P1, P2)"
-    total_criticos_abertos = len(fetch_issues(config, abertos_jql, ["key"]))
-
-    atual_jql = f"{base_clause} AND priority IN (P0, P1, P2)"
-    total_criticos_atual = len(fetch_issues(config, atual_jql, ["key"]))
-
-    total_pontuais = total_criticos_abertos - total_criticos_atual
-    percentual_pontuais = (
-        round(total_pontuais / total_criticos_abertos * 100, 1) if total_criticos_abertos else 0.0
-    )
-    percentual_criticos = round(total_criticos_abertos / total_criados * 100, 1) if total_criados else 0.0
-
-    clarinha_jql = f'{base_clause} AND "Nivel de Escalonamento" is not EMPTY'
-    clarinha_fields = ["key", "status"] + ([nivel_escalonamento_field_id] if nivel_escalonamento_field_id else [])
-    clarinha_issues = fetch_issues(config, clarinha_jql, clarinha_fields)
-    total_escalonados = len(clarinha_issues)
-
-    total_escalonados_abertos = sum(
-        1
-        for issue in clarinha_issues
-        if _extract(issue.get("fields", {}).get("status"), "name") not in STATUS_FECHADOS_CLARINHA
-    )
-
-    por_nivel_counts = Counter()
-    if nivel_escalonamento_field_id:
-        for issue in clarinha_issues:
-            valores = _extract_categoria_values(
-                config, issue.get("fields", {}).get(nivel_escalonamento_field_id)
-            )
-            por_nivel_counts.update(valores)
-    por_nivel = [{"nivel": nivel, "total": total} for nivel, total in por_nivel_counts.most_common()]
-
-    escalonamento_informal = []
-    if responsavel_mops_field_id:
-        informal_jql = f'{base_clause} AND "Responsável pela Solicitação MOPS" is not EMPTY'
-        informal_issues = fetch_issues(config, informal_jql, ["key", "status", responsavel_mops_field_id])
-
-        priorizados_counts = Counter()
-        resolvidos_counts = Counter()
-        for issue in informal_issues:
-            issue_fields = issue.get("fields", {})
-            nome = _extract_nome_usuario(issue_fields.get(responsavel_mops_field_id))
-            if not nome:
-                continue
-            priorizados_counts[nome] += 1
-            if _extract(issue_fields.get("status"), "name") in ("Resolvido", "Encerrado"):
-                resolvidos_counts[nome] += 1
-
-        escalonamento_informal = [
-            {"responsavel": nome, "priorizados": total, "resolvidos": resolvidos_counts.get(nome, 0)}
-            for nome, total in priorizados_counts.most_common()
-        ]
-
-    return {
-        "total_criados": total_criados,
-        "total_criticos_abertos": total_criticos_abertos,
-        "total_criticos_atual": total_criticos_atual,
-        "total_pontuais": total_pontuais,
-        "percentual_pontuais": percentual_pontuais,
-        "percentual_criticos": percentual_criticos,
-        "total_escalonados": total_escalonados,
-        "total_escalonados_abertos": total_escalonados_abertos,
-        "por_nivel": por_nivel,
-        "escalonamento_informal": escalonamento_informal,
-    }
-
-
 def _compute_grupo_metrics(config, grupos, window_start_dt, window_end_dt, window_start_str, window_end_str):
     """Calcula as 6 métricas do report diário para os grupos solucionadores
     informados (um único grupo, ou vários para o resumo geral), sempre
@@ -1923,16 +1475,6 @@ ASSETS_API_BASE = f"https://api.atlassian.com/jsm/assets/workspace/{ASSETS_WORKS
 CATEGORIA_OBJECT_TYPE = "Categoria de encerramento"
 
 
-def _normalizar_termo_aql(termo):
-    """Remove acentos de um termo antes de montar "Name LIKE" — testado
-    direto na API: o Jira Assets é sensível a acento nesse filtro (não a
-    maiúsc./minúsc.), então "Catálogo" e "CATALOGO" dão resultados bem
-    diferentes (10 x 217 batendo com os mesmos Names, que são sempre sem
-    acento). Sem isso, buscar por um valor acentuado (como vem do dropdown
-    "Funcionalidade Ofensores") perderia quase todo mundo."""
-    return "".join(c for c in unicodedata.normalize("NFD", termo) if not unicodedata.combining(c))
-
-
 # ID do atributo "Status" no tipo de objeto "Categoria de encerramento" —
 # descoberto inspecionando objectTypeAttributes na resposta da AQL. Fixo
 # porque é característica desta instância (mesmo espírito de
@@ -1981,64 +1523,8 @@ def fetch_categoria_por_nome(config, nome):
     return None
 
 
-# Campo nativo do Jira (select fixo, customfield_26645 — não é do Jira
-# Assets) usado como parâmetro de filtro na "Busca Ofensor": os chamados de
-# "Gestão de Problemas" cuja "Funcionalidade Ofensores" bate com a opção
-# escolhida no dropdown. Mesma base da JQL passada pelo usuário, trocando
-# "Sistemas Ofensores" (referência a objeto do Jira Assets) por esse campo.
-FUNCIONALIDADE_OFENSORES_CAMPO = "Funcionalidade Ofensores"
+# Projeto Jira dos chamados atrelados a um ofensor (fetch_contagem_atrelados_lote).
 PROJETO_GESTAO_PROBLEMAS = "Gestão de Problemas"
-
-# Campo nativo do Jira (texto livre, customfield_26643 — mesma família dos
-# outros campos "Ofensores") com o número do defeito/ALM do chamado. Não é
-# mais usado pra achar a Categoria de Encerramento (ver fetch_categoria_
-# por_nome, que casa pelo "Resumo"/summary inteiro em vez do ALM) — fica
-# só pra alimentar a busca "ALM" da Busca Ofensor.
-ALM_CAMPO = "ALM"
-ALM_CAMPO_ID = "customfield_26643"
-
-
-def _clausula_nome_ou_alm(campo_busca, termo):
-    """Monta o pedaço "AND ..." pro refino opcional por "Nome" (summary) OU
-    "ALM" — usado tanto pela Busca Ofensor por Funcionalidade quanto pela
-    Extração Geral. String vazia quando não há termo."""
-    termo = (termo or "").strip()
-    if not termo:
-        return ""
-    termo_escapado = termo.replace('"', '\\"')
-    if campo_busca == "alm":
-        return f' AND "{ALM_CAMPO}" ~ "{termo_escapado}*"'
-    return f' AND summary ~ "{termo_escapado}*"'
-
-
-def _montar_chamados_ofensor(issues):
-    resultado = []
-    for issue in issues:
-        fields = issue.get("fields", {})
-        resultado.append({
-            "key": issue.get("key"),
-            "summary": fields.get("summary"),
-            "status": _extract(fields.get("status")),
-            "created": fields.get("created"),
-            "assignee": _extract(fields.get("assignee")),
-            "alm": fields.get(ALM_CAMPO_ID),
-        })
-    return resultado
-
-
-def fetch_chamados_funcionalidade_ofensor(config, funcionalidade, campo_busca=None, termo=None):
-    """Busca os chamados do projeto "Gestão de Problemas" cuja
-    "Funcionalidade Ofensores" é a opção escolhida no dropdown (mesmas 32
-    opções fixas do campo nativo do Jira). Opcionalmente, refina o
-    resultado buscando por "Nome" (summary) OU "ALM" (campo_busca vale
-    "nome" ou "alm" — só um dos dois de cada vez, nunca os dois juntos)."""
-    funcionalidade_escapada = funcionalidade.replace('"', '\\"')
-    jql = (
-        f'project = "{PROJETO_GESTAO_PROBLEMAS}" AND "{FUNCIONALIDADE_OFENSORES_CAMPO}" = '
-        f'"{funcionalidade_escapada}"' + _clausula_nome_ou_alm(campo_busca, termo) + " ORDER BY created DESC"
-    )
-    issues = fetch_issues(config, jql, ["summary", "status", "created", "assignee", "reporter", ALM_CAMPO_ID])
-    return _montar_chamados_ofensor(issues)
 
 
 # Tamanho máximo de um lote de "Name"s verificados de uma vez em
@@ -2664,104 +2150,6 @@ def fetch_distribuicao_tratados(config, grupos, start_date, end_date, tipo_incid
         "dias": dias,
         "tma_horas": tma_horas,
     }
-
-
-def fetch_analise_eps(config, grupos, start_date, end_date, eps_field_id, projetos=None):
-    """Ação "Análise de EPS": dentro do período informado, agrupa por valor
-    do campo "PROP_Site" (EPS) e devolve o top 5 de cada:
-
-    - "top_abertos": chamados criados no período (created), por EPS.
-    - "top_resolvidos": chamados Resolvido/Encerrado com resolutiondate no
-      período, por EPS.
-    - "top_reabertos": chamados que passaram por "Reaberto" (status WAS
-      "Reaberto"), created no período — mesma regra de
-      fetch_chamados_reabertos.
-
-    "PROP_Site" pode ser referência a objeto do Jira Assets (mesmo caso de
-    Classificação/Sub-Classificação) — pré-resolve os labels em paralelo
-    (_precache_categoria_labels) ANTES de contar, senão cada valor novo
-    custa uma chamada de rede em série por chamado (ver
-    fetch_chamados_geral_classificacao)."""
-    grupo_clause_all = _grupo_clause(grupos)
-    projetos_str = ", ".join(f'"{p}"' for p in (projetos or [PROJETO_INC, PROJETO_PDST]))
-    projeto_clause = f"project IN ({projetos_str})"
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    base_clause = f"{grupo_clause_all} AND {projeto_clause}"
-
-    abertos_jql = f'{base_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
-    abertos_issues = fetch_issues(config, abertos_jql, [eps_field_id])
-
-    resolvidos_jql = (
-        f'{base_clause} AND status IN ("Resolvido", "Encerrado") '
-        f'AND resolutiondate >= "{start_str}" AND resolutiondate <= "{end_str}"'
-    )
-    resolvidos_issues = fetch_issues(config, resolvidos_jql, [eps_field_id])
-
-    reabertos_jql = f'{base_clause} AND status WAS "Reaberto" AND created >= "{start_str}" AND created <= "{end_str}"'
-    reabertos_issues = fetch_issues(config, reabertos_jql, [eps_field_id])
-
-    _precache_categoria_labels(config, abertos_issues + resolvidos_issues + reabertos_issues, eps_field_id)
-
-    def _top5(issues):
-        contagem = Counter()
-        for issue in issues:
-            valores = _extract_categoria_values(config, issue.get("fields", {}).get(eps_field_id))
-            eps = valores[0] if valores else None
-            if eps:
-                contagem[eps] += 1
-        return [{"eps": eps, "total": total} for eps, total in contagem.most_common(5)]
-
-    return {
-        "top_abertos": _top5(abertos_issues),
-        "top_resolvidos": _top5(resolvidos_issues),
-        "top_reabertos": _top5(reabertos_issues),
-    }
-
-
-def fetch_criados_por_dia_grupo(
-    config, grupos, start_date, end_date, grupo_field_id, projetos=None, prod_projetos=None
-):
-    """Widget da home "Chamados Criados": para o período informado, conta
-    quantos chamados foram criados (created) em cada dia, por grupo, e
-    quantos desses já foram P0/P1/P2 em algum momento
-    (priority WAS IN (P0, P1, P2) — mesma condição de "abertos" usada em
-    fetch_chamados_criticos/COTI, aqui aplicada a qualquer grupo/caixa, não
-    só Solar).
-
-    "prod_projetos" (opcional): ver _grupo_projeto_clause — N1/N2 só
-    "Central de Incidentes", Prod só "Abertura de Chamados".
-
-    Duas buscas no total (não uma por dia/grupo): todos os criados no
-    período e, à parte, só os que já foram P0/P1/P2 — depois bucketiza por
-    (dia, grupo) em Python, mesmo truque de fetch_chamados_violados usado
-    no widget "Violados — Últimos 30 dias".
-
-    Devolve (total_por_dia_grupo, p0p1p2_por_dia_grupo): dois dicts
-    {(dia_iso, grupo): quantidade} — quem monta a lista dia a dia (com
-    "dia_semana" etc.) é a rota, mesmo padrão de home_violar_semanal.
-    """
-    grupo_projeto_clause = _grupo_projeto_clause(grupos, projetos, prod_projetos)
-    start_str = f"{start_date.strftime('%Y-%m-%d')} 00:00"
-    end_str = f"{end_date.strftime('%Y-%m-%d')} 23:59"
-    base_clause = f'{grupo_projeto_clause} AND created >= "{start_str}" AND created <= "{end_str}"'
-
-    criados_issues = fetch_issues(config, base_clause, ["created", grupo_field_id])
-
-    p0p1p2_jql = f"{base_clause} AND priority WAS IN (P0, P1, P2)"
-    p0p1p2_issues = fetch_issues(config, p0p1p2_jql, ["created", grupo_field_id])
-
-    def _bucket(issues):
-        contagem = Counter()
-        for issue in issues:
-            fields = issue.get("fields", {})
-            dia = (fields.get("created") or "")[:10]
-            grupo = _extract_grupo_solucionador(fields.get(grupo_field_id))
-            if dia and grupo in grupos:
-                contagem[(dia, grupo)] += 1
-        return contagem
-
-    return _bucket(criados_issues), _bucket(p0p1p2_issues)
 
 
 def build_consolidated_report(config, start_date, end_date, grupos=None, categoria_encerramento_field_id=None):

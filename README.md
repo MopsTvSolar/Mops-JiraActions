@@ -2,11 +2,11 @@
 
 Ferramenta Python que extrai chamados do Jira Cloud via REST API (JQL configurável) e exporta para CSV e/ou Excel. Disponível em três formas: uma **versão web** ([api/index.py](api/index.py) + [public/](public/)), para o time acessar por navegador sem instalar nada; uma **interface gráfica** ([jira_gui.py](jira_gui.py)), para uso local sem mexer em `.env`/terminal; e uma **linha de comando** ([jira_extractor.py](jira_extractor.py)), útil para automação.
 
-## Versão web (Vercel)
+## Versão web
 
 Pensada como ferramenta de exportação sob demanda: **o sistema não guarda nada**.
 
-- `JIRA_URL`, `JIRA_JQL`, `JIRA_JQL_TV` e `JIRA_PAGE_SIZE` são fixos no servidor (variáveis de ambiente do projeto na Vercel) — não aparecem na tela.
+- `JIRA_URL`, `JIRA_JQL`, `JIRA_JQL_TV` e `JIRA_PAGE_SIZE` são fixos no servidor (`.env` na raiz do projeto) — não aparecem na tela.
 - `JIRA_EMAIL` e `JIRA_API_TOKEN` são digitados por cada usuário na tela de login. Ficam **apenas na memória do JavaScript daquela aba** (nunca em `localStorage`, `sessionStorage`, cookie, banco ou log do servidor) — somem sozinhos ao fechar ou recarregar a aba, e precisam ser digitados de novo na próxima vez.
 - Cada requisição à API é *stateless*: o servidor usa e-mail/token só para autenticar na chamada ao Jira daquele pedido e descarta em seguida.
 - CSV, Excel e PDF são montados em memória e baixados direto pelo navegador — nada é salvo em disco no servidor.
@@ -57,22 +57,18 @@ Além das seções fixas do Relatório Consolidado, o botão **🏷️ Categoria
 
 O resultado aparece como **tabela** (Categoria / Quantidade / %) abaixo do diálogo — uma tabela por população marcada, cada uma com o total de chamados e quantos foram categorizados. Assim como no Relatório Consolidado, se o campo "Categoria de Encerramento" não for encontrado no Jira, o botão mostra um erro claro (diferente do Consolidado, que degrada silenciosamente — aqui é o único propósito da tela).
 
-### Deploy
-
-1. Crie um projeto na Vercel apontando para este repositório.
-2. Configure as variáveis de ambiente do projeto na Vercel (Settings → Environment Variables): `JIRA_URL`, `JIRA_JQL`, `JIRA_PAGE_SIZE` e, se for usar a caixa "Mops Tv do Futuro", `JIRA_JQL_TV` (os mesmos valores de [.env.example](.env.example), **sem** `JIRA_EMAIL`/`JIRA_API_TOKEN` — esses não devem ir para o servidor).
-3. Deploy (`vercel` ou push para a branch conectada). O roteamento já está pronto em [vercel.json](vercel.json): `/api/*` vai para o backend Flask ([api/index.py](api/index.py)), o resto é servido estaticamente a partir de [public/](public/).
-
 ### Rodar localmente
 
 ```
-pip install -r api/requirements.txt
+pip install -r requirements.txt
 python api/index.py
 ```
 
+Ou dê dois cliques em [iniciar_app.vbs](iniciar_app.vbs) (sobe o servidor se preciso e abre em janela de app); [reiniciar_app.vbs](reiniciar_app.vbs) derruba o que estiver na porta 5000 e sobe de novo.
+
 Abre em `http://127.0.0.1:5000`. Localmente, o `.env` na raiz do projeto (mesmo formato do `.env.example`) supre `JIRA_URL`/`JIRA_JQL`/`JIRA_PAGE_SIZE` — e-mail/token continuam sendo digitados na tela, não vêm do `.env`.
 
-**Auto-login em dev**: se o `.env` também tiver `JIRA_EMAIL`/`JIRA_API_TOKEN` preenchidos (como no `jira_gui.py`/CLI), a tela conecta sozinha ao abrir, poupando digitar de novo a cada teste. Isso só funciona rodando `python api/index.py` direto — a rota que expõe isso (`/api/dev-autologin`) nem é registrada quando o app roda importado como WSGI (produção na Vercel), então não existe risco disso vazar credencial em deploy.
+**Auto-login em dev**: se o `.env` também tiver `JIRA_EMAIL`/`JIRA_API_TOKEN` preenchidos (como no `jira_gui.py`/CLI), a tela conecta sozinha ao abrir, poupando digitar de novo a cada teste. Isso só funciona rodando `python api/index.py` direto — a rota que expõe isso (`/api/dev-autologin`) nem é registrada quando o app roda importado como WSGI, então não existe risco disso vazar credencial em deploy.
 
 ### Cache OM (Salesforce CLI)
 
